@@ -120,3 +120,4 @@ pdf/dompdf/vendor/
 # Local invoice template tooling
 prepare_invoice_template.py
 read_invoice.py
+/templates/
