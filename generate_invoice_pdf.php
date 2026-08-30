@@ -434,69 +434,15 @@ table {
 
 .footer {
     position: fixed;
-    bottom: 5mm;
+    bottom: 4mm;
     left: 0;
     right: 0;
     text-align: center;
 }
 
-.footer {
-    margin-top: 25px;
-    padding-top: 15px;
-    text-align: center;
-}
-
-.footer-brand {
-    display: inline-block;
-    text-align: center;
-}
-
 .footer-logo {
-    display: inline-block;
-    font-size: 22px;
-    font-weight: bold;
-    letter-spacing: 3px;
-    color: #0B0D10;
-}
-
-.footer-logo-line {
-    width: 180px;
-    height: 3px;
-    margin: 5px auto 6px auto;
-    background: #FF6A00;
-}
-
-.footer-subtitle {
-    font-size: 7px;
-    font-weight: bold;
-    letter-spacing: 1.5px;
-    color: #0B0D10;
-}
-
-.footer {
-    margin-top: 25px;
-    padding-top: 15px;
-    text-align: center;
-}
-
-.footer-brand {
-    width: 100%;
-    text-align: center;
-}
-
-.footer-logo {
-    display: block;
-    width: 260px;
+    width: 44mm;
     height: auto;
-    margin: 0 auto;
-}
-
-.footer-subtitle {
-    margin-top: 5px;
-    font-size: 7px;
-    font-weight: bold;
-    letter-spacing: 1.5px;
-    color: #0B0D10;
 }
 
 </style>
@@ -723,6 +669,9 @@ $html .= '
 
 </table>
 
+<div class="footer">
+    <img class="footer-logo" src="' . $logoData . '" alt="TELVORA">
+</div>
 
 </body>
 </html>
@@ -749,7 +698,18 @@ $dompdf->setPaper('A4', 'portrait');
 
 $dompdf->render();
 
-$filename = 'TELVORA_' . $orderNumber . '.pdf';
+$filenameOrderNumber = preg_replace(
+    '/[^\p{L}\p{N}_-]+/u',
+    '_',
+    trim((string)($order['order_number'] ?? ''))
+);
+$filenameOrderNumber = trim((string)$filenameOrderNumber, '_-');
+
+if ($filenameOrderNumber === '') {
+    $filenameOrderNumber = (string)$order['id'];
+}
+
+$filename = 'TELVORA_' . $filenameOrderNumber . '.pdf';
 
 $dompdf->stream(
     $filename,

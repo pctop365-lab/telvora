@@ -1077,7 +1077,8 @@ function sendTransientMessage(int $chatId, array $data): ?array
 function telegramSendDocumentFile(
     int $chatId,
     string $filePath,
-    string $caption = ''
+    string $caption = '',
+    string $documentName = ''
 ): ?array {
     $telegramBotToken =
         requireTelvoraSecret('telegram_bot_token');
@@ -1099,7 +1100,9 @@ function telegramSendDocumentFile(
             'document' => new CURLFile(
                 $filePath,
                 'application/pdf',
-                basename($filePath)
+                $documentName !== ''
+                    ? $documentName
+                    : basename($filePath)
             )
         ]
     ]);
@@ -2052,6 +2055,34 @@ foreach ($updates as $update) {
 
             $orderId = (int)$m[1];
 
+            $pdo = getDatabase();
+            $orderNumberStmt = $pdo->prepare("
+                SELECT order_number
+                FROM orders
+                WHERE id = :id
+                LIMIT 1
+            ");
+            $orderNumberStmt->execute([
+                ':id' => $orderId
+            ]);
+
+            $documentOrderNumber = preg_replace(
+                '/[^\p{L}\p{N}_-]+/u',
+                '_',
+                trim((string)($orderNumberStmt->fetchColumn() ?: ''))
+            );
+            $documentOrderNumber = trim(
+                (string)$documentOrderNumber,
+                '_-'
+            );
+
+            if ($documentOrderNumber === '') {
+                $documentOrderNumber = (string)$orderId;
+            }
+
+            $documentName =
+                'TELVORA_' . $documentOrderNumber . '.pdf';
+
             $tempFile =
                 sys_get_temp_dir() .
                 '/TELVORA_' .
@@ -2124,7 +2155,8 @@ foreach ($updates as $update) {
             $result = telegramSendDocumentFile(
                 (int)$callbackChatId,
                 $tempFile,
-                '📄 Накладная TELVORA'
+                '📄 Накладная TELVORA',
+                $documentName
             );
 
             @unlink($tempFile);
