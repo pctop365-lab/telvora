@@ -1,24 +1,127 @@
 import type { Product, ProductCategory, Category, SortKey } from '@/types';
 import {
-  getSeedProducts,
   getSeedCategories,
   getCategorySlug,
   parseCategorySlug,
 } from '@/data/seed';
 
-/**
- * Data service layer.
- *
- * All UI components and hooks call these functions — never the seed data directly.
- * To switch to a real backend (MySQL via REST/GraphQL), replace the bodies
- * of these functions with `fetch` calls. The function signatures stay the same,
- * so no component code needs to change.
- */
+const PRODUCTS_API = 'https://telvora.ru/products.php';
 
-const SIMULATED_LATENCY = 120;
+type ApiProduct = {
+  id: number | string;
+  slug: string;
+  name: string;
+  series: string;
+  country?: string;
+  category: ProductCategory;
+  screen_size?: string | number;
+  resolution?: string;
+  price?: number | string;
+  old_price?: number | string | null;
+  image?: string;
+  badge?: string;
+  rating?: number | string;
+  reviews?: number | string;
+  description?: string;
+  specs?: Array<{
+    label?: string;
+    value?: string;
+  }>;
+  highlights?: string[];
+  is_active?: boolean | number;
+  variants?: Array<{
+    country?: string;
+    price?: number | string;
+    old_price?: number | string | null;
+    is_active?: boolean | number;
+  }>;
+};
 
-function delay<T>(value: T, ms = SIMULATED_LATENCY): Promise<T> {
-  return new Promise((resolve) => setTimeout(() => resolve(value), ms));
+type ProductsResponse = {
+  success: boolean;
+  count?: number;
+  products?: ApiProduct[];
+  message?: string;
+};
+
+function normalizeProduct(product: ApiProduct): Product {
+  return {
+    id: String(product.id),
+    slug: String(product.slug || ''),
+    name: String(product.name || ''),
+    series: String(product.series || ''),
+    category: product.category,
+    screenSize: String(product.screen_size ?? ''),
+    resolution: String(product.resolution || ''),
+    price: Number(product.price || 0),
+    oldPrice:
+      product.old_price !== null &&
+      product.old_price !== undefined
+        ? Number(product.old_price)
+        : undefined,
+    image: String(product.image || ''),
+    badge: product.badge
+      ? String(product.badge)
+      : undefined,
+    rating: Number(product.rating || 0),
+    reviews: Number(product.reviews || 0),
+    description: String(product.description || ''),
+    specs: Array.isArray(product.specs)
+      ? product.specs.map((item) => ({
+          label: String(item.label || ''),
+          value: String(item.value || ''),
+        }))
+      : [],
+    highlights: Array.isArray(product.highlights)
+      ? product.highlights.map((item) => String(item))
+      : [],
+    variants: Array.isArray(product.variants)
+      ? product.variants.map((variant) => ({
+          country: String(variant.country || ''),
+          price: Number(variant.price || 0),
+          oldPrice:
+            variant.old_price !== null &&
+            variant.old_price !== undefined
+              ? Number(variant.old_price)
+              : undefined,
+          isActive:
+            variant.is_active === undefined
+              ? true
+              : Boolean(variant.is_active),
+        }))
+      : [],
+  };
+}
+
+async function loadProductsFromApi(): Promise<Product[]> {
+  const response = await fetch(`${PRODUCTS_API}?action=list`, {
+    method: 'GET',
+    headers: {
+      Accept: 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Ошибка загрузки товаров: ${response.status}`);
+  }
+
+  const data: ProductsResponse = await response.json();
+
+  if (!data.success) {
+    throw new Error(data.message || 'Не удалось загрузить товары');
+  }
+
+  const products = Array.isArray(data.products)
+    ? data.products
+    : [];
+
+  return products
+    .filter(
+      (product) =>
+        product.is_active === undefined ||
+        Boolean(product.is_active)
+    )
+    .map(normalizeProduct);
 }
 
 export async function fetchProducts(filters?: {
@@ -26,14 +129,17 @@ export async function fetchProducts(filters?: {
   search?: string;
   sort?: SortKey;
 }): Promise<Product[]> {
-  let items = getSeedProducts();
+  let items = await loadProductsFromApi();
 
   if (filters?.category) {
-    items = items.filter((p) => p.category === filters.category);
+    items = items.filter(
+      (p) => p.category === filters.category
+    );
   }
 
   if (filters?.search) {
-    const q = filters.search.toLowerCase();
+    const q = filters.search.toLowerCase().trim();
+
     items = items.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
@@ -43,31 +149,46 @@ export async function fetchProducts(filters?: {
   }
 
   if (filters?.sort === 'price-asc') {
-    items = [...items].sort((a, b) => a.price - b.price);
+    items = [...items].sort(
+      (a, b) => a.price - b.price
+    );
   } else if (filters?.sort === 'price-desc') {
-    items = [...items].sort((a, b) => b.price - a.price);
+    items = [...items].sort(
+      (a, b) => b.price - a.price
+    );
   } else if (filters?.sort === 'rating') {
-    items = [...items].sort((a, b) => b.rating - a.rating);
+    items = [...items].sort(
+      (a, b) => b.rating - a.rating
+    );
   }
 
-  // In production: return delay(fetch('/api/products?…').then(r => r.json()));
-  return delay(items);
+  return items;
 }
 
-export async function fetchProductBySlug(slug: string): Promise<Product | null> {
-  const items = getSeedProducts();
-  const product = items.find((p) => p.slug === slug) ?? null;
-  return delay(product);
+export async function fetchProductBySlug(
+  slug: string
+): Promise<Product | null> {
+  const items = await loadProductsFromApi();
+
+  return (
+    items.find((p) => p.slug === slug) ?? null
+  );
 }
 
 export async function fetchProductsByCategorySlug(
   categorySlug: string
 ): Promise<Product[]> {
   const category = parseCategorySlug(categorySlug);
-  if (!category) return delay([]);
 
-  const items = getSeedProducts().filter((p) => p.category === category);
-  return delay(items);
+  if (!category) {
+    return [];
+  }
+
+  const items = await loadProductsFromApi();
+
+  return items.filter(
+    (p) => p.category === category
+  );
 }
 
 export async function fetchCategories(): Promise<Category[]> {
@@ -76,16 +197,27 @@ export async function fetchCategories(): Promise<Category[]> {
     label: c.label,
     description: c.description,
   }));
-  return delay(cats);
+
+  return cats;
 }
 
-export async function fetchFeaturedProducts(limit = 3): Promise<Product[]> {
-  const items = getSeedProducts()
-    .filter((p) => p.badge === 'Хит продаж' || p.badge === 'Новинка' || p.badge === 'Премиум')
+export async function fetchFeaturedProducts(
+  limit = 3
+): Promise<Product[]> {
+  const items = await loadProductsFromApi();
+
+  return items
+    .filter(
+      (p) =>
+        p.badge === 'Хит продаж' ||
+        p.badge === 'Новинка' ||
+        p.badge === 'Премиум'
+    )
     .slice(0, limit);
-  return delay(items);
 }
 
-export function getCategorySlugForProduct(product: Product): string {
+export function getCategorySlugForProduct(
+  product: Product
+): string {
   return getCategorySlug(product.category);
 }

@@ -10,10 +10,12 @@
 
   html {
     scroll-behavior: smooth;
+    background: #f5f6f8;
   }
 
   body {
-    @apply bg-graphite-900 text-white font-sans antialiased;
+    @apply text-graphite-900 font-sans antialiased;
+    background: #f5f6f8;
     overflow-x: hidden;
   }
 
@@ -26,12 +28,15 @@
     width: 8px;
     height: 8px;
   }
+
   ::-webkit-scrollbar-track {
-    @apply bg-graphite-900;
+    background: #f5f6f8;
   }
+
   ::-webkit-scrollbar-thumb {
-    @apply bg-graphite-700 rounded-full;
+    @apply bg-graphite-300 rounded-full;
   }
+
   ::-webkit-scrollbar-thumb:hover {
     @apply bg-graphite-600;
   }
@@ -42,21 +47,26 @@
     text-wrap: balance;
   }
 
+  /* Светлые карточки и блоки */
   .glass {
-    @apply bg-graphite-800/60 backdrop-blur-xl border border-white/5;
+    @apply bg-white/90 backdrop-blur-xl border border-graphite-200;
+    box-shadow: 0 8px 30px rgba(17, 24, 39, 0.06);
   }
 
   .glass-light {
-    @apply bg-white/5 backdrop-blur-md border border-white/10;
+    @apply bg-white/80 backdrop-blur-md border border-graphite-200;
+    box-shadow: 0 4px 20px rgba(17, 24, 39, 0.04);
   }
 
+  /* Светлый текстовый градиент */
   .text-gradient {
-    @apply bg-gradient-to-r from-white via-graphite-100 to-graphite-300 bg-clip-text text-transparent;
+    @apply bg-gradient-to-r from-graphite-900 via-graphite-700 to-graphite-500 bg-clip-text text-transparent;
   }
 
   .hide-scrollbar::-webkit-scrollbar {
     display: none;
   }
+
   .hide-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
@@ -71,7 +81,390 @@
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {
-  -webkit-text-fill-color: #ffffff;
-  -webkit-box-shadow: 0 0 0 1000px #15181c inset;
+  -webkit-text-fill-color: #111827;
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset;
   transition: background-color 5000s ease-in-out 0s;
+}
+/* =========================================================
+   TELVORA — LIGHT THEME
+   Админка /admin не затрагивается
+   ========================================================= */
+
+html.light main:not(.admin-page) .text-white {
+  color: #0B0D10;
+}
+
+/* Акцентные кнопки */
+html.light main:not(.admin-page) .bg-accent-500.text-white,
+html.light main:not(.admin-page) .bg-accent-600.text-white,
+html.light main:not(.admin-page) .bg-green-500.text-white {
+  color: #ffffff;
+}
+
+html.light main:not(.admin-page) .bg-accent-500 .text-white,
+html.light main:not(.admin-page) .bg-accent-600 .text-white,
+html.light main:not(.admin-page) .bg-green-500 .text-white {
+  color: #ffffff;
+}
+
+html.light main:not(.admin-page) .dark-content .text-white {
+  color: #ffffff;
+}
+
+html.light main:not(.admin-page) .text-graphite-300 {
+  color: #4B5563;
+}
+
+html.light main:not(.admin-page) .text-graphite-400 {
+  color: #6B7280;
+}
+
+html.light main:not(.admin-page) .hover\:text-white:hover {
+  color: #0B0D10;
+}
+/* =========================================================
+   TELVORA ADMIN — CLEAN LIGHT / DARK THEME
+   ========================================================= */
+
+/* =========================
+   LIGHT THEME
+   ========================= */
+
+html:not(.admin-dark) main.admin-page {
+  background: #f5f6f8 !important;
+  color: #111827 !important;
+}
+
+html:not(.admin-dark) main.admin-page > div {
+  background: #f5f6f8 !important;
+}
+
+/* Карточки */
+html:not(.admin-dark) main.admin-page .bg-white {
+  background-color: #ffffff !important;
+}
+
+html:not(.admin-dark) main.admin-page .bg-gray-50 {
+  background-color: #f5f6f8 !important;
+}
+
+html:not(.admin-dark) main.admin-page .bg-gray-100 {
+  background-color: #f3f4f6 !important;
+}
+
+/* Текст */
+html:not(.admin-dark) main.admin-page .text-white {
+  color: #111827 !important;
+}
+
+html:not(.admin-dark) main.admin-page .text-gray-900,
+html:not(.admin-dark) main.admin-page .text-gray-800,
+html:not(.admin-dark) main.admin-page .text-gray-700,
+html:not(.admin-dark) main.admin-page .text-graphite-900 {
+  color: #111827 !important;
+}
+
+html:not(.admin-dark) main.admin-page .text-gray-600 {
+  color: #4b5563 !important;
+}
+
+html:not(.admin-dark) main.admin-page .text-gray-500 {
+  color: #6b7280 !important;
+}
+
+html:not(.admin-dark) main.admin-page .text-gray-400 {
+  color: #9ca3af !important;
+}
+
+/* Поля */
+html:not(.admin-dark) main.admin-page input,
+html:not(.admin-dark) main.admin-page textarea,
+html:not(.admin-dark) main.admin-page select {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+  border-color: #d1d5db !important;
+}
+
+html:not(.admin-dark) main.admin-page input::placeholder,
+html:not(.admin-dark) main.admin-page textarea::placeholder {
+  color: #9ca3af !important;
+}
+
+/* Обычные границы */
+html:not(.admin-dark) main.admin-page .border-gray-100,
+html:not(.admin-dark) main.admin-page .border-gray-200,
+html:not(.admin-dark) main.admin-page .border-gray-300 {
+  border-color: #e5e7eb !important;
+}
+
+/* Наведение */
+html:not(.admin-dark) main.admin-page .hover\:bg-gray-50:hover {
+  background-color: #f3f4f6 !important;
+}
+
+html:not(.admin-dark) main.admin-page .hover\:bg-gray-100:hover {
+  background-color: #e5e7eb !important;
+}
+
+
+/* =========================
+   DARK THEME
+   ========================= */
+
+html.admin-dark main.admin-page {
+  background: #111318 !important;
+  color: #f9fafb !important;
+}
+
+html.admin-dark main.admin-page > div {
+  background: #111318 !important;
+}
+
+/* Карточки */
+html.admin-dark main.admin-page .bg-white {
+  background-color: #1a1d23 !important;
+}
+
+html.admin-dark main.admin-page .bg-gray-50 {
+  background-color: #111318 !important;
+}
+
+html.admin-dark main.admin-page .bg-gray-100 {
+  background-color: #20242c !important;
+}
+
+/* Основной текст */
+html.admin-dark main.admin-page .text-white {
+  color: #ffffff !important;
+}
+
+html.admin-dark main.admin-page .text-gray-900,
+html.admin-dark main.admin-page .text-gray-800,
+html.admin-dark main.admin-page .text-gray-700,
+html.admin-dark main.admin-page .text-graphite-900 {
+  color: #f9fafb !important;
+}
+
+html.admin-dark main.admin-page .text-gray-600 {
+  color: #d1d5db !important;
+}
+
+html.admin-dark main.admin-page .text-gray-500 {
+  color: #9ca3af !important;
+}
+
+html.admin-dark main.admin-page .text-gray-400 {
+  color: #9ca3af !important;
+}
+
+/* Поля */
+html.admin-dark main.admin-page input,
+html.admin-dark main.admin-page textarea,
+html.admin-dark main.admin-page select {
+  background-color: #1a1d23 !important;
+  color: #f9fafb !important;
+  border-color: #3a404b !important;
+}
+
+html.admin-dark main.admin-page input::placeholder,
+html.admin-dark main.admin-page textarea::placeholder {
+  color: #6b7280 !important;
+}
+
+/* Границы */
+html.admin-dark main.admin-page .border-gray-100,
+html.admin-dark main.admin-page .border-gray-200,
+html.admin-dark main.admin-page .border-gray-300 {
+  border-color: #343943 !important;
+}
+
+/* Наведение */
+html.admin-dark main.admin-page .hover\:bg-gray-50:hover {
+  background-color: #242830 !important;
+}
+
+html.admin-dark main.admin-page .hover\:bg-gray-100:hover {
+  background-color: #2b3038 !important;
+}
+
+
+/* =========================
+   ADMIN THEME SWITCH BUTTON
+   ========================= */
+
+html.admin-dark main.admin-page button[title="Светлая тема"] {
+  background: #22262e !important;
+  border-color: #4b5563 !important;
+  color: #ffffff !important;
+}
+
+html.admin-dark main.admin-page button[title="Светлая тема"]:hover {
+  background: #30353e !important;
+}
+
+html:not(.admin-dark) main.admin-page button[title="Тёмная тема"] {
+  background: #ffffff !important;
+  border-color: #d1d5db !important;
+  color: #374151 !important;
+}
+
+html:not(.admin-dark) main.admin-page button[title="Тёмная тема"]:hover {
+  background: #f3f4f6 !important;
+}
+
+
+/* =========================
+   ADMIN ACCENT BUTTONS
+   ========================= */
+
+/*
+   ВАЖНО:
+   Не меняем цвета accent-кнопок.
+   Они должны оставаться оранжевыми.
+*/
+
+main.admin-page .bg-accent-500 {
+  background-color: #FF8A1F !important;
+}
+
+main.admin-page .bg-accent-500:hover {
+  background-color: #E8750C !important;
+}
+
+main.admin-page .bg-accent-500,
+main.admin-page .bg-accent-500 * {
+  color: #ffffff !important;
+}
+
+
+/* =========================
+   ORDER STATUS COLORS
+   ========================= */
+
+/* Новый */
+main.admin-page .bg-blue-50 {
+  background-color: #eff6ff !important;
+}
+
+main.admin-page .text-blue-700 {
+  color: #1d4ed8 !important;
+}
+
+/* Принят */
+main.admin-page .bg-emerald-50 {
+  background-color: #ecfdf5 !important;
+}
+
+main.admin-page .text-emerald-700 {
+  color: #047857 !important;
+}
+
+/* В обработке */
+main.admin-page .bg-yellow-50 {
+  background-color: #fefce8 !important;
+}
+
+main.admin-page .text-yellow-700 {
+  color: #a16207 !important;
+}
+
+/* Передан в доставку */
+main.admin-page .bg-purple-50 {
+  background-color: #faf5ff !important;
+}
+
+main.admin-page .text-purple-700 {
+  color: #7e22ce !important;
+}
+
+/* Выполнен */
+main.admin-page .bg-green-50 {
+  background-color: #f0fdf4 !important;
+}
+
+main.admin-page .text-green-700 {
+  color: #15803d !important;
+}
+
+/* Отменён */
+main.admin-page .bg-red-50 {
+  background-color: #fef2f2 !important;
+}
+
+main.admin-page .text-red-700 {
+  color: #b91c1c !important;
+}
+
+
+/* =========================
+   DARK STATUS COLORS
+   ========================= */
+
+html.admin-dark main.admin-page .bg-blue-50 {
+  background-color: rgba(59,130,246,.16) !important;
+}
+
+html.admin-dark main.admin-page .text-blue-700 {
+  color: #60a5fa !important;
+}
+
+html.admin-dark main.admin-page .bg-emerald-50 {
+  background-color: rgba(16,185,129,.16) !important;
+}
+
+html.admin-dark main.admin-page .text-emerald-700 {
+  color: #34d399 !important;
+}
+
+html.admin-dark main.admin-page .bg-yellow-50 {
+  background-color: rgba(234,179,8,.16) !important;
+}
+
+html.admin-dark main.admin-page .text-yellow-700 {
+  color: #facc15 !important;
+}
+
+html.admin-dark main.admin-page .bg-purple-50 {
+  background-color: rgba(168,85,247,.16) !important;
+}
+
+html.admin-dark main.admin-page .text-purple-700 {
+  color: #c084fc !important;
+}
+
+html.admin-dark main.admin-page .bg-green-50 {
+  background-color: rgba(34,197,94,.16) !important;
+}
+
+html.admin-dark main.admin-page .text-green-700 {
+  color: #4ade80 !important;
+}
+
+html.admin-dark main.admin-page .bg-red-50 {
+  background-color: rgba(239,68,68,.16) !important;
+}
+
+html.admin-dark main.admin-page .text-red-700 {
+  color: #f87171 !important;
+}
+
+
+/* =========================
+   ACTIVE TAB
+   ========================= */
+
+html.admin-dark main.admin-page .bg-accent-50 {
+  background-color: rgba(245,158,11,.14) !important;
+}
+
+html.admin-dark main.admin-page .text-accent-700 {
+  color: #fbbf24 !important;
+}
+
+html:not(.admin-dark) main.admin-page .bg-accent-50 {
+  background-color: #fff7ed !important;
+}
+
+html:not(.admin-dark) main.admin-page .text-accent-700 {
+  color: #C45F00 !important;
 }

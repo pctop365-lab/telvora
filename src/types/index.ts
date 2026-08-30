@@ -5,6 +5,13 @@ export type Spec = {
   value: string;
 };
 
+export type ProductVariant = {
+  country: string;
+  price: number;
+  oldPrice?: number;
+  isActive?: boolean;
+};
+
 export type Product = {
   id: string;
   slug: string;
@@ -22,6 +29,7 @@ export type Product = {
   description: string;
   specs: Spec[];
   highlights: string[];
+  variants?: ProductVariant[];
 };
 
 export type Category = {
@@ -39,6 +47,7 @@ export type CartItem = {
   screenSize: string;
   category: ProductCategory;
   quantity: number;
+  assemblyCountry?: string;
 };
 
 export type SortKey = 'default' | 'price-asc' | 'price-desc' | 'rating';
@@ -54,6 +63,7 @@ export type OrderItem = {
   screenSize: string;
   category: ProductCategory;
   quantity: number;
+  assemblyCountry?: string;
 };
 
 export type CheckoutFormData = {
@@ -62,8 +72,11 @@ export type CheckoutFormData = {
   email: string;
   address: string;
   deliveryMethod: DeliveryMethod;
+  deliveryTime?: string;
+  paymentMethod: 'cash' | 'sbp';
   comment?: string;
 };
+
 
 export type Order = {
   id: string;
@@ -76,3 +89,4 @@ export type Order = {
   status: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
   createdAt: string;
 };
+

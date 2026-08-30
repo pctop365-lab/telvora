@@ -1,0 +1,9 @@
+﻿User-agent: *
+Allow: /
+
+Disallow: /admin
+Disallow: /checkout
+Disallow: /order-success
+Disallow: /cart
+
+Sitemap: https://telvora.ru/sitemap.xml

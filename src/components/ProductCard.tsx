@@ -11,17 +11,66 @@ type ProductCardProps = {
   delay?: number;
 };
 
-export default function ProductCard({ product, delay = 0 }: ProductCardProps) {
+export default function ProductCard({
+  product,
+  delay = 0,
+}: ProductCardProps) {
   const [added, setAdded] = useState(false);
   const { addToCart } = useCart();
-  const discount = product.oldPrice
-    ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100)
-    : 0;
+
+  const activeVariants = (product.variants || []).filter(
+    (variant) =>
+      Boolean(variant.country) &&
+      Number(variant.price) > 0 &&
+      variant.isActive !== false
+  );
+
+  const minVariantPrice =
+    activeVariants.length > 0
+      ? Math.min(
+          ...activeVariants.map((variant) =>
+            Number(variant.price)
+          )
+        )
+      : product.price;
+
+  const variantOldPrices = activeVariants
+  .map((variant) =>
+    variant.oldPrice
+      ? Number(variant.oldPrice)
+      : 0
+  )
+  .filter((price) => price > 0);
+
+const minVariantOldPrice =
+  variantOldPrices.length > 0
+    ? Math.min(...variantOldPrices)
+    : undefined;
+
+  const hasVariants = activeVariants.length > 0;
+
+  const discount =
+    minVariantOldPrice &&
+    minVariantOldPrice > minVariantPrice
+      ? Math.round(
+          ((minVariantOldPrice - minVariantPrice) /
+            minVariantOldPrice) *
+            100
+        )
+      : 0;
 
   const handleAdd = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    addToCart(product);
+
+    const cheapestVariant = activeVariants
+      .slice()
+      .sort(
+        (a, b) => Number(a.price) - Number(b.price)
+      )[0];
+
+    addToCart(product, 1, cheapestVariant);
+
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);
   };
@@ -32,16 +81,20 @@ export default function ProductCard({ product, delay = 0 }: ProductCardProps) {
   return (
     <Link
       to={productUrl}
-      className="group relative bg-graphite-800 rounded-3xl overflow-hidden border border-white/5 hover:border-white/10 transition-all duration-500 hover:-translate-y-1 hover:shadow-2xl hover:shadow-black/40 animate-fade-up flex flex-col"
-      style={{ animationDelay: `${delay}s`, opacity: 0 }}
+      className="group relative bg-graphite-100 dark:bg-graphite-800 rounded-3xl overflow-hidden border border-white/5 hover:border-white/10 transition-all duration-500 hover:-translate-y-1 hover:shadow-2xl hover:shadow-black/40 animate-fade-up flex flex-col"
+      style={{
+        animationDelay: `${delay}s`,
+        opacity: 0,
+      }}
     >
-      <div className="relative aspect-[4/3] overflow-hidden bg-graphite-900">
+      <div className="relative aspect-[4/3] overflow-hidden bg-white dark:bg-graphite-900">
         <img
           src={product.image}
           alt={product.name}
           loading="lazy"
           className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
         />
+
         <div className="absolute inset-0 bg-gradient-to-t from-graphite-800 via-transparent to-transparent opacity-60" />
 
         <div className="absolute top-4 left-4 flex flex-col gap-2">
@@ -58,6 +111,7 @@ export default function ProductCard({ product, delay = 0 }: ProductCardProps) {
               {product.badge}
             </span>
           )}
+
           {discount > 0 && !product.badge?.includes('%') && (
             <span className="px-3 py-1.5 text-xs font-bold rounded-lg bg-accent-500 text-white">
               −{discount}%
@@ -76,13 +130,17 @@ export default function ProductCard({ product, delay = 0 }: ProductCardProps) {
             <span className="text-xs font-medium text-accent-500 uppercase tracking-wider">
               {product.series}
             </span>
+
             <h3 className="font-display font-bold text-lg text-white leading-tight mt-0.5">
               {product.name}
             </h3>
           </div>
+
           <div className="flex items-center gap-1 shrink-0">
             <Star className="w-4 h-4 fill-accent-500 text-accent-500" />
-            <span className="text-sm font-semibold text-white">{product.rating}</span>
+            <span className="text-sm font-semibold text-white">
+              {product.rating}
+            </span>
           </div>
         </div>
 
@@ -92,15 +150,24 @@ export default function ProductCard({ product, delay = 0 }: ProductCardProps) {
 
         <div className="flex items-end justify-between gap-3 mt-auto">
           <div>
-            {product.oldPrice && (
-              <div className="text-sm text-graphite-500 line-through">
-                {formatPrice(product.oldPrice)}
-              </div>
-            )}
+            {minVariantOldPrice &&
+              minVariantOldPrice > minVariantPrice && (
+                <div className="text-sm text-graphite-500 line-through">
+                  {formatPrice(minVariantOldPrice)}
+                </div>
+              )}
+
             <div className="text-xl font-bold text-white">
-              {formatPrice(product.price)}
+              {hasVariants && (
+                <span className="text-sm font-medium text-graphite-400 mr-1">
+                  от
+                </span>
+              )}
+
+              {formatPrice(minVariantPrice)}
             </div>
           </div>
+
           <button
             onClick={handleAdd}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all shrink-0 ${

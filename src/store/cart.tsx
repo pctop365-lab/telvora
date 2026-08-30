@@ -16,7 +16,7 @@ function loadCartFromStorage(): CartItem[] {
 // ---------- Actions ----------
 
 type CartAction =
-  | { type: 'ADD'; product: Product; quantity?: number }
+  | { type: 'ADD'; product: Product; quantity?: number; variant?: { country: string; price: number; oldPrice?: number } }
   | { type: 'REMOVE'; id: string }
   | { type: 'UPDATE_QTY'; id: string; delta: number }
   | { type: 'SET_QTY'; id: string; quantity: number }
@@ -27,26 +27,37 @@ type CartAction =
 function cartReducer(state: CartItem[], action: CartAction): CartItem[] {
   switch (action.type) {
     case 'ADD': {
-      const existing = state.find((item) => item.id === action.product.id);
       const qty = action.quantity ?? 1;
+      const variant = action.variant;
+
+      const cartId = variant
+        ? `${action.product.id}__${variant.country.toLowerCase().trim()}`
+        : action.product.id;
+
+      const price = variant?.price ?? action.product.price;
+
+      const existing = state.find((item) => item.id === cartId);
+
       if (existing) {
         return state.map((item) =>
-          item.id === action.product.id
+          item.id === cartId
             ? { ...item, quantity: item.quantity + qty }
             : item
         );
       }
+
       return [
         ...state,
         {
-          id: action.product.id,
+          id: cartId,
           slug: action.product.slug,
           name: action.product.name,
-          price: action.product.price,
+          price,
           image: action.product.image,
           screenSize: action.product.screenSize,
           category: action.product.category,
           quantity: qty,
+          assemblyCountry: variant?.country,
         },
       ];
     }
@@ -80,7 +91,7 @@ type CartContextValue = {
   subtotal: number;
   delivery: number;
   total: number;
-  addToCart: (product: Product, quantity?: number) => void;
+  addToCart: (product: Product, quantity?: number, variant?: { country: string; price: number; oldPrice?: number }) => void;
   removeFromCart: (id: string) => void;
   updateQuantity: (id: string, delta: number) => void;
   setQuantity: (id: string, quantity: number) => void;
@@ -102,9 +113,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
   }, [items]);
 
-  const addToCart = useCallback((product: Product, quantity?: number) => {
-    dispatch({ type: 'ADD', product, quantity });
-  }, []);
+  const addToCart = useCallback(
+    (
+      product: Product,
+      quantity?: number,
+      variant?: { country: string; price: number; oldPrice?: number }
+    ) => {
+      dispatch({ type: 'ADD', product, quantity, variant });
+    },
+    []
+  );
 
   const removeFromCart = useCallback((id: string) => {
     dispatch({ type: 'REMOVE', id });

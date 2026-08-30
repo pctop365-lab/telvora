@@ -23,7 +23,7 @@ const footerLinks = {
 
 export default function Footer() {
   return (
-    <footer className="bg-graphite-950 border-t border-white/5">
+    <footer className="bg-graphite-50 dark:bg-graphite-950 border-t border-white/5">
       <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8 mb-12">
           <div className="col-span-2 lg:col-span-2">
@@ -69,7 +69,7 @@ export default function Footer() {
           ))}
         </div>
 
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 p-6 bg-graphite-800 rounded-3xl border border-white/5 mb-12">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 p-6 bg-graphite-100 dark:bg-graphite-800 rounded-3xl border border-white/5 mb-12">
           <div>
             <h4 className="font-display font-semibold text-lg text-white">
               Подпишитесь на новинки и скидки
@@ -82,7 +82,7 @@ export default function Footer() {
             <input
               type="email"
               placeholder="Ваш email"
-              className="flex-1 md:w-64 px-4 py-3 text-sm bg-graphite-900 border border-white/10 rounded-xl text-white placeholder:text-graphite-500 focus:outline-none focus:border-accent-500/50 transition-colors"
+              className="flex-1 md:w-64 px-4 py-3 text-sm bg-white dark:bg-graphite-900 border border-white/10 rounded-xl text-white placeholder:text-graphite-500 focus:outline-none focus:border-accent-500/50 transition-colors"
             />
             <button className="px-6 py-3 bg-accent-500 hover:bg-accent-600 text-white font-semibold rounded-xl transition-colors whitespace-nowrap">
               Подписаться

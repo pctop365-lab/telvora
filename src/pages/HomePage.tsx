@@ -15,7 +15,7 @@ export default function HomePage() {
       <Hero />
 
       {/* Featured products preview */}
-      <section id="catalog" className="py-20 sm:py-28 bg-graphite-900">
+      <section id="catalog" className="py-20 sm:py-28 bg-white dark:bg-graphite-900">
         <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-10">
             <div>

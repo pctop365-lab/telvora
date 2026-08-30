@@ -1,11 +1,12 @@
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Star, ShoppingBag, Check, Cpu, Monitor, Volume2, Zap, ChevronRight } from 'lucide-react';
-import type { Product } from '@/types';
+import type { Product, ProductVariant } from '@/types';
 import { formatPrice } from '@/lib/format';
 import { useCart } from '@/store/cart';
 import { useUI } from '@/store/ui';
 import { getCategorySlugForProduct } from '@/services/productService';
 import { useState } from 'react';
+import { Helmet } from 'react-helmet-async';
 
 type ProductDetailProps = {
   product: Product;
@@ -13,26 +14,74 @@ type ProductDetailProps = {
 
 export default function ProductDetail({ product }: ProductDetailProps) {
   const [added, setAdded] = useState(false);
+
+  const activeVariants: ProductVariant[] = (product.variants || []).filter(
+    (variant) =>
+      Boolean(variant.country) &&
+      Number(variant.price) > 0 &&
+      variant.isActive !== false
+  );
+
+  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | undefined>(
+    activeVariants[0]
+  );
+
+  const currentPrice = selectedVariant
+  ? Number(selectedVariant.price)
+  : 0;
+
+const currentOldPrice = selectedVariant?.oldPrice
+  ? Number(selectedVariant.oldPrice)
+  : undefined;
   const { addToCart } = useCart();
   const { openCart } = useUI();
-  const discount = product.oldPrice
-    ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100)
+  const discount =
+  currentOldPrice && currentPrice > 0
+    ? Math.round(
+        ((currentOldPrice - currentPrice) / currentOldPrice) * 100
+      )
     : 0;
   const categorySlug = getCategorySlugForProduct(product);
+const seoTitle = `${product.name} — купить ${product.category} | TELVORA`;
+
+const seoDescription =
+  `${product.name} — ${product.screenSize}, ${product.resolution}. ` +
+  `${product.description} Купить в интернет-магазине TELVORA. ` +
+  `Официальная гарантия, доставка и профессиональная установка.`;
+
+const productUrl =
+  `https://telvora.ru/catalog/${categorySlug}/${product.slug}`;
 
   const handleAdd = () => {
-    addToCart(product);
+  addToCart(product, 1, selectedVariant);
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);
   };
 
   const handleBuyNow = () => {
-    addToCart(product);
+  addToCart(product, 1, selectedVariant);
     openCart();
   };
 
   return (
-    <div className="pt-24 pb-20 bg-graphite-900 min-h-screen">
+  <>
+    <Helmet>
+      <title>{seoTitle}</title>
+      <meta name="description" content={seoDescription} />
+      <link rel="canonical" href={productUrl} />
+
+      <meta property="og:type" content="product" />
+      <meta property="og:title" content={seoTitle} />
+      <meta property="og:description" content={seoDescription} />
+      <meta property="og:url" content={productUrl} />
+      <meta property="og:site_name" content="TELVORA" />
+
+      <meta name="twitter:card" content="summary_large_image" />
+      <meta name="twitter:title" content={seoTitle} />
+      <meta name="twitter:description" content={seoDescription} />
+    </Helmet>
+
+    <div className="pt-24 pb-20 bg-white dark:bg-graphite-900 min-h-screen">
       <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Breadcrumbs */}
         <nav className="flex items-center gap-2 text-sm text-graphite-400 mb-8 flex-wrap">
@@ -57,7 +106,7 @@ export default function ProductDetail({ product }: ProductDetailProps) {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
           {/* Image */}
-          <div className="relative rounded-3xl overflow-hidden bg-graphite-800 border border-white/5">
+          <div className="relative rounded-3xl overflow-hidden bg-graphite-100 dark:bg-graphite-800 border border-white/5">
             <div className="aspect-[4/3] relative overflow-hidden">
               <img
                 src={product.image}
@@ -137,29 +186,58 @@ export default function ProductDetail({ product }: ProductDetailProps) {
                 { icon: Zap, label: '120Гц+' },
                 { icon: Volume2, label: 'Atmos' },
               ].map((s, i) => (
-                <div key={i} className="flex flex-col items-center gap-1.5 p-3 bg-graphite-800 rounded-xl border border-white/5">
+                <div key={i} className="flex flex-col items-center gap-1.5 p-3 bg-graphite-100 dark:bg-graphite-800 rounded-xl border border-white/5">
                   <s.icon className="w-5 h-5 text-accent-500" />
                   <span className="text-xs font-medium text-graphite-300">{s.label}</span>
                 </div>
               ))}
             </div>
 
+            {/* Assembly country */}
+            {activeVariants.length > 0 && (
+              <div className="mt-6 p-5 bg-graphite-100 dark:bg-graphite-800 rounded-2xl border border-white/5">
+                <div className="text-sm font-semibold text-white mb-3">
+                  Страна сборки
+                </div>
+
+                <select
+                  value={selectedVariant?.country || ''}
+                  onChange={(e) => {
+                    const variant = activeVariants.find(
+                      (item) => item.country === e.target.value
+                    );
+
+                    setSelectedVariant(variant);
+                  }}
+                  className="w-full px-4 py-3 rounded-xl bg-graphite-900 border border-white/10 text-white outline-none focus:border-accent-500/50"
+                >
+                  {activeVariants.map((variant) => (
+                    <option
+                      key={variant.country}
+                      value={variant.country}
+                    >
+                      {variant.country} — {formatPrice(Number(variant.price))}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {/* Price */}
-            <div className="mt-8 p-6 bg-graphite-800 rounded-2xl border border-white/5">
+            <div className="mt-8 p-6 bg-graphite-100 dark:bg-graphite-800 rounded-2xl border border-white/5">
               <div className="flex items-end justify-between gap-4">
                 <div>
-                  {product.oldPrice && (
-                    <div className="text-sm text-graphite-500 line-through">
-                      {formatPrice(product.oldPrice)}
-                    </div>
-                  )}
+                  {currentOldPrice && currentOldPrice > currentPrice && (
+  <div className="text-sm text-graphite-500 line-through">
+    {formatPrice(currentOldPrice)}
+  </div>
+)}
                   <div className="text-4xl font-bold text-white">
-                    {formatPrice(product.price)}
+                    {formatPrice(currentPrice)}
                   </div>
                 </div>
                 {discount > 0 && (
                   <span className="px-3 py-1.5 text-sm font-bold rounded-lg bg-accent-500/10 text-accent-500">
-                    Выгода {formatPrice((product.oldPrice ?? 0) - product.price)}
+                    Выгода {formatPrice((Number(currentOldPrice) || 0) - currentPrice)}
                   </span>
                 )}
               </div>
@@ -199,7 +277,7 @@ export default function ProductDetail({ product }: ProductDetailProps) {
         {/* Detailed specs */}
         <div className="mt-16">
           <h2 className="font-display font-bold text-2xl text-white mb-6">Характеристики</h2>
-          <div className="bg-graphite-800 rounded-3xl border border-white/5 overflow-hidden">
+          <div className="bg-graphite-100 dark:bg-graphite-800 rounded-3xl border border-white/5 overflow-hidden">
             {product.specs.map((spec, i) => (
               <div
                 key={spec.label}
@@ -215,5 +293,6 @@ export default function ProductDetail({ product }: ProductDetailProps) {
         </div>
       </div>
     </div>
+  </>
   );
 }

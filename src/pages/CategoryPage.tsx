@@ -27,7 +27,7 @@ export default function CategoryPage({ categorySlug }: Props) {
   const info = categoryInfo[categorySlug] ?? { label: 'Каталог', description: '' };
 
   return (
-    <section className="pt-24 pb-20 bg-graphite-900 min-h-screen">
+    <section className="pt-24 pb-20 bg-white dark:bg-graphite-900 min-h-screen">
       <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-10">
           <div>
@@ -45,7 +45,7 @@ export default function CategoryPage({ categorySlug }: Props) {
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as SortKey)}
-              className="bg-graphite-800 border border-white/10 text-white text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-accent-500/50 cursor-pointer"
+              className="bg-graphite-100 dark:bg-graphite-800 border border-white/10 text-white text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-accent-500/50 cursor-pointer"
             >
               <option value="default">По умолчанию</option>
               <option value="price-asc">Сначала дешевле</option>

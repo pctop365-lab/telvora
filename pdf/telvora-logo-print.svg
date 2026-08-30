@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="520" height="130" viewBox="0 0 520 130" role="img" aria-labelledby="title desc">
+  <title id="title">TELVORA</title>
+  <desc id="desc">TELVORA — премиальные телевизоры и электроника</desc>
+  <rect width="100%" height="100%" fill="none"/>
+  <g><g>
+  <rect x="18" y="10" width="124" height="82" rx="12" fill="none" stroke="#0B0D10" stroke-width="8"/>
+  <path d="M48 34H112L98 48H62L48 34Z" fill="#0B0D10"/>
+  <path d="M94 31C103 31 111 36 111 43C111 50 105 56 98 61L72 82C66 87 57 84 55 77C54 72 56 68 60 65L88 42C91 40 90 37 86 37H74L94 31Z" fill="#FF6A00"/>
+  <path d="M68 96H92L88 104H72L68 96Z" fill="#0B0D10"/>
+  <path d="M58 104H102" stroke="#0B0D10" stroke-width="6" stroke-linecap="round"/>
+</g></g>
+  
+    <text x="160" y="68" font-family="Sora, Inter, Arial, sans-serif"
+          font-size="58" font-weight="800" letter-spacing="1.5" fill="#0B0D10">TELVORA</text>
+    <rect x="162" y="83" width="285" height="3" rx="1.5" fill="#FF6A00"/>
+    <text x="160" y="112" font-family="Inter, Arial, sans-serif"
+          font-size="13" font-weight="600" letter-spacing="3.2" fill="#0B0D10">
+      ПРЕМИАЛЬНЫЕ ТЕЛЕВИЗОРЫ И ЭЛЕКТРОНИКА
+    </text>
+</svg>

@@ -9,7 +9,7 @@ export default function ProductPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-graphite-900">
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-graphite-900">
         <Loader2 className="w-8 h-8 text-accent-500 animate-spin" />
       </div>
     );
@@ -17,7 +17,7 @@ export default function ProductPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-graphite-900">
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-graphite-900">
         <p className="text-graphite-400 text-lg">{error}</p>
       </div>
     );
@@ -25,7 +25,7 @@ export default function ProductPage() {
 
   if (!product) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-graphite-900 gap-4">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-white dark:bg-graphite-900 gap-4">
         <p className="text-graphite-400 text-lg">Товар не найден</p>
         <a href="/catalog" className="px-6 py-3 bg-accent-500 hover:bg-accent-600 text-white font-semibold rounded-xl transition-colors">
           В каталог

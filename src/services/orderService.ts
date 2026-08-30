@@ -1,28 +1,8 @@
 import type { Order, CheckoutFormData, CartItem } from '@/types';
 import { siteContent } from '@/data/siteContent';
 
-/**
- * Order service layer.
- *
- * Currently stores orders in localStorage to simulate a backend.
- * To switch to a real REST API (MySQL via PHP/Node/etc.),
- * replace the bodies of these functions with fetch calls:
- *
- *   export async function createOrder(data: CheckoutData): Promise<Order> {
- *     const res = await fetch('/api/orders', {
- *       method: 'POST',
- *       headers: { 'Content-Type': 'application/json' },
- *       body: JSON.stringify(data),
- *     });
- *     if (!res.ok) throw new Error('Failed to create order');
- *     return res.json();
- *   }
- *
- * The function signatures and return types stay the same,
- * so no UI component needs to change.
- */
-
 const STORAGE_KEY = 'telvora_orders';
+const API_URL = 'https://telvora.ru/api.php';
 
 function generateOrderNumber(): string {
   const date = new Date();
@@ -44,7 +24,7 @@ function saveStoredOrders(orders: Order[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
   } catch {
-    // storage may be full or unavailable — silently ignore
+    // localStorage может быть недоступен
   }
 }
 
@@ -65,13 +45,22 @@ export async function createOrder(
     throw new Error('Корзина пуста — невозможно оформить заказ');
   }
 
-  const subtotal = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const delivery = calculateDelivery(subtotal, formData.deliveryMethod);
+  const subtotal = cartItems.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0
+  );
+
+  const delivery = calculateDelivery(
+    subtotal,
+    formData.deliveryMethod
+  );
+
   const total = subtotal + delivery;
 
   const order: Order = {
     id: crypto.randomUUID(),
     orderNumber: generateOrderNumber(),
+
     items: cartItems.map((item) => ({
       productId: item.id,
       slug: item.slug,
@@ -81,7 +70,9 @@ export async function createOrder(
       screenSize: item.screenSize,
       category: item.category,
       quantity: item.quantity,
+      assemblyCountry: item.assemblyCountry,
     })),
+
     customer: formData,
     subtotal,
     delivery,
@@ -90,9 +81,49 @@ export async function createOrder(
     createdAt: new Date().toISOString(),
   };
 
-  // Simulate network latency for realistic UX
-  await new Promise((resolve) => setTimeout(resolve, 600));
+  // Отправляем заказ на сервер
+  const response = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      customer_name: formData.fullName,
+      phone: formData.phone,
+      email: formData.email,
+      address: formData.address,
+      delivery_method: formData.deliveryMethod,
+      payment_method: formData.paymentMethod,
+      delivery_time: formData.deliveryTime ?? '',
+      comment: formData.comment ?? '',
 
+      items: cartItems.map((item) => ({
+        slug: item.slug,
+        quantity: item.quantity,
+        assembly_country: item.assemblyCountry ?? '',
+      })),
+    }),
+  });
+
+  let result: {
+    success?: boolean;
+    order_id?: number;
+    message?: string;
+  };
+
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error('Сервер вернул некорректный ответ');
+  }
+
+  if (!response.ok || !result.success) {
+    throw new Error(
+      result.message || 'Не удалось сохранить заказ'
+    );
+  }
+
+  // Сохраняем локальную копию для текущего интерфейса
   const orders = getStoredOrders();
   orders.push(order);
   saveStoredOrders(orders);
@@ -100,16 +131,23 @@ export async function createOrder(
   return order;
 }
 
-export async function fetchOrderByNumber(orderNumber: string): Promise<Order | null> {
-  await new Promise((resolve) => setTimeout(resolve, 300));
-
+export async function fetchOrderByNumber(
+  orderNumber: string
+): Promise<Order | null> {
   const orders = getStoredOrders();
-  return orders.find((o) => o.orderNumber === orderNumber) ?? null;
+
+  return (
+    orders.find((order) => order.orderNumber === orderNumber) ?? null
+  );
 }
 
-export async function fetchOrderById(id: string): Promise<Order | null> {
-  await new Promise((resolve) => setTimeout(resolve, 300));
-
+export async function fetchOrderById(
+  id: string
+): Promise<Order | null> {
   const orders = getStoredOrders();
-  return orders.find((o) => o.id === id) ?? null;
+
+  return orders.find((order) => order.id === id) ?? null;
 }
+
+
+

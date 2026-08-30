@@ -33,7 +33,7 @@ export default function OrderSuccessPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-graphite-900">
+      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-graphite-900">
         <Loader2 className="w-8 h-8 text-accent-500 animate-spin" />
       </div>
     );
@@ -41,7 +41,7 @@ export default function OrderSuccessPage() {
 
   if (!order) {
     return (
-      <div className="pt-24 pb-20 min-h-screen bg-graphite-900 flex items-center justify-center">
+      <div className="pt-24 pb-20 min-h-screen bg-white dark:bg-graphite-900 flex items-center justify-center">
         <div className="text-center max-w-md px-4">
           <h1 className="font-display font-bold text-2xl text-white mb-3">
             Заказ не найден
@@ -61,7 +61,7 @@ export default function OrderSuccessPage() {
   }
 
   return (
-    <div className="pt-24 pb-20 bg-graphite-900 min-h-screen">
+    <div className="pt-24 pb-20 bg-white dark:bg-graphite-900 min-h-screen">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Success header */}
         <div className="text-center mb-12">
@@ -77,7 +77,7 @@ export default function OrderSuccessPage() {
         </div>
 
         {/* Order info card */}
-        <div className="p-6 sm:p-8 bg-graphite-800 rounded-3xl border border-white/5 mb-6">
+        <div className="p-6 sm:p-8 bg-graphite-100 dark:bg-graphite-800 rounded-3xl border border-white/5 mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 pb-6 border-b border-white/10">
             <div>
               <span className="text-xs text-graphite-400 uppercase tracking-wider">
@@ -106,7 +106,7 @@ export default function OrderSuccessPage() {
             <h3 className="text-sm font-semibold text-white">Состав заказа</h3>
             {order.items.map((item) => (
               <div key={item.productId} className="flex gap-4">
-                <div className="w-16 h-16 rounded-xl overflow-hidden bg-graphite-900 shrink-0">
+                <div className="w-16 h-16 rounded-xl overflow-hidden bg-white dark:bg-graphite-900 shrink-0">
                   <img
                     src={item.image}
                     alt={item.name}
@@ -148,7 +148,7 @@ export default function OrderSuccessPage() {
         </div>
 
         {/* Customer info */}
-        <div className="p-6 bg-graphite-800 rounded-3xl border border-white/5 mb-6">
+        <div className="p-6 bg-graphite-100 dark:bg-graphite-800 rounded-3xl border border-white/5 mb-6">
           <h3 className="text-sm font-semibold text-white mb-4">Данные получателя</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
             <InfoRow label="Имя" value={order.customer.fullName} />
@@ -174,7 +174,7 @@ export default function OrderSuccessPage() {
         </div>
 
         {/* Status timeline */}
-        <div className="p-6 bg-graphite-800 rounded-3xl border border-white/5 mb-8">
+        <div className="p-6 bg-graphite-100 dark:bg-graphite-800 rounded-3xl border border-white/5 mb-8">
           <h3 className="text-sm font-semibold text-white mb-5">Статус заказа</h3>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-3 flex-1">
