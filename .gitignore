@@ -112,6 +112,7 @@ dark.txt
 
 # Generated / vendor
 pdf/dompdf/vendor/
+/pdf/dompdf/
 /vendor/
 /COMPOSER_DOMPDF_STAGE/
 /TELVORA_COMPOSER_DOMPDF.zip
