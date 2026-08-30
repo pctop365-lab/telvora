@@ -112,6 +112,9 @@ dark.txt
 
 # Generated / vendor
 pdf/dompdf/vendor/
+/vendor/
+/COMPOSER_DOMPDF_STAGE/
+/TELVORA_COMPOSER_DOMPDF.zip
 
 # Local invoice template tooling
 prepare_invoice_template.py

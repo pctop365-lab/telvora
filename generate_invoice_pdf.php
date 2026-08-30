@@ -1,6 +1,15 @@
 <?php
 
-require_once __DIR__ . '/pdf/dompdf/autoload.inc.php';
+$productionAutoload = dirname(__DIR__, 2) . '/telvora_vendor/vendor/autoload.php';
+$localAutoload = __DIR__ . '/vendor/autoload.php';
+
+if (is_file($productionAutoload)) {
+    require_once $productionAutoload;
+} elseif (is_file($localAutoload)) {
+    require_once $localAutoload;
+} else {
+    throw new RuntimeException('PDF renderer dependency is unavailable.');
+}
 
 use Dompdf\Dompdf;
 use Dompdf\Options;
