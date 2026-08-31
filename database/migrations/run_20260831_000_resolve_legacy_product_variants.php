@@ -26,6 +26,7 @@ function parseArguments(array $argv): array
 {
     $options = [
         'execute' => false,
+        'preflight' => false,
         'expected_database' => '',
         'secrets_file' => '',
     ];
@@ -33,6 +34,11 @@ function parseArguments(array $argv): array
     foreach (array_slice($argv, 1) as $argument) {
         if ($argument === '--execute') {
             $options['execute'] = true;
+            continue;
+        }
+
+        if ($argument === '--preflight') {
+            $options['preflight'] = true;
             continue;
         }
 
@@ -55,8 +61,8 @@ function parseArguments(array $argv): array
         fail('Unknown argument.');
     }
 
-    if (!$options['execute']) {
-        fail('Refusing to run without --execute.');
+    if ($options['execute'] === $options['preflight']) {
+        fail('Specify exactly one of --execute or --preflight.');
     }
 
     if (!preg_match('/^[A-Za-z0-9_$-]+$/D', $options['expected_database'])) {
@@ -116,10 +122,28 @@ function connectDatabase(array $secrets): PDO
         [
             PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_CASE => PDO::CASE_LOWER,
             PDO::ATTR_EMULATE_PREPARES => false,
             PDO::ATTR_PERSISTENT => false,
         ]
     );
+}
+
+function requireMetadataKeys(
+    array $row,
+    array $requiredKeys,
+    string $context
+): array {
+    foreach ($requiredKeys as $key) {
+        if (!array_key_exists($key, $row)) {
+            fail(
+                'Database metadata is missing required field ' .
+                $key . ' in ' . $context . '.'
+            );
+        }
+    }
+
+    return $row;
 }
 
 function scalar(PDO $pdo, string $sql, array $parameters = []): mixed
@@ -147,7 +171,20 @@ function tableMetadata(PDO $pdo, string $table): ?array
     );
     $statement->execute([':table_name' => $table]);
     $row = $statement->fetch();
-    return is_array($row) ? $row : null;
+
+    if ($row === false) {
+        return null;
+    }
+
+    if (!is_array($row)) {
+        fail('Database metadata row has an invalid format for table lookup.');
+    }
+
+    return requireMetadataKeys(
+        $row,
+        ['table_type', 'engine', 'table_collation'],
+        'table lookup'
+    );
 }
 
 function expectedLegacyColumns(): array
@@ -181,8 +218,26 @@ function actualLegacyColumns(PDO $pdo): array
           ORDER BY ordinal_position"
     );
 
-    return array_map(
-        static fn(array $row): array => [
+    $actual = [];
+
+    foreach ($statement->fetchAll() as $row) {
+        if (!is_array($row)) {
+            fail('Database metadata row has an invalid column format.');
+        }
+
+        $row = requireMetadataKeys(
+            $row,
+            [
+                'column_name',
+                'column_type',
+                'is_nullable',
+                'column_default',
+                'extra',
+            ],
+            'legacy columns'
+        );
+
+        $actual[] = [
             (string)$row['column_name'],
             strtolower((string)$row['column_type']),
             (string)$row['is_nullable'],
@@ -190,9 +245,10 @@ function actualLegacyColumns(PDO $pdo): array
                 ? null
                 : (string)$row['column_default'],
             (string)$row['extra'],
-        ],
-        $statement->fetchAll()
-    );
+        ];
+    }
+
+    return $actual;
 }
 
 function assertLegacyColumns(PDO $pdo): void
@@ -212,15 +268,26 @@ function assertLegacyIndexes(PDO $pdo): void
           ORDER BY index_name, seq_in_index"
     );
 
-    $actual = array_map(
-        static fn(array $row): array => [
+    $actual = [];
+
+    foreach ($statement->fetchAll() as $row) {
+        if (!is_array($row)) {
+            fail('Database metadata row has an invalid index format.');
+        }
+
+        $row = requireMetadataKeys(
+            $row,
+            ['index_name', 'column_name', 'non_unique', 'seq_in_index'],
+            'legacy indexes'
+        );
+
+        $actual[] = [
             (string)$row['index_name'],
             (string)$row['column_name'],
             (int)$row['non_unique'],
             (int)$row['seq_in_index'],
-        ],
-        $statement->fetchAll()
-    );
+        ];
+    }
 
     $expected = [
         ['idx_country', 'country', 1, 1],
@@ -259,6 +326,23 @@ function assertLegacyForeignKeys(PDO $pdo): void
     }
 
     $foreignKey = $foreignKeys[0];
+    if (!is_array($foreignKey)) {
+        fail('Database metadata row has an invalid foreign key format.');
+    }
+
+    $foreignKey = requireMetadataKeys(
+        $foreignKey,
+        [
+            'constraint_name',
+            'column_name',
+            'referenced_table_schema',
+            'referenced_table_name',
+            'referenced_column_name',
+            'update_rule',
+            'delete_rule',
+        ],
+        'legacy foreign key'
+    );
     $expectedDatabase = (string)scalar($pdo, 'SELECT DATABASE()');
 
     if (
@@ -325,6 +409,13 @@ function showCreateLegacyTable(PDO $pdo): string
     return $row[1];
 }
 
+function assertSourceIsEmpty(PDO $pdo): void
+{
+    if ((int)scalar($pdo, 'SELECT COUNT(*) FROM `product_variants`') !== 0) {
+        fail('Source product_variants is not empty.');
+    }
+}
+
 function assertLegacyPreflight(PDO $pdo): string
 {
     $source = tableMetadata($pdo, TELVORA_SOURCE_TABLE);
@@ -347,6 +438,7 @@ function assertLegacyPreflight(PDO $pdo): string
     assertLegacyIndexes($pdo);
     assertLegacyForeignKeys($pdo);
     assertNoDependencies($pdo);
+    assertSourceIsEmpty($pdo);
 
     return showCreateLegacyTable($pdo);
 }
@@ -367,9 +459,7 @@ function assertCriticalConditionsUnderLock(
     assertLegacyIndexes($pdo);
     assertLegacyForeignKeys($pdo);
 
-    if ((int)scalar($pdo, 'SELECT COUNT(*) FROM `product_variants`') !== 0) {
-        fail('Source product_variants is no longer empty.');
-    }
+    assertSourceIsEmpty($pdo);
 }
 
 function bestEffortUnlock(?PDO $pdo, bool &$locked): void
@@ -416,44 +506,54 @@ try {
     $stage = 'read-only preflight';
     $preflightCreateSql = assertLegacyPreflight($pdo);
 
-    // MySQL recommends autocommit=0 while explicit locks protect InnoDB.
-    $pdo->exec('SET SESSION autocommit = 0');
+    if ($options['preflight']) {
+        $exitCode = 0;
+        $finalMessage = "READ-ONLY PREFLIGHT: OK\n";
+    } else {
+        // MySQL recommends autocommit=0 while explicit locks protect InnoDB.
+        $pdo->exec('SET SESSION autocommit = 0');
 
-    $stage = 'write lock acquisition';
-    $pdo->exec('LOCK TABLES `product_variants` WRITE');
-    $locked = true;
+        $stage = 'write lock acquisition';
+        $pdo->exec('LOCK TABLES `product_variants` WRITE');
+        $locked = true;
 
-    $stage = 'locked critical recheck';
-    assertCriticalConditionsUnderLock($pdo, $preflightCreateSql);
+        $stage = 'locked critical recheck';
+        assertCriticalConditionsUnderLock($pdo, $preflightCreateSql);
 
-    $stage = 'atomic table rename';
-    $pdo->exec(
-        'RENAME TABLE `product_variants` TO `product_variants_legacy`'
-    );
-    $renamed = true;
+        $stage = 'atomic table rename';
+        $pdo->exec(
+            'RENAME TABLE `product_variants` TO `product_variants_legacy`'
+        );
+        $renamed = true;
 
-    $stage = 'post-rename verification';
-    if (
-        tableMetadata($pdo, TELVORA_SOURCE_TABLE) !== null ||
-        tableMetadata($pdo, TELVORA_LEGACY_TABLE) === null
-    ) {
-        fail('Post-rename table state is unexpected.');
+        $stage = 'post-rename verification';
+        if (
+            tableMetadata($pdo, TELVORA_SOURCE_TABLE) !== null ||
+            tableMetadata($pdo, TELVORA_LEGACY_TABLE) === null
+        ) {
+            fail('Post-rename table state is unexpected.');
+        }
+
+        bestEffortUnlock($pdo, $locked);
+        $pdo->exec('SET SESSION autocommit = 1');
+
+        $exitCode = 0;
+        $finalMessage =
+            "SUCCESS: product_variants renamed to product_variants_legacy.\n";
     }
-
-    bestEffortUnlock($pdo, $locked);
-    $pdo->exec('SET SESSION autocommit = 1');
-
-    $exitCode = 0;
-    $finalMessage =
-        "SUCCESS: product_variants renamed to product_variants_legacy.\n";
 } catch (Throwable $error) {
     $outcome = $renamed
         ? 'RENAME OCCURRED; inspect with verification SQL before any retry.'
         : 'No rename occurred.';
+    $safeDetail =
+        $error instanceof RuntimeException &&
+        !($error instanceof PDOException)
+            ? ' ' . $error->getMessage()
+            : '';
 
     $finalMessage =
         'ERROR during ' . $stage . ': migration aborted. ' .
-        $outcome . "\n";
+        $outcome . $safeDetail . "\n";
 } finally {
     bestEffortUnlock($pdo, $locked);
 
