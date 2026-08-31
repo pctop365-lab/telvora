@@ -808,6 +808,31 @@ function deletePendingBotMessages(int $chatId): void
     }
 }
 
+function queueMessageForDeletion(int $chatId, int $messageId): void
+{
+    if ($chatId === 0 || $messageId <= 0) return;
+
+    try {
+        $queued = mutateChatMessageState(
+            $chatId,
+            static function (array &$chatState) use ($messageId): void {
+                if (isMessageActiveInChatState($chatState, $messageId)) return;
+
+                $pending = normalizeMessageIds(
+                    $chatState['pending_delete'] ?? []
+                );
+                $pending[] = $messageId;
+                $chatState['pending_delete'] =
+                    array_values(array_unique($pending));
+            }
+        );
+
+        if ($queued) deletePendingBotMessages($chatId);
+    } catch (Throwable $e) {
+        // Order editing must remain successful if Telegram cleanup fails.
+    }
+}
+
 function saveMainMenuMessage(int $chatId, int $messageId): void
 {
     if ($messageId <= 0) return;
@@ -2191,6 +2216,7 @@ foreach ($updates as $update) {
     }
 
     $chatId = $message['chat']['id'] ?? null;
+    $incomingMessageId = (int)($message['message_id'] ?? 0);
     $text = trim($message['text'] ?? '');
 
     if (!$chatId) {
@@ -2297,6 +2323,15 @@ foreach ($updates as $update) {
                         'status'
                     ];
 
+                    $personalFieldLabels = [
+                        'customer_name' => 'Покупатель',
+                        'phone' => 'Телефон',
+                        'email' => 'Email',
+                        'address' => 'Адрес',
+                        'delivery_time' => 'Время доставки',
+                        'comment' => 'Комментарий'
+                    ];
+
                     if (
                         $orderId > 0 &&
                         in_array($field, $allowedFields, true)
@@ -2327,6 +2362,10 @@ $stmtCheck->execute([
 
 $savedValue = $stmtCheck->fetchColumn();
 
+if (array_key_exists($field, $personalFieldLabels)) {
+    queueMessageForDeletion((int)$chatId, $incomingMessageId);
+}
+
 clearEditState((int)$chatId);
 
 deleteOldTransientMessages((int)$chatId);
@@ -2334,11 +2373,13 @@ deleteOldTransientMessages((int)$chatId);
 sendTransientMessage((int)$chatId, [
     'chat_id' => $chatId,
     'text' =>
-        "✅ <b>Сохранено</b>\n\n" .
-        "Поле: <b>" . h($field) . "</b>\n" .
-        "Значение в базе:\n<b>" .
-        h($savedValue) .
-        "</b>",
+        array_key_exists($field, $personalFieldLabels)
+            ? "✅ <b>Поле " . h($personalFieldLabels[$field]) . " сохранено</b>"
+            : "✅ <b>Сохранено</b>\n\n" .
+                "Поле: <b>" . h($field) . "</b>\n" .
+                "Значение в базе:\n<b>" .
+                h($savedValue) .
+                "</b>",
     'parse_mode' => 'HTML'
 ]);
 
