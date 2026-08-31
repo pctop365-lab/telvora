@@ -1193,7 +1193,6 @@ function sendOrdersMenu(int $chatId): void
                 id,
                 order_number,
                 customer_name,
-                phone,
                 total,
                 status,
                 created_at
@@ -1239,7 +1238,6 @@ function sendOrdersMenu(int $chatId): void
                 $text =
                     "📦 <b>" . h($orderNumber) . "</b>\n" .
                     "👤 " . h($order['customer_name']) . "\n" .
-                    "📞 " . h($order['phone']) . "\n" .
                     "💰 " . money($order['total']) . "\n" .
                     "📌 " . h($order['status']) . "\n" .
                     "📅 " . h($order['created_at']);
@@ -1496,7 +1494,7 @@ foreach ($updates as $update) {
             deleteOldTransientMessages((int)$callbackChatId);
             try {
                 $pdo = getDatabase();
-                $stmt = $pdo->query("SELECT id, order_number, customer_name, phone, total, status, created_at FROM orders WHERE status = 'Новый' ORDER BY id DESC LIMIT 20");
+                $stmt = $pdo->query("SELECT id, order_number, customer_name, total, status, created_at FROM orders WHERE status = 'Новый' ORDER BY id DESC LIMIT 20");
                 $orders = $stmt->fetchAll();
 
                 $text = "🆕 <b>НОВЫЕ ЗАКАЗЫ</b>\n\n";
@@ -1512,8 +1510,8 @@ foreach ($updates as $update) {
                         $text .=
                             "📦 <b>" . h($number) . "</b>\n" .
                             "👤 " . h($order['customer_name']) . "\n" .
-                            "📱 " . h($order['phone']) . "\n" .
                             "💰 " . money($order['total']) . "\n" .
+                            "📌 " . h($order['status']) . "\n" .
                             "🕐 " . h($order['created_at']) . "\n\n";
                     }
                 }
@@ -1555,7 +1553,7 @@ foreach ($updates as $update) {
                 $pdo=getDatabase();
 
                 $stmt=$pdo->query("
-                    SELECT id, order_number, customer_name, phone, total, status, created_at
+                    SELECT id, order_number, customer_name, total, status, created_at
                     FROM orders
                     ORDER BY id DESC
                     LIMIT 10
@@ -1574,7 +1572,6 @@ foreach ($updates as $update) {
                         $text.=
                             "📦 <b>".h($number)."</b>\n".
                             "👤 ".h($order['customer_name'])."\n".
-                            "📱 ".h($order['phone'])."\n".
                             "💰 ".money($order['total'])."\n".
                             "📌 ".h($order['status'])."\n".
                             "🕐 ".h($order['created_at'])."\n\n";

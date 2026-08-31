@@ -571,52 +571,17 @@ foreach ($serverItems as $item) {
         ' — ' . number_format($price, 0, ',', ' ') . " ₽\n";
 }
 
-$email = trim($data['email'] ?? '');
-$address = trim($data['address'] ?? '');
-
 $telegramMessage =
-    "🛒 <b>НОВЫЙ ЗАКАЗ #{$orderNumber}</b>\n\n" .
-    "👤 <b>Клиент:</b> " . htmlspecialchars($customerName, ENT_QUOTES, 'UTF-8') . "\n" .
-    "📞 <b>Телефон:</b> " . htmlspecialchars($phone, ENT_QUOTES, 'UTF-8') . "\n";
-
-if ($email !== '') {
-    $telegramMessage .=
-        "📧 <b>Email:</b> " .
-        htmlspecialchars($email, ENT_QUOTES, 'UTF-8') .
-        "\n";
-}
-
-if ($address !== '') {
-    $telegramMessage .=
-        "📍 <b>Адрес:</b> " .
-        htmlspecialchars($address, ENT_QUOTES, 'UTF-8') .
-        "\n";
-}
-
-$telegramMessage .=
-    "\n🚚 <b>Доставка:</b> " .
-    htmlspecialchars($deliveryMethod, ENT_QUOTES, 'UTF-8') . "\n";
-
-if ($deliveryTime !== '') {
-    $telegramMessage .=
-        "🕐 <b>Время доставки:</b> " .
-        htmlspecialchars($deliveryTime, ENT_QUOTES, 'UTF-8') . "\n";
-}
-
-$telegramMessage .=
-    "💳 <b>Оплата:</b> " .
-    htmlspecialchars($paymentMethod, ENT_QUOTES, 'UTF-8') . "\n\n" .
+    "🆕 <b>Новый заказ</b>\n\n" .
+    "🧾 <b>Заказ:</b> {$orderNumber}\n" .
+    "👤 <b>Покупатель:</b> " . htmlspecialchars($customerName, ENT_QUOTES, 'UTF-8') . "\n" .
+    "💰 <b>Сумма:</b> " .
+    number_format($total, 0, ',', ' ') . " ₽\n" .
+    "🚚 <b>Доставка:</b> " .
+    htmlspecialchars($deliveryMethod, ENT_QUOTES, 'UTF-8') . "\n" .
+    "📌 <b>Статус:</b> Новый\n\n" .
     "📦 <b>Товары:</b>\n" .
-    $itemsText .
-    "\n💰 <b>Итого:</b> " .
-    number_format($total, 0, ',', ' ') .
-    " ₽";
-
-if ($comment !== '') {
-    $telegramMessage .=
-        "\n\n💬 <b>Комментарий:</b>\n" .
-        htmlspecialchars($comment, ENT_QUOTES, 'UTF-8');
-}
+    $itemsText;
 
 sendTelegramMessage(
     $telegramBotToken,
