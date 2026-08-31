@@ -44,12 +44,25 @@ function AppContent() {
   const location = useLocation();
 
   useEffect(() => {
+    const sectionId = location.hash.slice(1);
+
+    if (sectionId) {
+      const frame = window.requestAnimationFrame(() => {
+        document.getElementById(sectionId)?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      });
+
+      return () => window.cancelAnimationFrame(frame);
+    }
+
     window.scrollTo({
       top: 0,
       left: 0,
       behavior: 'instant',
     });
-  }, [location.pathname, location.search]);
+  }, [location.pathname, location.search, location.hash]);
 
   // остальной код AppContent...
   const { theme } = useTheme();
