@@ -25,6 +25,12 @@ import SoundbarsPage from '@/pages/SoundbarsPage';
 import AccessoriesPage from '@/pages/AccessoriesPage';
 import NotFoundPage from '@/pages/NotFoundPage';
 import AdminPage from '@/pages/AdminPage';
+import PrivacyPage from '@/pages/PrivacyPage';
+import PersonalDataConsentPage from '@/pages/PersonalDataConsentPage';
+import CookiesPage from '@/pages/CookiesPage';
+import OfferPage from '@/pages/OfferPage';
+import ReturnsPage from '@/pages/ReturnsPage';
+import ContactsPage from '@/pages/ContactsPage';
 
 export default function App() {
   return (
@@ -109,6 +115,12 @@ const isAdmin = location.pathname.startsWith('/admin');
           <Route path="/delivery" element={<DeliveryPage />} />
           <Route path="/soundbars" element={<SoundbarsPage />} />
           <Route path="/accessories" element={<AccessoriesPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/personal-data-consent" element={<PersonalDataConsentPage />} />
+          <Route path="/cookies" element={<CookiesPage />} />
+          <Route path="/offer" element={<OfferPage />} />
+          <Route path="/returns" element={<ReturnsPage />} />
+          <Route path="/contacts" element={<ContactsPage />} />
 
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

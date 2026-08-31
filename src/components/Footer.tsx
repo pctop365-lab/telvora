@@ -15,8 +15,15 @@ const footerLinks = {
   Поддержка: [
     { label: 'Доставка и оплата', to: '/delivery' },
     { label: 'Гарантия', to: '/warranty' },
-    { label: 'Возврат', to: '/support#returns' },
+    { label: 'Возврат товара', to: '/returns' },
     { label: 'FAQ', to: '/support#faq' },
+    { label: 'Контакты', to: '/contacts' },
+  ],
+  'Правовая информация': [
+    { label: 'Публичная оферта', to: '/offer' },
+    { label: 'Политика обработки персональных данных', to: '/privacy' },
+    { label: 'Согласие на обработку персональных данных', to: '/personal-data-consent' },
+    { label: 'Политика Cookies', to: '/cookies' },
   ],
 };
 
@@ -26,7 +33,7 @@ export default function Footer() {
   return (
     <footer className="bg-graphite-50 dark:bg-graphite-950 border-t border-graphite-200 dark:border-white/5">
       <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8 mb-12">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-8 mb-12">
           <div className="col-span-2 lg:col-span-2">
             <Link to="/" className="flex items-center gap-2 mb-4">
               <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent-500 to-accent-700 flex items-center justify-center">
