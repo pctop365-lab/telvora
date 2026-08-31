@@ -168,7 +168,17 @@ comment: '',
       );
 
       clearCart();
-      navigate(`/order-success/${encodeURIComponent(order.orderNumber)}`);
+      navigate(`/order-success/${encodeURIComponent(order.orderNumber)}`, {
+        state: {
+          orderSummary: {
+            items: order.items,
+            subtotal: order.subtotal,
+            delivery: order.delivery,
+            total: order.total,
+            createdAt: order.createdAt,
+          },
+        },
+      });
     } catch (err) {
       console.error('Ошибка оформления заказа:', err);
 

@@ -1,25 +1,7 @@
 import type { Order, CheckoutFormData, CartItem } from '@/types';
 import { siteContent } from '@/data/siteContent';
 
-const STORAGE_KEY = 'telvora_orders';
 const API_URL = 'https://telvora.ru/api.php';
-
-function getStoredOrders(): Order[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Order[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveStoredOrders(orders: Order[]): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(orders));
-  } catch {
-    // localStorage может быть недоступен
-  }
-}
 
 function calculateDelivery(
   subtotal: number,
@@ -119,30 +101,7 @@ export async function createOrder(
 
   order.orderNumber = result.order_number;
 
-  // Сохраняем локальную копию для текущего интерфейса
-  const orders = getStoredOrders();
-  orders.push(order);
-  saveStoredOrders(orders);
-
   return order;
-}
-
-export async function fetchOrderByNumber(
-  orderNumber: string
-): Promise<Order | null> {
-  const orders = getStoredOrders();
-
-  return (
-    orders.find((order) => order.orderNumber === orderNumber) ?? null
-  );
-}
-
-export async function fetchOrderById(
-  id: string
-): Promise<Order | null> {
-  const orders = getStoredOrders();
-
-  return orders.find((order) => order.id === id) ?? null;
 }
 
 

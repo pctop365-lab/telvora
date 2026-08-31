@@ -50,6 +50,14 @@ function AppContent() {
   const location = useLocation();
 
   useEffect(() => {
+    try {
+      localStorage.removeItem('telvora_orders');
+    } catch {
+      // Browser storage may be unavailable.
+    }
+  }, []);
+
+  useEffect(() => {
     const sectionId = location.hash.slice(1);
 
     if (sectionId) {
