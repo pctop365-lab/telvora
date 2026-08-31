@@ -87,7 +87,7 @@ const isAdmin = location.pathname.startsWith('/admin');
           <Route path="/admin" element={<AdminPage />} />
 
           <Route
-            path="/order-success/:orderId"
+            path="/order-success/:orderNumber"
             element={<OrderSuccessPage />}
           />
 

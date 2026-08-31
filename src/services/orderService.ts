@@ -4,13 +4,6 @@ import { siteContent } from '@/data/siteContent';
 const STORAGE_KEY = 'telvora_orders';
 const API_URL = 'https://telvora.ru/api.php';
 
-function generateOrderNumber(): string {
-  const date = new Date();
-  const ymd = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
-  const rand = Math.floor(1000 + Math.random() * 9000);
-  return `TLV-${ymd}-${rand}`;
-}
-
 function getStoredOrders(): Order[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -59,7 +52,7 @@ export async function createOrder(
 
   const order: Order = {
     id: crypto.randomUUID(),
-    orderNumber: generateOrderNumber(),
+    orderNumber: '',
 
     items: cartItems.map((item) => ({
       productId: item.id,
@@ -108,6 +101,7 @@ export async function createOrder(
   let result: {
     success?: boolean;
     order_id?: number;
+    order_number?: string;
     message?: string;
   };
 
@@ -117,11 +111,13 @@ export async function createOrder(
     throw new Error('Сервер вернул некорректный ответ');
   }
 
-  if (!response.ok || !result.success) {
+  if (!response.ok || !result.success || !result.order_number) {
     throw new Error(
       result.message || 'Не удалось сохранить заказ'
     );
   }
+
+  order.orderNumber = result.order_number;
 
   // Сохраняем локальную копию для текущего интерфейса
   const orders = getStoredOrders();

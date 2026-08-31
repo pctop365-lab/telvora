@@ -1,22 +1,22 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { CheckCircle2, ArrowRight, Package, Truck, Loader2 } from 'lucide-react';
-import { fetchOrderById } from '@/services/orderService';
+import { fetchOrderByNumber } from '@/services/orderService';
 import type { Order } from '@/types';
 import { formatPrice } from '@/lib/format';
 
 export default function OrderSuccessPage() {
-  const { orderId } = useParams<{ orderId: string }>();
+  const { orderNumber } = useParams<{ orderNumber: string }>();
   const [order, setOrder] = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!orderId) {
+    if (!orderNumber) {
       setLoading(false);
       return;
     }
     let cancelled = false;
-    fetchOrderById(orderId)
+    fetchOrderByNumber(orderNumber)
       .then((data) => {
         if (!cancelled) {
           setOrder(data);
@@ -29,7 +29,7 @@ export default function OrderSuccessPage() {
     return () => {
       cancelled = true;
     };
-  }, [orderId]);
+  }, [orderNumber]);
 
   if (loading) {
     return (

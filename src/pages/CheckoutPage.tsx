@@ -162,7 +162,7 @@ comment: '',
       );
 
       clearCart();
-      navigate(`/order-success/${order.id}`);
+      navigate(`/order-success/${encodeURIComponent(order.orderNumber)}`);
     } catch (err) {
       console.error('Ошибка оформления заказа:', err);
 
