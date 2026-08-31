@@ -73,6 +73,8 @@ export default function CheckoutPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [personalDataConsent, setPersonalDataConsent] = useState(false);
+  const [consentError, setConsentError] = useState(false);
 
   const [form, setForm] = useState<
     CheckoutFormData & { paymentMethod: string }
@@ -148,7 +150,11 @@ comment: '',
       address: true,
     });
 
-    if (!isValid || items.length === 0) {
+    if (!personalDataConsent) {
+      setConsentError(true);
+    }
+
+    if (!isValid || items.length === 0 || !personalDataConsent) {
       return;
     }
 
@@ -592,6 +598,66 @@ comment: '',
                   {error}
                 </p>
               )}
+
+              <div
+                className={`mt-5 p-4 rounded-2xl border transition-colors ${
+                  consentError
+                    ? 'bg-red-50 dark:bg-red-500/5 border-red-300 dark:border-red-500/30'
+                    : 'bg-white dark:bg-graphite-900 border-graphite-200 dark:border-white/10'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <input
+                    id="personal-data-consent"
+                    type="checkbox"
+                    checked={personalDataConsent}
+                    onChange={(event) => {
+                      setPersonalDataConsent(event.target.checked);
+                      if (event.target.checked) setConsentError(false);
+                    }}
+                    aria-invalid={consentError}
+                    aria-describedby={consentError ? 'personal-data-consent-error' : undefined}
+                    className="mt-0.5 h-5 w-5 shrink-0 rounded border-graphite-300 text-accent-500 accent-accent-500 focus:ring-2 focus:ring-accent-500 focus:ring-offset-2 dark:focus:ring-offset-graphite-900 cursor-pointer"
+                  />
+                  <p className="text-sm text-graphite-700 dark:text-graphite-300 leading-relaxed">
+                    <label htmlFor="personal-data-consent" className="cursor-pointer">
+                      Я даю{' '}
+                    </label>
+                    <Link
+                      to="/personal-data-consent"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-accent-600 dark:text-accent-500 hover:underline focus:outline-none focus:ring-2 focus:ring-accent-500/40 rounded"
+                    >
+                      согласие на обработку персональных данных
+                    </Link>{' '}
+                    и ознакомился с{' '}
+                    <Link
+                      to="/privacy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-accent-600 dark:text-accent-500 hover:underline focus:outline-none focus:ring-2 focus:ring-accent-500/40 rounded"
+                    >
+                      Политикой обработки персональных данных
+                    </Link>.
+                  </p>
+                </div>
+
+                {consentError && (
+                  <p id="personal-data-consent-error" role="alert" className="mt-3 text-sm text-red-600 dark:text-red-400">
+                    Для оформления заказа необходимо подтвердить согласие на обработку персональных данных.
+                  </p>
+                )}
+
+                <p className="mt-3 pl-8 text-xs text-graphite-500 dark:text-graphite-400 leading-relaxed">
+                  Перед оформлением заказа вы также можете ознакомиться с условиями{' '}
+                  <Link to="/delivery" target="_blank" rel="noopener noreferrer" className="text-accent-600 dark:text-accent-500 hover:underline">доставки</Link>,{' '}
+                  <Link to="/returns" target="_blank" rel="noopener noreferrer" className="text-accent-600 dark:text-accent-500 hover:underline">возврата</Link>{' '}
+                  и{' '}
+                  <Link to="/warranty" target="_blank" rel="noopener noreferrer" className="text-accent-600 dark:text-accent-500 hover:underline">гарантии</Link>. Также доступен{' '}
+                  <Link to="/offer" target="_blank" rel="noopener noreferrer" className="text-accent-600 dark:text-accent-500 hover:underline">проект публичной оферты</Link>.
+                </p>
+              </div>
 
               <button
                 type="submit"
