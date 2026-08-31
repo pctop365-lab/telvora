@@ -34,6 +34,7 @@ FROM (
     UNION ALL SELECT 'supplier_product_matches', 'product_variant_id'
     UNION ALL SELECT 'supplier_import_jobs', 'original_filename'
     UNION ALL SELECT 'supplier_import_rows', 'matched_product_variant_id'
+    UNION ALL SELECT 'supplier_import_rows', 'source_row_number'
     UNION ALL SELECT 'pricing_rules', 'markup_percent'
     UNION ALL SELECT 'pricing_rules', 'minimum_margin'
 ) AS expected
@@ -43,19 +44,30 @@ LEFT JOIN information_schema.columns actual
    AND actual.column_name = expected.column_name
 WHERE actual.column_name IS NULL;
 
+SELECT 'supplier_import_rows.row_number must not exist' AS unexpected_column
+FROM information_schema.columns
+WHERE table_schema = DATABASE()
+  AND table_name = 'supplier_import_rows'
+  AND column_name = 'row_number';
+
 SELECT expected.constraint_name AS missing_foreign_key
 FROM (
     SELECT 'fk_product_variants_canonical_product' AS constraint_name
+    UNION ALL SELECT 'fk_product_variants_market'
+    UNION ALL SELECT 'fk_product_variants_cert_supply'
     UNION ALL SELECT 'fk_supplier_import_profiles_supplier'
     UNION ALL SELECT 'fk_supplier_import_jobs_supplier'
+    UNION ALL SELECT 'fk_supplier_import_jobs_profile'
     UNION ALL SELECT 'fk_supplier_product_matches_supplier'
     UNION ALL SELECT 'fk_supplier_product_matches_product'
     UNION ALL SELECT 'fk_supplier_product_matches_variant'
     UNION ALL SELECT 'fk_supplier_import_rows_job'
     UNION ALL SELECT 'fk_supplier_import_rows_product'
     UNION ALL SELECT 'fk_supplier_import_rows_variant'
+    UNION ALL SELECT 'fk_supplier_import_rows_match'
     UNION ALL SELECT 'fk_supplier_offers_supplier'
     UNION ALL SELECT 'fk_supplier_offers_variant'
+    UNION ALL SELECT 'fk_supplier_offers_source_row'
 ) AS expected
 LEFT JOIN information_schema.referential_constraints actual
     ON actual.constraint_schema = DATABASE()

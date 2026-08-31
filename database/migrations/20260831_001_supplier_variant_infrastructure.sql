@@ -191,7 +191,7 @@ CREATE TABLE IF NOT EXISTS supplier_product_matches (
 CREATE TABLE IF NOT EXISTS supplier_import_rows (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     import_job_id BIGINT UNSIGNED NOT NULL,
-    row_number INT UNSIGNED NOT NULL,
+    source_row_number INT UNSIGNED NOT NULL,
     supplier_sku VARCHAR(191) DEFAULT NULL,
     raw_product_name VARCHAR(500) DEFAULT NULL,
     normalized_product_name VARCHAR(500) DEFAULT NULL,
@@ -213,7 +213,7 @@ CREATE TABLE IF NOT EXISTS supplier_import_rows (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     PRIMARY KEY (id),
-    UNIQUE KEY uq_supplier_import_rows_job_row (import_job_id, row_number),
+    UNIQUE KEY uq_supplier_import_rows_job_row (import_job_id, source_row_number),
     KEY idx_supplier_import_rows_job_status (import_job_id, status),
     KEY idx_supplier_import_rows_sku (supplier_sku),
     KEY idx_supplier_import_rows_model (normalized_model),

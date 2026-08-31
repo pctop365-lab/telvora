@@ -131,6 +131,9 @@ Because nullable dimensions make a simple SQL composite unique key unsafe, store
 
 Raw supplier input should first be persisted in `supplier_import_rows`. Matching produces a proposal, not an immediate catalog mutation.
 
+The source spreadsheet position is stored as `source_row_number`, unique within
+an import job. The reserved MySQL 8.0 identifier `ROW_NUMBER` is not used.
+
 Suggested matching result fields:
 
 - canonical-product candidate and confidence;

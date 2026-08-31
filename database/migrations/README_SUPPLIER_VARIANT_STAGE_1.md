@@ -52,7 +52,8 @@ One canonical model has any number of `product_variants` through `product_id`. M
 - All durable relations use foreign keys. Catalog, supplier, variant and offer deletes are `RESTRICT`; deleting a never-published import job may cascade only to its diagnostic rows.
 - `product_variants(product_id, variant_key)` provides a stable, reviewed identity inside one canonical product. `variant_key` is deliberately not derived in SQL from nullable dimensions.
 - Supplier codes and dictionary codes are unique.
-- Import row number is unique inside a job.
+- `supplier_import_rows.source_row_number` is unique inside a job. The explicit
+  name avoids MySQL 8.0's reserved `ROW_NUMBER` identifier.
 - Supplier SKU is unique per supplier where a SKU exists. MySQL permits multiple `NULL` values; rows without a trustworthy SKU require source-row identity and must not be title-deduplicated.
 - Eligibility-oriented offer indexing begins with `product_variant_id`, followed by active/availability/price fields for future per-variant best-price queries.
 - Matching/import review indexes lead with job/supplier/status fields used by preview and diagnostics.
@@ -89,5 +90,14 @@ This process preserves all legacy values without inventing a Rostest/Europe clas
 ## Application and rollback notes
 
 No SQL should be run on production as part of repository preparation. Before a future deployment, test against a disposable database with the same MySQL/MariaDB version and an exact copy of the `products.id` definition.
+
+If canonical migration `20260831_001_supplier_variant_infrastructure.sql`
+stopped after creating the first seven infrastructure tables, do not rerun it.
+For that exact partial state, run the read-only
+`preflight_20260901_002_complete_supplier_variant_infrastructure.sql`; proceed
+only when its violations result is empty. Then run
+`20260901_002_complete_supplier_variant_infrastructure.sql`, followed by
+`verify_20260901_002_complete_supplier_variant_infrastructure.sql`. Migration
+002 creates only `supplier_import_rows`, `supplier_offers` and `pricing_rules`.
 
 Because this migration is additive and production may later accumulate data in these tables, no automatic down migration is supplied. Rollback at this stage is simply leaving the unused tables in place. Any future removal must be a separately reviewed, explicitly destructive operation.
