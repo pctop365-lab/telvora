@@ -2,6 +2,8 @@
 -- MySQL/InnoDB, additive only. This migration does not alter or seed products.
 -- It is safe to apply separately from the current catalog application because
 -- no existing application table reads from these tables.
+-- Prerequisite on the current TELVORA production schema:
+-- run_20260831_000_resolve_legacy_product_variants.php must complete first.
 
 SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci;
 
@@ -53,7 +55,9 @@ CREATE TABLE IF NOT EXISTS variant_certification_supply_types (
   DEFAULT CHARSET=utf8mb4
   COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS product_variants (
+-- Deliberately no IF NOT EXISTS: an unexpected pre-existing table must stop
+-- this migration instead of being accepted with an incompatible definition.
+CREATE TABLE product_variants (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     product_id INT UNSIGNED NOT NULL,
     variant_key VARCHAR(191) NOT NULL,
@@ -75,7 +79,9 @@ CREATE TABLE IF NOT EXISTS product_variants (
     KEY idx_product_variants_cert_supply (certification_supply_type_id),
     KEY idx_product_variants_mpn (manufacturer_part_number),
     KEY idx_product_variants_classification (classification_status),
-    CONSTRAINT fk_product_variants_product
+    -- The legacy table retains fk_product_variants_product after rename, so
+    -- the new FK uses a distinct schema-wide constraint name.
+    CONSTRAINT fk_product_variants_canonical_product
         FOREIGN KEY (product_id) REFERENCES products (id)
         ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT fk_product_variants_market

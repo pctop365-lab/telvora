@@ -45,7 +45,7 @@ WHERE actual.column_name IS NULL;
 
 SELECT expected.constraint_name AS missing_foreign_key
 FROM (
-    SELECT 'fk_product_variants_product' AS constraint_name
+    SELECT 'fk_product_variants_canonical_product' AS constraint_name
     UNION ALL SELECT 'fk_supplier_import_profiles_supplier'
     UNION ALL SELECT 'fk_supplier_import_jobs_supplier'
     UNION ALL SELECT 'fk_supplier_product_matches_supplier'
