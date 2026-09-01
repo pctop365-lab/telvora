@@ -381,7 +381,15 @@ if (empty($_SESSION['telvora_admin'])) {
 /*
  * Выход
  */
-if (in_array($action, ['logout', 'update_status'], true)) {
+$csrfProtectedActions = [
+    'logout',
+    'update_status',
+    'supplier_create',
+    'supplier_update',
+    'supplier_set_active'
+];
+
+if (in_array($action, $csrfProtectedActions, true)) {
     $sessionToken = $_SESSION['csrf_token'] ?? '';
     $requestToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 
@@ -399,6 +407,141 @@ if (in_array($action, ['logout', 'update_status'], true)) {
     }
 }
 
+function sendManagerJson(int $status, array $payload): void
+{
+    http_response_code($status);
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+function requireManagerMethod(string $expectedMethod): void
+{
+    if ($_SERVER['REQUEST_METHOD'] !== $expectedMethod) {
+        header('Allow: ' . $expectedMethod);
+        sendManagerJson(405, [
+            'success' => false,
+            'message' => 'Метод не поддерживается'
+        ]);
+    }
+}
+
+function validateSupplierInput(array $data): array
+{
+    $nameValue = $data['name'] ?? '';
+    $codeValue = $data['internal_code'] ?? '';
+
+    if (!is_string($nameValue) || !is_string($codeValue)) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Введите корректные данные поставщика'
+        ]);
+    }
+
+    $name = trim($nameValue);
+    $internalCode = trim($codeValue);
+    if (function_exists('mb_strlen')) {
+        $nameLength = mb_strlen($name, 'UTF-8');
+    } else {
+        $characterCount = preg_match_all('/./us', $name, $matches);
+        $nameLength = $characterCount === false ? 256 : $characterCount;
+    }
+
+    if ($name === '' || $nameLength > 255) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Название поставщика обязательно и не должно превышать 255 символов'
+        ]);
+    }
+
+    if (
+        $internalCode === '' ||
+        strlen($internalCode) > 100 ||
+        preg_match('/\A[a-z0-9][a-z0-9_-]*\z/D', $internalCode) !== 1
+    ) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Код обязателен: используйте до 100 строчных латинских букв, цифр, дефисов или подчёркиваний'
+        ]);
+    }
+
+    return [
+        'name' => $name,
+        'internal_code' => $internalCode
+    ];
+}
+
+function requireSupplierId(array $data): int
+{
+    $rawId = $data['id'] ?? null;
+
+    if (
+        !is_int($rawId) &&
+        (!is_string($rawId) || preg_match('/\A[1-9][0-9]*\z/D', $rawId) !== 1)
+    ) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Некорректный идентификатор поставщика'
+        ]);
+    }
+
+    $id = filter_var($rawId, FILTER_VALIDATE_INT, [
+        'options' => ['min_range' => 1]
+    ]);
+
+    if ($id === false) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Некорректный идентификатор поставщика'
+        ]);
+    }
+
+    return (int)$id;
+}
+
+function requireSupplierActiveValue(array $data): int
+{
+    $value = $data['is_active'] ?? null;
+
+    if ($value === true || $value === 1 || $value === '1') {
+        return 1;
+    }
+
+    if ($value === false || $value === 0 || $value === '0') {
+        return 0;
+    }
+
+    sendManagerJson(400, [
+        'success' => false,
+        'message' => 'Некорректный статус поставщика'
+    ]);
+}
+
+function isSupplierCodeDuplicate(Throwable $error): bool
+{
+    if (
+        !$error instanceof PDOException ||
+        (string)$error->getCode() !== '23000'
+    ) {
+        return false;
+    }
+
+    $driverCode = $error->errorInfo[1] ?? null;
+
+    return (int)$driverCode === 1062;
+}
+
+function prepareSupplierForResponse(array $supplier): array
+{
+    return [
+        'id' => (int)$supplier['id'],
+        'name' => (string)$supplier['name'],
+        'internal_code' => (string)$supplier['internal_code'],
+        'is_active' => (bool)$supplier['is_active'],
+        'created_at' => (string)$supplier['created_at'],
+        'updated_at' => (string)$supplier['updated_at']
+    ];
+}
+
 if ($action === 'logout') {
     unset($_SESSION['csrf_token']);
 
@@ -410,6 +553,165 @@ if ($action === 'logout') {
     ], JSON_UNESCAPED_UNICODE);
 
     exit;
+}
+
+if ($action === 'suppliers_list') {
+    requireManagerMethod('GET');
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT id, name, internal_code, is_active, created_at, updated_at
+            FROM suppliers
+            ORDER BY name ASC, id ASC
+        ");
+        $stmt->execute();
+
+        $suppliers = array_map(
+            'prepareSupplierForResponse',
+            $stmt->fetchAll()
+        );
+
+        sendManagerJson(200, [
+            'success' => true,
+            'count' => count($suppliers),
+            'suppliers' => $suppliers
+        ]);
+    } catch (Throwable $error) {
+        sendManagerJson(500, [
+            'success' => false,
+            'message' => 'Не удалось загрузить поставщиков'
+        ]);
+    }
+}
+
+if ($action === 'supplier_create') {
+    requireManagerMethod('POST');
+    $supplier = validateSupplierInput($data);
+    $isActive = requireSupplierActiveValue($data);
+
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO suppliers (name, internal_code, is_active)
+            VALUES (:name, :internal_code, :is_active)
+        ");
+        $stmt->execute([
+            ':name' => $supplier['name'],
+            ':internal_code' => $supplier['internal_code'],
+            ':is_active' => $isActive
+        ]);
+
+        sendManagerJson(201, [
+            'success' => true,
+            'message' => 'Поставщик создан',
+            'supplier_id' => (int)$pdo->lastInsertId()
+        ]);
+    } catch (Throwable $error) {
+        if (isSupplierCodeDuplicate($error)) {
+            sendManagerJson(409, [
+                'success' => false,
+                'message' => 'Поставщик с таким внутренним кодом уже существует'
+            ]);
+        }
+
+        sendManagerJson(500, [
+            'success' => false,
+            'message' => 'Не удалось создать поставщика'
+        ]);
+    }
+}
+
+if ($action === 'supplier_update') {
+    requireManagerMethod('POST');
+    $supplierId = requireSupplierId($data);
+    $supplier = validateSupplierInput($data);
+    $isActive = requireSupplierActiveValue($data);
+
+    try {
+        $stmt = $pdo->prepare("
+            UPDATE suppliers
+            SET name = :name,
+                internal_code = :internal_code,
+                is_active = :is_active
+            WHERE id = :id
+        ");
+        $stmt->execute([
+            ':name' => $supplier['name'],
+            ':internal_code' => $supplier['internal_code'],
+            ':is_active' => $isActive,
+            ':id' => $supplierId
+        ]);
+
+        if ($stmt->rowCount() === 0) {
+            $existsStmt = $pdo->prepare("SELECT id FROM suppliers WHERE id = :id");
+            $existsStmt->execute([':id' => $supplierId]);
+
+            if (!$existsStmt->fetch()) {
+                sendManagerJson(404, [
+                    'success' => false,
+                    'message' => 'Поставщик не найден'
+                ]);
+            }
+        }
+
+        sendManagerJson(200, [
+            'success' => true,
+            'message' => 'Поставщик обновлён'
+        ]);
+    } catch (Throwable $error) {
+        if (isSupplierCodeDuplicate($error)) {
+            sendManagerJson(409, [
+                'success' => false,
+                'message' => 'Поставщик с таким внутренним кодом уже существует'
+            ]);
+        }
+
+        sendManagerJson(500, [
+            'success' => false,
+            'message' => 'Не удалось обновить поставщика'
+        ]);
+    }
+}
+
+if ($action === 'supplier_set_active') {
+    requireManagerMethod('POST');
+    $supplierId = requireSupplierId($data);
+    $isActive = requireSupplierActiveValue($data);
+
+    try {
+        $stmt = $pdo->prepare("
+            UPDATE suppliers
+            SET is_active = :is_active
+            WHERE id = :id
+        ");
+        $stmt->execute([
+            ':is_active' => $isActive,
+            ':id' => $supplierId
+        ]);
+
+        if ($stmt->rowCount() === 0) {
+            $existsStmt = $pdo->prepare("SELECT id FROM suppliers WHERE id = :id");
+            $existsStmt->execute([':id' => $supplierId]);
+
+            if (!$existsStmt->fetch()) {
+                sendManagerJson(404, [
+                    'success' => false,
+                    'message' => 'Поставщик не найден'
+                ]);
+            }
+        }
+
+        sendManagerJson(200, [
+            'success' => true,
+            'message' => $isActive
+                ? 'Поставщик включён'
+                : 'Поставщик отключён'
+        ]);
+    } catch (Throwable $error) {
+        sendManagerJson(500, [
+            'success' => false,
+            'message' => 'Не удалось изменить статус поставщика'
+        ]);
+    }
 }
 
 /*

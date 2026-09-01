@@ -75,8 +75,27 @@ type AdminProduct = {
   updated_at: string;
 };
 
+type Supplier = {
+  id: number;
+  name: string;
+  internal_code: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 const MANAGER_API = '/manager.php';
 const PRODUCTS_API = '/products.php';
+
+async function parseSupplierResponse(response: Response) {
+  const responseText = await response.text();
+
+  try {
+    return JSON.parse(responseText);
+  } catch {
+    throw new Error('Сервер вернул некорректный ответ');
+  }
+}
 
 const statuses = [
   'Новый',
@@ -166,6 +185,12 @@ const emptyProductForm = {
   is_active: true,
 };
 
+const emptySupplierForm = {
+  name: '',
+  internal_code: '',
+  is_active: true,
+};
+
 export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [csrfToken, setCsrfToken] = useState<string | null>(null);
@@ -195,9 +220,21 @@ export default function AdminPage() {
   const [filter, setFilter] = useState('Все');
   const [expanded, setExpanded] = useState<number | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'orders' | 'products'>(
+  const [activeTab, setActiveTab] = useState<
+    'orders' | 'products' | 'suppliers'
+  >(
     'orders'
   );
+
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [suppliersLoading, setSuppliersLoading] = useState(false);
+  const [suppliersError, setSuppliersError] = useState('');
+  const [suppliersSuccess, setSuppliersSuccess] = useState('');
+  const [showSupplierForm, setShowSupplierForm] = useState(false);
+  const [editingSupplierId, setEditingSupplierId] = useState<number | null>(null);
+  const [supplierForm, setSupplierForm] = useState(emptySupplierForm);
+  const [savingSupplier, setSavingSupplier] = useState(false);
+  const [togglingSupplierId, setTogglingSupplierId] = useState<number | null>(null);
 
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -353,6 +390,37 @@ const login = async (e: React.FormEvent) => {
     }
   };
 
+  const loadSuppliers = async () => {
+    setSuppliersLoading(true);
+    setSuppliersError('');
+
+    try {
+      const response = await fetch(`${MANAGER_API}?action=suppliers_list`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      });
+      const data = await parseSupplierResponse(response);
+
+      if (!response.ok || !data.success) {
+        if (response.status === 401 || response.status === 403) {
+          setAuthenticated(false);
+          setCsrfToken(null);
+        }
+
+        throw new Error(data.message || 'Не удалось загрузить поставщиков');
+      }
+
+      setSuppliers(Array.isArray(data.suppliers) ? data.suppliers : []);
+    } catch (err) {
+      setSuppliersError(
+        err instanceof Error ? err.message : 'Не удалось загрузить поставщиков'
+      );
+    } finally {
+      setSuppliersLoading(false);
+    }
+  };
+
   const logout = async () => {
     try {
       await fetch(MANAGER_API, {
@@ -371,7 +439,9 @@ const login = async (e: React.FormEvent) => {
       setCsrfToken(null);
       setOrders([]);
       setProducts([]);
+      setSuppliers([]);
       setShowProductForm(false);
+      setShowSupplierForm(false);
     }
   };
 
@@ -418,6 +488,145 @@ const login = async (e: React.FormEvent) => {
       loadProducts();
     }
   }, [authenticated, activeTab]);
+  useEffect(() => {
+    if (authenticated && activeTab === 'suppliers') {
+      loadSuppliers();
+    }
+  }, [authenticated, activeTab]);
+
+  const openAddSupplier = () => {
+    setEditingSupplierId(null);
+    setSupplierForm(emptySupplierForm);
+    setSuppliersError('');
+    setSuppliersSuccess('');
+    setShowSupplierForm(true);
+  };
+
+  const openEditSupplier = (supplier: Supplier) => {
+    setEditingSupplierId(supplier.id);
+    setSupplierForm({
+      name: supplier.name,
+      internal_code: supplier.internal_code,
+      is_active: supplier.is_active,
+    });
+    setSuppliersError('');
+    setSuppliersSuccess('');
+    setShowSupplierForm(true);
+  };
+
+  const closeSupplierForm = () => {
+    setShowSupplierForm(false);
+    setEditingSupplierId(null);
+    setSupplierForm(emptySupplierForm);
+  };
+
+  const saveSupplier = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const name = supplierForm.name.trim();
+    const internalCode = supplierForm.internal_code.trim();
+
+    if (!name || !internalCode) {
+      setSuppliersError('Заполните название и внутренний код');
+      return;
+    }
+
+    setSavingSupplier(true);
+    setSuppliersError('');
+    setSuppliersSuccess('');
+
+    try {
+      const action = editingSupplierId
+        ? 'supplier_update'
+        : 'supplier_create';
+      const response = await fetch(MANAGER_API, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken || '',
+        },
+        body: JSON.stringify({
+          action,
+          ...(editingSupplierId ? { id: editingSupplierId } : {}),
+          name,
+          internal_code: internalCode,
+          is_active: supplierForm.is_active,
+        }),
+      });
+      const data = await parseSupplierResponse(response);
+
+      if (!response.ok || !data.success) {
+        if (response.status === 401 || response.status === 403) {
+          setAuthenticated(false);
+          setCsrfToken(null);
+        }
+
+        throw new Error(data.message || 'Не удалось сохранить поставщика');
+      }
+
+      closeSupplierForm();
+      setSuppliersSuccess(data.message || 'Поставщик сохранён');
+      await loadSuppliers();
+    } catch (err) {
+      setSuppliersError(
+        err instanceof Error ? err.message : 'Не удалось сохранить поставщика'
+      );
+    } finally {
+      setSavingSupplier(false);
+    }
+  };
+
+  const setSupplierActive = async (supplier: Supplier) => {
+    const nextActive = !supplier.is_active;
+
+    if (
+      !nextActive &&
+      !window.confirm(`Отключить поставщика «${supplier.name}»?`)
+    ) {
+      return;
+    }
+
+    setTogglingSupplierId(supplier.id);
+    setSuppliersError('');
+    setSuppliersSuccess('');
+
+    try {
+      const response = await fetch(MANAGER_API, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken || '',
+        },
+        body: JSON.stringify({
+          action: 'supplier_set_active',
+          id: supplier.id,
+          is_active: nextActive,
+        }),
+      });
+      const data = await parseSupplierResponse(response);
+
+      if (!response.ok || !data.success) {
+        if (response.status === 401 || response.status === 403) {
+          setAuthenticated(false);
+          setCsrfToken(null);
+        }
+
+        throw new Error(data.message || 'Не удалось изменить статус поставщика');
+      }
+
+      setSuppliersSuccess(data.message || 'Статус поставщика изменён');
+      await loadSuppliers();
+    } catch (err) {
+      setSuppliersError(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось изменить статус поставщика'
+      );
+    } finally {
+      setTogglingSupplierId(null);
+    }
+  };
 
   const filteredOrders = useMemo(() => {
     if (filter === 'Все') {
@@ -1173,16 +1382,18 @@ const toggleProductStatus = async (product: AdminProduct) => {
               onClick={() => {
                 if (activeTab === 'orders') {
                   loadOrders();
-                } else {
+                } else if (activeTab === 'products') {
                   loadProducts();
+                } else {
+                  loadSuppliers();
                 }
               }}
-              disabled={loading || productsLoading}
+              disabled={loading || productsLoading || suppliersLoading}
               className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 transition shadow-sm"
             >
               <RefreshCw
                 className={`w-4 h-4 ${
-                  loading || productsLoading
+                  loading || productsLoading || suppliersLoading
                     ? 'animate-spin'
                     : ''
                 }`}
@@ -1228,6 +1439,17 @@ const toggleProductStatus = async (product: AdminProduct) => {
             }`}
           >
             Товары
+          </button>
+
+          <button
+            onClick={() => setActiveTab('suppliers')}
+            className={`px-5 py-2.5 rounded-xl text-sm font-medium border transition ${
+              activeTab === 'suppliers'
+                ? 'bg-accent-50 border-accent-200 text-accent-600'
+                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            Поставщики
           </button>
         </div>
 
@@ -1493,7 +1715,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
               </div>
             )}
           </>
-        ) : (
+        ) : activeTab === 'products' ? (
           <>
             <div className="flex flex-col gap-4 mb-6">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1941,6 +2163,217 @@ const toggleProductStatus = async (product: AdminProduct) => {
                             </tr>
                           )}
                         </Fragment>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+              <div>
+                <h2 className="text-xl font-display font-semibold text-graphite-900">
+                  Поставщики
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Управление поставщиками и их доступностью
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={openAddSupplier}
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent-500 text-white font-semibold hover:bg-accent-600 transition"
+              >
+                <Plus className="w-4 h-4" />
+                Добавить поставщика
+              </button>
+            </div>
+
+            {suppliersError && (
+              <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                {suppliersError}
+              </div>
+            )}
+            {suppliersSuccess && (
+              <div className="mb-6 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                {suppliersSuccess}
+              </div>
+            )}
+
+            {showSupplierForm && (
+              <form
+                onSubmit={saveSupplier}
+                className="mb-6 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm"
+              >
+                <div className="flex items-center justify-between gap-4 mb-5">
+                  <div>
+                    <h3 className="font-semibold text-graphite-900">
+                      {editingSupplierId
+                        ? 'Редактирование поставщика'
+                        : 'Новый поставщик'}
+                    </h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Код: строчные латинские буквы, цифры, дефис и подчёркивание.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={closeSupplierForm}
+                    className="p-2 rounded-lg text-gray-500 hover:bg-gray-100"
+                    aria-label="Закрыть форму"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-2">
+                      Название
+                    </label>
+                    <input
+                      type="text"
+                      value={supplierForm.name}
+                      onChange={(event) =>
+                        setSupplierForm((current) => ({
+                          ...current,
+                          name: event.target.value,
+                        }))
+                      }
+                      maxLength={255}
+                      required
+                      className="admin-input"
+                      placeholder="Название поставщика"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-2">
+                      Внутренний код
+                    </label>
+                    <input
+                      type="text"
+                      value={supplierForm.internal_code}
+                      onChange={(event) =>
+                        setSupplierForm((current) => ({
+                          ...current,
+                          internal_code: event.target.value,
+                        }))
+                      }
+                      maxLength={100}
+                      pattern="[a-z0-9][a-z0-9_-]*"
+                      required
+                      className="admin-input"
+                      placeholder="supplier_code"
+                    />
+                  </div>
+                </div>
+
+                <label className="inline-flex items-center gap-3 mt-5 text-sm text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={supplierForm.is_active}
+                    onChange={(event) =>
+                      setSupplierForm((current) => ({
+                        ...current,
+                        is_active: event.target.checked,
+                      }))
+                    }
+                    className="w-4 h-4 rounded border-gray-300 text-accent-500 focus:ring-accent-500"
+                  />
+                  Поставщик активен
+                </label>
+
+                <div className="flex justify-end gap-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={closeSupplierForm}
+                    className="px-5 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition"
+                  >
+                    Отмена
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingSupplier}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent-500 text-white font-semibold hover:bg-accent-600 transition disabled:opacity-50"
+                  >
+                    <Save className="w-4 h-4" />
+                    {savingSupplier ? 'Сохранение...' : 'Сохранить'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {suppliersLoading ? (
+              <div className="text-center py-16 text-gray-500">
+                Загрузка поставщиков...
+              </div>
+            ) : suppliers.length === 0 ? (
+              <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center shadow-sm">
+                <Truck className="w-10 h-10 mx-auto text-gray-400" />
+                <div className="text-graphite-900 font-semibold mt-4">
+                  Поставщиков пока нет
+                </div>
+                <div className="text-sm text-gray-500 mt-2">
+                  Добавьте первого поставщика, когда будете готовы.
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[850px]">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-gray-50">
+                        <th className="text-left px-5 py-4 text-xs font-semibold uppercase text-gray-500">Название</th>
+                        <th className="text-left px-5 py-4 text-xs font-semibold uppercase text-gray-500">Внутренний код</th>
+                        <th className="text-left px-5 py-4 text-xs font-semibold uppercase text-gray-500">Статус</th>
+                        <th className="text-left px-5 py-4 text-xs font-semibold uppercase text-gray-500">Создан</th>
+                        <th className="text-left px-5 py-4 text-xs font-semibold uppercase text-gray-500">Изменён</th>
+                        <th className="text-right px-5 py-4 text-xs font-semibold uppercase text-gray-500">Действия</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {suppliers.map((supplier) => (
+                        <tr key={supplier.id} className="border-b border-gray-100 last:border-b-0">
+                          <td className="px-5 py-4 text-sm font-semibold text-graphite-900">{supplier.name}</td>
+                          <td className="px-5 py-4 text-sm font-mono text-gray-600">{supplier.internal_code}</td>
+                          <td className="px-5 py-4">
+                            <span className={`inline-flex px-2.5 py-1 rounded-full border text-xs ${
+                              supplier.is_active
+                                ? 'bg-green-50 text-green-700 border-green-200'
+                                : 'bg-gray-50 text-gray-600 border-gray-200'
+                            }`}>
+                              {supplier.is_active ? 'Активен' : 'Неактивен'}
+                            </span>
+                          </td>
+                          <td className="px-5 py-4 text-sm text-gray-500">{formatDate(supplier.created_at)}</td>
+                          <td className="px-5 py-4 text-sm text-gray-500">{formatDate(supplier.updated_at)}</td>
+                          <td className="px-5 py-4">
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openEditSupplier(supplier)}
+                                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition"
+                              >
+                                <Pencil className="w-4 h-4" />
+                                Изменить
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSupplierActive(supplier)}
+                                disabled={togglingSupplierId === supplier.id}
+                                className={`px-3 py-2 rounded-lg border text-sm transition disabled:opacity-50 ${
+                                  supplier.is_active
+                                    ? 'border-red-200 text-red-600 hover:bg-red-50'
+                                    : 'border-green-200 text-green-700 hover:bg-green-50'
+                                }`}
+                              >
+                                {supplier.is_active ? 'Отключить' : 'Включить'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
                       ))}
                     </tbody>
                   </table>
