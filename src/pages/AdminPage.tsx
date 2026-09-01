@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   LogOut,
   RefreshCw,
@@ -84,6 +84,36 @@ type Supplier = {
   updated_at: string;
 };
 
+type SupplierImportMappingKey =
+  | 'supplier_sku'
+  | 'product_name'
+  | 'purchase_price'
+  | 'currency_code'
+  | 'availability'
+  | 'arrival_info'
+  | 'model'
+  | 'assembly_country'
+  | 'market_region'
+  | 'certification_supply_type';
+
+type SupplierImportProfile = {
+  id: number;
+  supplier_id: number;
+  name: string;
+  sheet_name: string | null;
+  header_row_number: number;
+  column_mapping: Partial<Record<SupplierImportMappingKey, string>>;
+  parser_options: {
+    trim_values?: boolean;
+    skip_empty_rows?: boolean;
+    decimal_separator?: '.' | ',';
+    default_currency_code?: string | null;
+  };
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 const MANAGER_API = '/manager.php';
 const PRODUCTS_API = '/products.php';
 
@@ -93,7 +123,10 @@ async function parseSupplierResponse(response: Response) {
   try {
     return JSON.parse(responseText);
   } catch {
-    throw new Error('Сервер вернул некорректный ответ');
+    return {
+      success: false,
+      message: 'Сервер вернул некорректный ответ',
+    };
   }
 }
 
@@ -191,6 +224,34 @@ const emptySupplierForm = {
   is_active: true,
 };
 
+const supplierImportMappingFields: Array<{
+  key: SupplierImportMappingKey;
+  label: string;
+}> = [
+  { key: 'supplier_sku', label: 'Артикул поставщика' },
+  { key: 'product_name', label: 'Название товара' },
+  { key: 'purchase_price', label: 'Закупочная цена' },
+  { key: 'currency_code', label: 'Код валюты' },
+  { key: 'availability', label: 'Наличие / остаток' },
+  { key: 'arrival_info', label: 'Информация о поступлении' },
+  { key: 'model', label: 'Модель' },
+  { key: 'assembly_country', label: 'Страна сборки' },
+  { key: 'market_region', label: 'Регион рынка' },
+  { key: 'certification_supply_type', label: 'Тип сертификации / поставки' },
+];
+
+const emptySupplierImportProfileForm = {
+  name: '',
+  sheet_name: '',
+  header_row_number: '1',
+  column_mapping: {} as Partial<Record<SupplierImportMappingKey, string>>,
+  trim_values: true,
+  skip_empty_rows: true,
+  decimal_separator: '.' as '.' | ',',
+  default_currency_code: 'RUB',
+  is_active: true,
+};
+
 export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState(false);
   const [csrfToken, setCsrfToken] = useState<string | null>(null);
@@ -235,6 +296,18 @@ export default function AdminPage() {
   const [supplierForm, setSupplierForm] = useState(emptySupplierForm);
   const [savingSupplier, setSavingSupplier] = useState(false);
   const [togglingSupplierId, setTogglingSupplierId] = useState<number | null>(null);
+  const [profileSupplier, setProfileSupplier] = useState<Supplier | null>(null);
+  const [supplierImportProfiles, setSupplierImportProfiles] = useState<SupplierImportProfile[]>([]);
+  const [supplierImportProfilesLoading, setSupplierImportProfilesLoading] = useState(false);
+  const [supplierImportProfilesError, setSupplierImportProfilesError] = useState('');
+  const [supplierImportProfilesSuccess, setSupplierImportProfilesSuccess] = useState('');
+  const [showSupplierImportProfileForm, setShowSupplierImportProfileForm] = useState(false);
+  const [editingSupplierImportProfileId, setEditingSupplierImportProfileId] = useState<number | null>(null);
+  const [supplierImportProfileForm, setSupplierImportProfileForm] = useState(emptySupplierImportProfileForm);
+  const [savingSupplierImportProfile, setSavingSupplierImportProfile] = useState(false);
+  const [togglingSupplierImportProfileId, setTogglingSupplierImportProfileId] = useState<number | null>(null);
+  const profileSupplierIdRef = useRef<number | null>(null);
+  const supplierImportProfileWritePendingRef = useRef(false);
 
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -411,7 +484,17 @@ const login = async (e: React.FormEvent) => {
         throw new Error(data.message || 'Не удалось загрузить поставщиков');
       }
 
-      setSuppliers(Array.isArray(data.suppliers) ? data.suppliers : []);
+      const loadedSuppliers = Array.isArray(data.suppliers)
+        ? data.suppliers
+        : [];
+      setSuppliers(loadedSuppliers);
+      setProfileSupplier((current) =>
+        current
+          ? loadedSuppliers.find(
+              (supplier: Supplier) => supplier.id === current.id
+            ) || null
+          : null
+      );
     } catch (err) {
       setSuppliersError(
         err instanceof Error ? err.message : 'Не удалось загрузить поставщиков'
@@ -442,6 +525,10 @@ const login = async (e: React.FormEvent) => {
       setSuppliers([]);
       setShowProductForm(false);
       setShowSupplierForm(false);
+      profileSupplierIdRef.current = null;
+      setProfileSupplier(null);
+      setSupplierImportProfiles([]);
+      setShowSupplierImportProfileForm(false);
     }
   };
 
@@ -625,6 +712,273 @@ const login = async (e: React.FormEvent) => {
       );
     } finally {
       setTogglingSupplierId(null);
+    }
+  };
+
+  const loadSupplierImportProfiles = async (supplier: Supplier) => {
+    setSupplierImportProfilesLoading(true);
+    setSupplierImportProfilesError('');
+
+    try {
+      const response = await fetch(
+        `${MANAGER_API}?action=supplier_import_profiles_list&supplier_id=${supplier.id}`,
+        {
+          method: 'GET',
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+        }
+      );
+      const data = await parseSupplierResponse(response);
+
+      if (!response.ok || !data.success) {
+        if (response.status === 401 || response.status === 403) {
+          setAuthenticated(false);
+          setCsrfToken(null);
+        }
+
+        throw new Error(data.message || 'Не удалось загрузить профили импорта');
+      }
+
+      if (profileSupplierIdRef.current === supplier.id) {
+        setSupplierImportProfiles(
+          Array.isArray(data.profiles) ? data.profiles : []
+        );
+      }
+    } catch (err) {
+      if (profileSupplierIdRef.current === supplier.id) {
+        setSupplierImportProfilesError(
+          err instanceof Error
+            ? err.message
+            : 'Не удалось загрузить профили импорта'
+        );
+      }
+    } finally {
+      if (profileSupplierIdRef.current === supplier.id) {
+        setSupplierImportProfilesLoading(false);
+      }
+    }
+  };
+
+  const openSupplierImportProfiles = (supplier: Supplier) => {
+    profileSupplierIdRef.current = supplier.id;
+    setProfileSupplier(supplier);
+    setSupplierImportProfiles([]);
+    setSupplierImportProfilesError('');
+    setSupplierImportProfilesSuccess('');
+    setShowSupplierImportProfileForm(false);
+    setEditingSupplierImportProfileId(null);
+    setSupplierImportProfileForm(emptySupplierImportProfileForm);
+    loadSupplierImportProfiles(supplier);
+  };
+
+  const closeSupplierImportProfiles = () => {
+    profileSupplierIdRef.current = null;
+    setProfileSupplier(null);
+    setSupplierImportProfiles([]);
+    setSupplierImportProfilesError('');
+    setSupplierImportProfilesSuccess('');
+    setShowSupplierImportProfileForm(false);
+    setEditingSupplierImportProfileId(null);
+    setSupplierImportProfileForm(emptySupplierImportProfileForm);
+  };
+
+  const openAddSupplierImportProfile = () => {
+    setEditingSupplierImportProfileId(null);
+    setSupplierImportProfileForm(emptySupplierImportProfileForm);
+    setSupplierImportProfilesError('');
+    setSupplierImportProfilesSuccess('');
+    setShowSupplierImportProfileForm(true);
+  };
+
+  const openEditSupplierImportProfile = (profile: SupplierImportProfile) => {
+    setEditingSupplierImportProfileId(profile.id);
+    setSupplierImportProfileForm({
+      name: profile.name,
+      sheet_name: profile.sheet_name || '',
+      header_row_number: String(profile.header_row_number),
+      column_mapping: { ...profile.column_mapping },
+      trim_values: profile.parser_options.trim_values ?? true,
+      skip_empty_rows: profile.parser_options.skip_empty_rows ?? true,
+      decimal_separator: profile.parser_options.decimal_separator ?? '.',
+      default_currency_code:
+        profile.parser_options.default_currency_code || '',
+      is_active: profile.is_active,
+    });
+    setSupplierImportProfilesError('');
+    setSupplierImportProfilesSuccess('');
+    setShowSupplierImportProfileForm(true);
+  };
+
+  const closeSupplierImportProfileForm = () => {
+    setShowSupplierImportProfileForm(false);
+    setEditingSupplierImportProfileId(null);
+    setSupplierImportProfileForm(emptySupplierImportProfileForm);
+  };
+
+  const saveSupplierImportProfile = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!profileSupplier || supplierImportProfileWritePendingRef.current) {
+      return;
+    }
+
+    const name = supplierImportProfileForm.name.trim();
+    const headerRowValue = supplierImportProfileForm.header_row_number.trim();
+
+    if (!name) {
+      setSupplierImportProfilesError('Введите название профиля');
+      return;
+    }
+
+    if (!/^\d+$/.test(headerRowValue)) {
+      setSupplierImportProfilesError(
+        'Номер строки заголовков должен быть целым числом от 0'
+      );
+      return;
+    }
+
+    const headerRowNumber = Number(headerRowValue);
+    if (!Number.isSafeInteger(headerRowNumber) || headerRowNumber > 1048576) {
+      setSupplierImportProfilesError(
+        'Номер строки заголовков должен быть от 0 до 1048576'
+      );
+      return;
+    }
+
+    const columnMapping = Object.fromEntries(
+      supplierImportMappingFields.flatMap(({ key }) => {
+        const value = supplierImportProfileForm.column_mapping[key]?.trim();
+        return value ? [[key, value]] : [];
+      })
+    );
+    const currencyCode = supplierImportProfileForm.default_currency_code
+      .trim()
+      .toUpperCase();
+
+    supplierImportProfileWritePendingRef.current = true;
+    setSavingSupplierImportProfile(true);
+    setSupplierImportProfilesError('');
+    setSupplierImportProfilesSuccess('');
+
+    try {
+      const action = editingSupplierImportProfileId
+        ? 'supplier_import_profile_update'
+        : 'supplier_import_profile_create';
+      const response = await fetch(MANAGER_API, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken || '',
+        },
+        body: JSON.stringify({
+          action,
+          ...(editingSupplierImportProfileId
+            ? { id: editingSupplierImportProfileId }
+            : {}),
+          supplier_id: profileSupplier.id,
+          name,
+          sheet_name: supplierImportProfileForm.sheet_name.trim() || null,
+          header_row_number: headerRowNumber,
+          column_mapping: columnMapping,
+          parser_options: {
+            trim_values: supplierImportProfileForm.trim_values,
+            skip_empty_rows: supplierImportProfileForm.skip_empty_rows,
+            decimal_separator: supplierImportProfileForm.decimal_separator,
+            default_currency_code: currencyCode || null,
+          },
+          is_active: supplierImportProfileForm.is_active,
+        }),
+      });
+      const data = await parseSupplierResponse(response);
+
+      if (!response.ok || !data.success) {
+        if (response.status === 401 || response.status === 403) {
+          setAuthenticated(false);
+          setCsrfToken(null);
+        }
+
+        throw new Error(data.message || 'Не удалось сохранить профиль импорта');
+      }
+
+      closeSupplierImportProfileForm();
+      setSupplierImportProfilesSuccess(
+        data.message || 'Профиль импорта сохранён'
+      );
+      await loadSupplierImportProfiles(profileSupplier);
+    } catch (err) {
+      setSupplierImportProfilesError(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось сохранить профиль импорта'
+      );
+    } finally {
+      supplierImportProfileWritePendingRef.current = false;
+      setSavingSupplierImportProfile(false);
+    }
+  };
+
+  const setSupplierImportProfileActive = async (
+    profile: SupplierImportProfile
+  ) => {
+    if (!profileSupplier || supplierImportProfileWritePendingRef.current) {
+      return;
+    }
+
+    const nextActive = !profile.is_active;
+    if (
+      !nextActive &&
+      !window.confirm(`Отключить профиль импорта «${profile.name}»?`)
+    ) {
+      return;
+    }
+
+    supplierImportProfileWritePendingRef.current = true;
+    setTogglingSupplierImportProfileId(profile.id);
+    setSupplierImportProfilesError('');
+    setSupplierImportProfilesSuccess('');
+
+    try {
+      const response = await fetch(MANAGER_API, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken || '',
+        },
+        body: JSON.stringify({
+          action: 'supplier_import_profile_set_active',
+          id: profile.id,
+          supplier_id: profileSupplier.id,
+          is_active: nextActive,
+        }),
+      });
+      const data = await parseSupplierResponse(response);
+
+      if (!response.ok || !data.success) {
+        if (response.status === 401 || response.status === 403) {
+          setAuthenticated(false);
+          setCsrfToken(null);
+        }
+
+        throw new Error(
+          data.message || 'Не удалось изменить статус профиля импорта'
+        );
+      }
+
+      setSupplierImportProfilesSuccess(
+        data.message || 'Статус профиля импорта изменён'
+      );
+      await loadSupplierImportProfiles(profileSupplier);
+    } catch (err) {
+      setSupplierImportProfilesError(
+        err instanceof Error
+          ? err.message
+          : 'Не удалось изменить статус профиля импорта'
+      );
+    } finally {
+      supplierImportProfileWritePendingRef.current = false;
+      setTogglingSupplierImportProfileId(null);
     }
   };
 
@@ -2353,6 +2707,13 @@ const toggleProductStatus = async (product: AdminProduct) => {
                             <div className="flex justify-end gap-2">
                               <button
                                 type="button"
+                                onClick={() => openSupplierImportProfiles(supplier)}
+                                className="px-3 py-2 rounded-lg border border-accent-200 text-accent-600 hover:bg-accent-50 transition text-sm"
+                              >
+                                Профили импорта
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => openEditSupplier(supplier)}
                                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition"
                               >
@@ -2379,6 +2740,350 @@ const toggleProductStatus = async (product: AdminProduct) => {
                   </table>
                 </div>
               </div>
+            )}
+
+            {profileSupplier && (
+              <section className="mt-6 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-wide text-accent-600">
+                      Профили импорта
+                    </div>
+                    <h3 className="text-lg font-semibold text-graphite-900 mt-1">
+                      {profileSupplier.name}
+                    </h3>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Настройка структуры будущего файла без загрузки и обработки данных.
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={openAddSupplierImportProfile}
+                      disabled={savingSupplierImportProfile}
+                      className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent-500 text-white font-semibold hover:bg-accent-600 transition disabled:opacity-50"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Добавить профиль
+                    </button>
+                    <button
+                      type="button"
+                      onClick={closeSupplierImportProfiles}
+                      disabled={savingSupplierImportProfile}
+                      className="p-2.5 rounded-xl border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-50"
+                      aria-label="Закрыть профили импорта"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {supplierImportProfilesError && (
+                  <div className="mb-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                    {supplierImportProfilesError}
+                  </div>
+                )}
+                {supplierImportProfilesSuccess && (
+                  <div className="mb-5 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                    {supplierImportProfilesSuccess}
+                  </div>
+                )}
+
+                {showSupplierImportProfileForm && (
+                  <form
+                    onSubmit={saveSupplierImportProfile}
+                    className="mb-6 rounded-2xl border border-gray-200 bg-gray-50 p-5"
+                  >
+                    <div className="flex items-center justify-between gap-4 mb-5">
+                      <div>
+                        <h4 className="font-semibold text-graphite-900">
+                          {editingSupplierImportProfileId
+                            ? 'Редактирование профиля'
+                            : 'Новый профиль импорта'}
+                        </h4>
+                        <p className="text-sm text-gray-500 mt-1">
+                          Укажите названия или буквенные обозначения колонок будущего листа.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={closeSupplierImportProfileForm}
+                        disabled={savingSupplierImportProfile}
+                        className="p-2 rounded-lg text-gray-500 hover:bg-white disabled:opacity-50"
+                        aria-label="Закрыть форму профиля"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-2">Название профиля</label>
+                        <input
+                          type="text"
+                          value={supplierImportProfileForm.name}
+                          onChange={(event) =>
+                            setSupplierImportProfileForm((current) => ({
+                              ...current,
+                              name: event.target.value,
+                            }))
+                          }
+                          maxLength={255}
+                          required
+                          className="admin-input"
+                          placeholder="Основной прайс-лист"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-2">Название листа</label>
+                        <input
+                          type="text"
+                          value={supplierImportProfileForm.sheet_name}
+                          onChange={(event) =>
+                            setSupplierImportProfileForm((current) => ({
+                              ...current,
+                              sheet_name: event.target.value,
+                            }))
+                          }
+                          maxLength={255}
+                          className="admin-input"
+                          placeholder="Пусто — первый лист"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-2">Строка заголовков</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="1048576"
+                          step="1"
+                          value={supplierImportProfileForm.header_row_number}
+                          onChange={(event) =>
+                            setSupplierImportProfileForm((current) => ({
+                              ...current,
+                              header_row_number: event.target.value,
+                            }))
+                          }
+                          required
+                          className="admin-input"
+                        />
+                        <div className="text-xs text-gray-500 mt-1">0 — заголовков нет</div>
+                      </div>
+                    </div>
+
+                    <div className="mt-6">
+                      <h5 className="text-sm font-semibold text-graphite-900 mb-3">Карта колонок</h5>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {supplierImportMappingFields.map(({ key, label }) => (
+                          <div key={key}>
+                            <label className="block text-sm text-gray-600 mb-2">{label}</label>
+                            <input
+                              type="text"
+                              value={supplierImportProfileForm.column_mapping[key] || ''}
+                              onChange={(event) =>
+                                setSupplierImportProfileForm((current) => ({
+                                  ...current,
+                                  column_mapping: {
+                                    ...current.column_mapping,
+                                    [key]: event.target.value,
+                                  },
+                                }))
+                              }
+                              maxLength={50}
+                              className="admin-input"
+                              placeholder="Например: A или Артикул"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-2">Разделитель дробной части</label>
+                        <select
+                          value={supplierImportProfileForm.decimal_separator}
+                          onChange={(event) =>
+                            setSupplierImportProfileForm((current) => ({
+                              ...current,
+                              decimal_separator: event.target.value as '.' | ',',
+                            }))
+                          }
+                          className="admin-input"
+                        >
+                          <option value=".">Точка</option>
+                          <option value=",">Запятая</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-2">Валюта по умолчанию</label>
+                        <input
+                          type="text"
+                          value={supplierImportProfileForm.default_currency_code}
+                          onChange={(event) =>
+                            setSupplierImportProfileForm((current) => ({
+                              ...current,
+                              default_currency_code: event.target.value.toUpperCase(),
+                            }))
+                          }
+                          minLength={3}
+                          maxLength={3}
+                          pattern="[A-Za-z]{3}"
+                          className="admin-input"
+                          placeholder="RUB"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-5 mt-5 text-sm text-gray-700">
+                      <label className="inline-flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={supplierImportProfileForm.trim_values}
+                          onChange={(event) =>
+                            setSupplierImportProfileForm((current) => ({
+                              ...current,
+                              trim_values: event.target.checked,
+                            }))
+                          }
+                        />
+                        Убирать пробелы по краям значений
+                      </label>
+                      <label className="inline-flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={supplierImportProfileForm.skip_empty_rows}
+                          onChange={(event) =>
+                            setSupplierImportProfileForm((current) => ({
+                              ...current,
+                              skip_empty_rows: event.target.checked,
+                            }))
+                          }
+                        />
+                        Пропускать пустые строки
+                      </label>
+                      <label className="inline-flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={supplierImportProfileForm.is_active}
+                          onChange={(event) =>
+                            setSupplierImportProfileForm((current) => ({
+                              ...current,
+                              is_active: event.target.checked,
+                            }))
+                          }
+                        />
+                        Профиль активен
+                      </label>
+                    </div>
+
+                    <div className="flex justify-end gap-3 mt-6">
+                      <button
+                        type="button"
+                        onClick={closeSupplierImportProfileForm}
+                        disabled={savingSupplierImportProfile}
+                        className="px-5 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        Отмена
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={savingSupplierImportProfile}
+                        className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent-500 text-white font-semibold hover:bg-accent-600 disabled:opacity-50"
+                      >
+                        <Save className="w-4 h-4" />
+                        {savingSupplierImportProfile ? 'Сохранение...' : 'Сохранить профиль'}
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {supplierImportProfilesLoading ? (
+                  <div className="py-10 text-center text-gray-500">Загрузка профилей...</div>
+                ) : supplierImportProfiles.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-500">
+                    У поставщика пока нет профилей импорта.
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-xl border border-gray-200">
+                    <table className="w-full min-w-[900px]">
+                      <thead className="bg-gray-50 border-b border-gray-200">
+                        <tr>
+                          <th className="text-left px-4 py-3 text-xs font-semibold uppercase text-gray-500">Профиль</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold uppercase text-gray-500">Лист / заголовки</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold uppercase text-gray-500">Mapping</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold uppercase text-gray-500">Статус</th>
+                          <th className="text-left px-4 py-3 text-xs font-semibold uppercase text-gray-500">Изменён</th>
+                          <th className="text-right px-4 py-3 text-xs font-semibold uppercase text-gray-500">Действия</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {supplierImportProfiles.map((profile) => {
+                          const mappedFields = supplierImportMappingFields.filter(
+                            ({ key }) => Boolean(profile.column_mapping[key])
+                          );
+
+                          return (
+                            <tr key={profile.id} className="border-b border-gray-100 last:border-b-0">
+                              <td className="px-4 py-4">
+                                <div className="font-semibold text-graphite-900">{profile.name}</div>
+                                <div className="text-xs text-gray-500 mt-1">Создан: {formatDate(profile.created_at)}</div>
+                              </td>
+                              <td className="px-4 py-4 text-sm text-gray-600">
+                                <div>{profile.sheet_name || 'Первый лист'}</div>
+                                <div className="text-xs text-gray-500 mt-1">Строка: {profile.header_row_number}</div>
+                              </td>
+                              <td className="px-4 py-4 text-sm text-gray-600">
+                                {mappedFields.length > 0
+                                  ? `${mappedFields.length} полей: ${mappedFields
+                                      .slice(0, 3)
+                                      .map(({ label }) => label)
+                                      .join(', ')}${mappedFields.length > 3 ? '…' : ''}`
+                                  : 'Колонки не заданы'}
+                              </td>
+                              <td className="px-4 py-4">
+                                <span className={`inline-flex px-2.5 py-1 rounded-full border text-xs ${
+                                  profile.is_active
+                                    ? 'bg-green-50 text-green-700 border-green-200'
+                                    : 'bg-gray-50 text-gray-600 border-gray-200'
+                                }`}>
+                                  {profile.is_active ? 'Активен' : 'Неактивен'}
+                                </span>
+                              </td>
+                              <td className="px-4 py-4 text-sm text-gray-500">{formatDate(profile.updated_at)}</td>
+                              <td className="px-4 py-4">
+                                <div className="flex justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => openEditSupplierImportProfile(profile)}
+                                    disabled={savingSupplierImportProfile}
+                                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                    Изменить
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSupplierImportProfileActive(profile)}
+                                    disabled={togglingSupplierImportProfileId === profile.id}
+                                    className={`px-3 py-2 rounded-lg border text-sm disabled:opacity-50 ${
+                                      profile.is_active
+                                        ? 'border-red-200 text-red-600 hover:bg-red-50'
+                                        : 'border-green-200 text-green-700 hover:bg-green-50'
+                                    }`}
+                                  >
+                                    {profile.is_active ? 'Отключить' : 'Включить'}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
             )}
           </>
         )}

@@ -200,7 +200,48 @@ function processAdminLoginAttempt(
     }
 }
 
-$data = json_decode(file_get_contents('php://input'), true);
+$maxManagerRequestBytes = 16384;
+$declaredContentLength = $_SERVER['CONTENT_LENGTH'] ?? null;
+
+if (
+    is_string($declaredContentLength) &&
+    ctype_digit($declaredContentLength) &&
+    (int)$declaredContentLength > $maxManagerRequestBytes
+) {
+    http_response_code(413);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Данные запроса слишком велики'
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$rawRequestBody = file_get_contents(
+    'php://input',
+    false,
+    null,
+    0,
+    $maxManagerRequestBytes + 1
+);
+
+if ($rawRequestBody === false || strlen($rawRequestBody) > $maxManagerRequestBytes) {
+    http_response_code($rawRequestBody === false ? 400 : 413);
+    echo json_encode([
+        'success' => false,
+        'message' => $rawRequestBody === false
+            ? 'Не удалось прочитать данные запроса'
+            : 'Данные запроса слишком велики'
+    ], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+$data = $rawRequestBody === '' ? [] : json_decode($rawRequestBody, true);
+$requestJsonIsValid = is_array($data) && json_last_error() === JSON_ERROR_NONE;
+
+if (!is_array($data)) {
+    $data = [];
+}
+
 $action = $data['action'] ?? $_GET['action'] ?? '';
 
 /*
@@ -386,7 +427,10 @@ $csrfProtectedActions = [
     'update_status',
     'supplier_create',
     'supplier_update',
-    'supplier_set_active'
+    'supplier_set_active',
+    'supplier_import_profile_create',
+    'supplier_import_profile_update',
+    'supplier_import_profile_set_active'
 ];
 
 if (in_array($action, $csrfProtectedActions, true)) {
@@ -539,6 +583,365 @@ function prepareSupplierForResponse(array $supplier): array
         'is_active' => (bool)$supplier['is_active'],
         'created_at' => (string)$supplier['created_at'],
         'updated_at' => (string)$supplier['updated_at']
+    ];
+}
+
+function requireSupplierImportProfileId(array $data): int
+{
+    $rawId = $data['id'] ?? null;
+
+    if (
+        !is_int($rawId) &&
+        (!is_string($rawId) || preg_match('/\A[1-9][0-9]*\z/D', $rawId) !== 1)
+    ) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Некорректный идентификатор профиля импорта'
+        ]);
+    }
+
+    $id = filter_var($rawId, FILTER_VALIDATE_INT, [
+        'options' => ['min_range' => 1]
+    ]);
+
+    if ($id === false) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Некорректный идентификатор профиля импорта'
+        ]);
+    }
+
+    return (int)$id;
+}
+
+function requireSupplierImportProfileJsonRequest(
+    bool $requestJsonIsValid,
+    string $rawRequestBody
+): void {
+    if (!$requestJsonIsValid) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Тело запроса должно содержать корректный JSON-объект'
+        ]);
+    }
+
+    if (strlen($rawRequestBody) > 16384) {
+        sendManagerJson(413, [
+            'success' => false,
+            'message' => 'Данные профиля слишком велики'
+        ]);
+    }
+}
+
+function requireOnlyPayloadKeys(array $data, array $allowedKeys): void
+{
+    foreach (array_keys($data) as $key) {
+        if (!is_string($key) || !in_array($key, $allowedKeys, true)) {
+            sendManagerJson(400, [
+                'success' => false,
+                'message' => 'Запрос содержит неподдерживаемые поля'
+            ]);
+        }
+    }
+}
+
+function requireSupplierImportProfileSupplierId(array $data): int
+{
+    return requireSupplierId(['id' => $data['supplier_id'] ?? null]);
+}
+
+function supplierImportProfileStringLength(string $value): int
+{
+    if (function_exists('mb_strlen')) {
+        return mb_strlen($value, 'UTF-8');
+    }
+
+    $characterCount = preg_match_all('/./us', $value, $matches);
+
+    return $characterCount === false ? PHP_INT_MAX : $characterCount;
+}
+
+function validateSupplierImportProfileInput(array $data): array
+{
+    $allowedPayloadKeys = [
+        'action',
+        'id',
+        'supplier_id',
+        'name',
+        'sheet_name',
+        'header_row_number',
+        'column_mapping',
+        'parser_options',
+        'is_active'
+    ];
+
+    requireOnlyPayloadKeys($data, $allowedPayloadKeys);
+
+    $encodedPayload = json_encode($data, JSON_UNESCAPED_UNICODE);
+    if ($encodedPayload === false || strlen($encodedPayload) > 16384) {
+        sendManagerJson(413, [
+            'success' => false,
+            'message' => 'Данные профиля слишком велики'
+        ]);
+    }
+
+    $nameValue = $data['name'] ?? null;
+    if (!is_string($nameValue)) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Введите корректное название профиля'
+        ]);
+    }
+
+    $name = trim($nameValue);
+    if ($name === '' || supplierImportProfileStringLength($name) > 255) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Название профиля обязательно и не должно превышать 255 символов'
+        ]);
+    }
+
+    $sheetNameValue = $data['sheet_name'] ?? null;
+    if ($sheetNameValue !== null && !is_string($sheetNameValue)) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Введите корректное название листа'
+        ]);
+    }
+
+    $sheetName = is_string($sheetNameValue) ? trim($sheetNameValue) : '';
+    if (
+        supplierImportProfileStringLength($sheetName) > 255 ||
+        preg_match('/[\\\/\x00-\x1F\x7F]/u', $sheetName) === 1
+    ) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Название листа не должно быть путём, содержать управляющие знаки или превышать 255 символов'
+        ]);
+    }
+
+    $headerRowNumber = $data['header_row_number'] ?? null;
+    if (!is_int($headerRowNumber) || $headerRowNumber < 0 || $headerRowNumber > 1048576) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Номер строки заголовков должен быть целым числом от 0 до 1048576'
+        ]);
+    }
+
+    $mappingValue = $data['column_mapping'] ?? null;
+    if (!is_array($mappingValue) || ($mappingValue !== [] && array_is_list($mappingValue))) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Некорректная карта колонок'
+        ]);
+    }
+
+    $allowedMappingKeys = [
+        'supplier_sku',
+        'product_name',
+        'purchase_price',
+        'currency_code',
+        'availability',
+        'arrival_info',
+        'model',
+        'assembly_country',
+        'market_region',
+        'certification_supply_type'
+    ];
+    $columnMapping = [];
+
+    foreach ($mappingValue as $key => $value) {
+        if (!is_string($key) || !in_array($key, $allowedMappingKeys, true)) {
+            sendManagerJson(400, [
+                'success' => false,
+                'message' => 'Карта колонок содержит неподдерживаемый ключ'
+            ]);
+        }
+
+        if (!is_string($value)) {
+            sendManagerJson(400, [
+                'success' => false,
+                'message' => 'Названия колонок должны быть строками'
+            ]);
+        }
+
+        $columnName = trim($value);
+        if (
+            $columnName === '' ||
+            supplierImportProfileStringLength($columnName) > 50 ||
+            preg_match('/[\x00-\x1F\x7F]/u', $columnName) === 1
+        ) {
+            sendManagerJson(400, [
+                'success' => false,
+                'message' => 'Название колонки должно содержать от 1 до 50 символов без управляющих знаков'
+            ]);
+        }
+
+        $columnMapping[$key] = $columnName;
+    }
+
+    $parserOptionsValue = $data['parser_options'] ?? null;
+    if (!is_array($parserOptionsValue) || ($parserOptionsValue !== [] && array_is_list($parserOptionsValue))) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Некорректные настройки парсера'
+        ]);
+    }
+
+    $allowedParserOptionKeys = [
+        'trim_values',
+        'skip_empty_rows',
+        'decimal_separator',
+        'default_currency_code'
+    ];
+
+    foreach (array_keys($parserOptionsValue) as $key) {
+        if (!is_string($key) || !in_array($key, $allowedParserOptionKeys, true)) {
+            sendManagerJson(400, [
+                'success' => false,
+                'message' => 'Настройки парсера содержат неподдерживаемый ключ'
+            ]);
+        }
+    }
+
+    $trimValues = $parserOptionsValue['trim_values'] ?? true;
+    $skipEmptyRows = $parserOptionsValue['skip_empty_rows'] ?? true;
+    $decimalSeparator = $parserOptionsValue['decimal_separator'] ?? '.';
+    $defaultCurrencyCode = $parserOptionsValue['default_currency_code'] ?? null;
+
+    if (!is_bool($trimValues) || !is_bool($skipEmptyRows)) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Флаги настроек парсера должны быть логическими значениями'
+        ]);
+    }
+
+    if (!is_string($decimalSeparator) || !in_array($decimalSeparator, ['.', ','], true)) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Разделитель дробной части должен быть точкой или запятой'
+        ]);
+    }
+
+    if ($defaultCurrencyCode !== null) {
+        if (!is_string($defaultCurrencyCode)) {
+            sendManagerJson(400, [
+                'success' => false,
+                'message' => 'Некорректный код валюты'
+            ]);
+        }
+
+        $defaultCurrencyCode = strtoupper(trim($defaultCurrencyCode));
+        if (preg_match('/\A[A-Z]{3}\z/D', $defaultCurrencyCode) !== 1) {
+            sendManagerJson(400, [
+                'success' => false,
+                'message' => 'Код валюты должен состоять из трёх латинских букв'
+            ]);
+        }
+    }
+
+    $parserOptions = [
+        'trim_values' => $trimValues,
+        'skip_empty_rows' => $skipEmptyRows,
+        'decimal_separator' => $decimalSeparator,
+        'default_currency_code' => $defaultCurrencyCode
+    ];
+
+    return [
+        'name' => $name,
+        'sheet_name' => $sheetName === '' ? null : $sheetName,
+        'header_row_number' => $headerRowNumber,
+        'column_mapping' => $columnMapping,
+        'parser_options' => $parserOptions,
+        'is_active' => requireSupplierActiveValue($data),
+        'sku_column' => $columnMapping['supplier_sku'] ?? null,
+        'product_name_column' => $columnMapping['product_name'] ?? null,
+        'purchase_price_column' => $columnMapping['purchase_price'] ?? null,
+        'stock_column' => $columnMapping['availability'] ?? null,
+        'arrival_column' => $columnMapping['arrival_info'] ?? null,
+        'variant_region_column' => $columnMapping['market_region'] ?? null
+    ];
+}
+
+function requireSupplierExists(PDO $pdo, int $supplierId): void
+{
+    $stmt = $pdo->prepare('SELECT id FROM suppliers WHERE id = :id');
+    $stmt->execute([':id' => $supplierId]);
+
+    if (!$stmt->fetch()) {
+        sendManagerJson(404, [
+            'success' => false,
+            'message' => 'Поставщик не найден'
+        ]);
+    }
+}
+
+function prepareSupplierImportProfileForResponse(array $profile): array
+{
+    $columnMapping = json_decode((string)($profile['column_mapping'] ?? ''), true);
+    $parserOptions = json_decode((string)($profile['parser_options'] ?? ''), true);
+
+    if (!is_array($columnMapping)) {
+        $columnMapping = [];
+    }
+
+    $legacyMapping = [
+        'supplier_sku' => $profile['sku_column'] ?? null,
+        'product_name' => $profile['product_name_column'] ?? null,
+        'purchase_price' => $profile['purchase_price_column'] ?? null,
+        'availability' => $profile['stock_column'] ?? null,
+        'arrival_info' => $profile['arrival_column'] ?? null,
+        'market_region' => $profile['variant_region_column'] ?? null
+    ];
+
+    foreach ($legacyMapping as $key => $value) {
+        if (!isset($columnMapping[$key]) && is_string($value) && $value !== '') {
+            $columnMapping[$key] = $value;
+        }
+    }
+
+    $safeColumnMapping = [];
+    $allowedMappingKeys = [
+        'supplier_sku', 'product_name', 'purchase_price', 'currency_code',
+        'availability', 'arrival_info', 'model', 'assembly_country',
+        'market_region', 'certification_supply_type'
+    ];
+
+    foreach ($allowedMappingKeys as $key) {
+        $value = $columnMapping[$key] ?? null;
+        if (is_string($value)) {
+            $safeColumnMapping[$key] = $value;
+        }
+    }
+
+    $safeParserOptions = [];
+    if (is_array($parserOptions)) {
+        foreach (['trim_values', 'skip_empty_rows'] as $key) {
+            if (isset($parserOptions[$key]) && is_bool($parserOptions[$key])) {
+                $safeParserOptions[$key] = $parserOptions[$key];
+            }
+        }
+
+        if (isset($parserOptions['decimal_separator']) && in_array($parserOptions['decimal_separator'], ['.', ','], true)) {
+            $safeParserOptions['decimal_separator'] = $parserOptions['decimal_separator'];
+        }
+
+        if (isset($parserOptions['default_currency_code']) && is_string($parserOptions['default_currency_code'])) {
+            $safeParserOptions['default_currency_code'] = $parserOptions['default_currency_code'];
+        }
+    }
+
+    return [
+        'id' => (int)$profile['id'],
+        'supplier_id' => (int)$profile['supplier_id'],
+        'name' => (string)$profile['name'],
+        'sheet_name' => $profile['sheet_name'] === null ? null : (string)$profile['sheet_name'],
+        'header_row_number' => (int)$profile['header_row_number'],
+        'column_mapping' => $safeColumnMapping,
+        'parser_options' => $safeParserOptions,
+        'is_active' => (bool)$profile['is_active'],
+        'created_at' => (string)$profile['created_at'],
+        'updated_at' => (string)$profile['updated_at']
     ];
 }
 
@@ -710,6 +1113,241 @@ if ($action === 'supplier_set_active') {
         sendManagerJson(500, [
             'success' => false,
             'message' => 'Не удалось изменить статус поставщика'
+        ]);
+    }
+}
+
+if ($action === 'supplier_import_profiles_list') {
+    requireManagerMethod('GET');
+    $supplierId = requireSupplierImportProfileSupplierId([
+        'supplier_id' => $_GET['supplier_id'] ?? null
+    ]);
+
+    try {
+        requireSupplierExists($pdo, $supplierId);
+
+        $stmt = $pdo->prepare("
+            SELECT id, supplier_id, name, sheet_name, header_row_number,
+                   sku_column, product_name_column, purchase_price_column,
+                   stock_column, arrival_column, variant_region_column,
+                   column_mapping, parser_options, is_active,
+                   created_at, updated_at
+            FROM supplier_import_profiles
+            WHERE supplier_id = :supplier_id
+            ORDER BY name ASC, id ASC
+        ");
+        $stmt->execute([':supplier_id' => $supplierId]);
+
+        $profiles = array_map(
+            'prepareSupplierImportProfileForResponse',
+            $stmt->fetchAll()
+        );
+
+        sendManagerJson(200, [
+            'success' => true,
+            'count' => count($profiles),
+            'profiles' => $profiles
+        ]);
+    } catch (Throwable $error) {
+        sendManagerJson(500, [
+            'success' => false,
+            'message' => 'Не удалось загрузить профили импорта'
+        ]);
+    }
+}
+
+if ($action === 'supplier_import_profile_create') {
+    requireManagerMethod('POST');
+    requireSupplierImportProfileJsonRequest($requestJsonIsValid, $rawRequestBody);
+    $supplierId = requireSupplierImportProfileSupplierId($data);
+    $profile = validateSupplierImportProfileInput($data);
+
+    try {
+        requireSupplierExists($pdo, $supplierId);
+
+        $stmt = $pdo->prepare("
+            INSERT INTO supplier_import_profiles (
+                supplier_id, name, sheet_name, header_row_number,
+                sku_column, product_name_column, purchase_price_column,
+                stock_column, arrival_column, variant_region_column,
+                column_mapping, parser_options, is_active
+            ) VALUES (
+                :supplier_id, :name, :sheet_name, :header_row_number,
+                :sku_column, :product_name_column, :purchase_price_column,
+                :stock_column, :arrival_column, :variant_region_column,
+                :column_mapping, :parser_options, :is_active
+            )
+        ");
+        $stmt->execute([
+            ':supplier_id' => $supplierId,
+            ':name' => $profile['name'],
+            ':sheet_name' => $profile['sheet_name'],
+            ':header_row_number' => $profile['header_row_number'],
+            ':sku_column' => $profile['sku_column'],
+            ':product_name_column' => $profile['product_name_column'],
+            ':purchase_price_column' => $profile['purchase_price_column'],
+            ':stock_column' => $profile['stock_column'],
+            ':arrival_column' => $profile['arrival_column'],
+            ':variant_region_column' => $profile['variant_region_column'],
+            ':column_mapping' => json_encode($profile['column_mapping'], JSON_UNESCAPED_UNICODE),
+            ':parser_options' => json_encode($profile['parser_options'], JSON_UNESCAPED_UNICODE),
+            ':is_active' => $profile['is_active']
+        ]);
+
+        sendManagerJson(201, [
+            'success' => true,
+            'message' => 'Профиль импорта создан',
+            'profile_id' => (int)$pdo->lastInsertId()
+        ]);
+    } catch (Throwable $error) {
+        if (isSupplierCodeDuplicate($error)) {
+            sendManagerJson(409, [
+                'success' => false,
+                'message' => 'Профиль с таким названием уже существует у поставщика'
+            ]);
+        }
+
+        sendManagerJson(500, [
+            'success' => false,
+            'message' => 'Не удалось создать профиль импорта'
+        ]);
+    }
+}
+
+if ($action === 'supplier_import_profile_update') {
+    requireManagerMethod('POST');
+    requireSupplierImportProfileJsonRequest($requestJsonIsValid, $rawRequestBody);
+    $profileId = requireSupplierImportProfileId($data);
+    $supplierId = requireSupplierImportProfileSupplierId($data);
+    $profile = validateSupplierImportProfileInput($data);
+
+    try {
+        requireSupplierExists($pdo, $supplierId);
+
+        $stmt = $pdo->prepare("
+            UPDATE supplier_import_profiles
+            SET name = :name,
+                sheet_name = :sheet_name,
+                header_row_number = :header_row_number,
+                sku_column = :sku_column,
+                product_name_column = :product_name_column,
+                purchase_price_column = :purchase_price_column,
+                stock_column = :stock_column,
+                arrival_column = :arrival_column,
+                variant_region_column = :variant_region_column,
+                column_mapping = :column_mapping,
+                parser_options = :parser_options,
+                is_active = :is_active
+            WHERE id = :id AND supplier_id = :supplier_id
+        ");
+        $stmt->execute([
+            ':name' => $profile['name'],
+            ':sheet_name' => $profile['sheet_name'],
+            ':header_row_number' => $profile['header_row_number'],
+            ':sku_column' => $profile['sku_column'],
+            ':product_name_column' => $profile['product_name_column'],
+            ':purchase_price_column' => $profile['purchase_price_column'],
+            ':stock_column' => $profile['stock_column'],
+            ':arrival_column' => $profile['arrival_column'],
+            ':variant_region_column' => $profile['variant_region_column'],
+            ':column_mapping' => json_encode($profile['column_mapping'], JSON_UNESCAPED_UNICODE),
+            ':parser_options' => json_encode($profile['parser_options'], JSON_UNESCAPED_UNICODE),
+            ':is_active' => $profile['is_active'],
+            ':id' => $profileId,
+            ':supplier_id' => $supplierId
+        ]);
+
+        if ($stmt->rowCount() === 0) {
+            $existsStmt = $pdo->prepare("
+                SELECT id
+                FROM supplier_import_profiles
+                WHERE id = :id AND supplier_id = :supplier_id
+            ");
+            $existsStmt->execute([
+                ':id' => $profileId,
+                ':supplier_id' => $supplierId
+            ]);
+
+            if (!$existsStmt->fetch()) {
+                sendManagerJson(404, [
+                    'success' => false,
+                    'message' => 'Профиль импорта не найден'
+                ]);
+            }
+        }
+
+        sendManagerJson(200, [
+            'success' => true,
+            'message' => 'Профиль импорта обновлён'
+        ]);
+    } catch (Throwable $error) {
+        if (isSupplierCodeDuplicate($error)) {
+            sendManagerJson(409, [
+                'success' => false,
+                'message' => 'Профиль с таким названием уже существует у поставщика'
+            ]);
+        }
+
+        sendManagerJson(500, [
+            'success' => false,
+            'message' => 'Не удалось обновить профиль импорта'
+        ]);
+    }
+}
+
+if ($action === 'supplier_import_profile_set_active') {
+    requireManagerMethod('POST');
+    requireSupplierImportProfileJsonRequest($requestJsonIsValid, $rawRequestBody);
+    requireOnlyPayloadKeys($data, [
+        'action', 'id', 'supplier_id', 'is_active'
+    ]);
+    $profileId = requireSupplierImportProfileId($data);
+    $supplierId = requireSupplierImportProfileSupplierId($data);
+    $isActive = requireSupplierActiveValue($data);
+
+    try {
+        requireSupplierExists($pdo, $supplierId);
+
+        $stmt = $pdo->prepare("
+            UPDATE supplier_import_profiles
+            SET is_active = :is_active
+            WHERE id = :id AND supplier_id = :supplier_id
+        ");
+        $stmt->execute([
+            ':is_active' => $isActive,
+            ':id' => $profileId,
+            ':supplier_id' => $supplierId
+        ]);
+
+        if ($stmt->rowCount() === 0) {
+            $existsStmt = $pdo->prepare("
+                SELECT id
+                FROM supplier_import_profiles
+                WHERE id = :id AND supplier_id = :supplier_id
+            ");
+            $existsStmt->execute([
+                ':id' => $profileId,
+                ':supplier_id' => $supplierId
+            ]);
+
+            if (!$existsStmt->fetch()) {
+                sendManagerJson(404, [
+                    'success' => false,
+                    'message' => 'Профиль импорта не найден'
+                ]);
+            }
+        }
+
+        sendManagerJson(200, [
+            'success' => true,
+            'message' => $isActive
+                ? 'Профиль импорта включён'
+                : 'Профиль импорта отключён'
+        ]);
+    } catch (Throwable $error) {
+        sendManagerJson(500, [
+            'success' => false,
+            'message' => 'Не удалось изменить статус профиля импорта'
         ]);
     }
 }
