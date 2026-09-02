@@ -109,9 +109,32 @@ type SupplierImportProfile = {
     decimal_separator?: '.' | ',';
     default_currency_code?: string | null;
   };
+  arrival_date_format: 'dmy_dot' | 'ymd_dash' | 'dmy_slash' | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+};
+
+type SupplierAvailabilityStatus = 'in_stock' | 'out_of_stock' | 'expected' | 'unknown';
+
+type SupplierAvailabilityMapping = {
+  id: number;
+  profile_id: number;
+  raw_value: string;
+  normalized_status: Exclude<SupplierAvailabilityStatus, 'unknown'>;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type SupplierAvailabilityNormalization = {
+  status: SupplierAvailabilityStatus;
+  stock_quantity: number | null;
+  expected_arrival_at: string | null;
+  warnings: Array<{ code: string; message: string }>;
+  raw_availability: string | null;
+  raw_arrival: string | null;
+  raw_stock: string | null;
 };
 
 type SupplierImportPreviewRow = {
@@ -163,6 +186,7 @@ type SupplierImportStagedRow = {
   currency_code: string | null;
   raw_availability: string | null;
   raw_arrival_info: string | null;
+  availability_normalization: SupplierAvailabilityNormalization;
   status: string;
   errors: string[];
   warnings: string[];
@@ -215,6 +239,10 @@ type SupplierOfferPricingPreview = {
   purchase_price: string;
   currency_code: string;
   availability_status: string;
+  stock_quantity: number | null;
+  expected_arrival_at: string | null;
+  raw_availability: string | null;
+  raw_arrival_info: string | null;
   delivery_info: string | null;
   source_import_row_id: number;
   pricing: {
@@ -435,6 +463,13 @@ const supplierImportMappingFields: Array<{
   { key: 'certification_supply_type', label: 'Тип сертификации / поставки' },
 ];
 
+const supplierAvailabilityLabels: Record<SupplierAvailabilityStatus, string> = {
+  in_stock: 'В наличии',
+  out_of_stock: 'Нет в наличии',
+  expected: 'Ожидается',
+  unknown: 'Неизвестно',
+};
+
 const emptySupplierImportProfileForm = {
   name: '',
   sheet_name: '',
@@ -444,6 +479,7 @@ const emptySupplierImportProfileForm = {
   skip_empty_rows: true,
   decimal_separator: '.' as '.' | ',',
   default_currency_code: 'RUB',
+  arrival_date_format: '' as '' | 'dmy_dot' | 'ymd_dash' | 'dmy_slash',
   is_active: true,
 };
 
@@ -512,6 +548,18 @@ export default function AdminPage() {
   const [supplierImportProfileForm, setSupplierImportProfileForm] = useState(emptySupplierImportProfileForm);
   const [savingSupplierImportProfile, setSavingSupplierImportProfile] = useState(false);
   const [togglingSupplierImportProfileId, setTogglingSupplierImportProfileId] = useState<number | null>(null);
+  const [availabilityProfile, setAvailabilityProfile] = useState<SupplierImportProfile | null>(null);
+  const [availabilityMappings, setAvailabilityMappings] = useState<SupplierAvailabilityMapping[]>([]);
+  const [availabilityMappingsLoading, setAvailabilityMappingsLoading] = useState(false);
+  const [availabilityMappingError, setAvailabilityMappingError] = useState('');
+  const [availabilityMappingForm, setAvailabilityMappingForm] = useState({
+    id: null as number | null,
+    updated_at: '',
+    raw_value: '',
+    normalized_status: 'in_stock' as Exclude<SupplierAvailabilityStatus, 'unknown'>,
+    is_active: true,
+  });
+  const availabilityMappingPendingRef = useRef(false);
   const profileSupplierIdRef = useRef<number | null>(null);
   const supplierImportProfileWritePendingRef = useRef(false);
   const supplierImportPreviewPendingRef = useRef(false);
@@ -1184,6 +1232,8 @@ const login = async (e: React.FormEvent) => {
     setSupplierImportProfilesSuccess('');
     setShowSupplierImportProfileForm(false);
     setEditingSupplierImportProfileId(null);
+    setAvailabilityProfile(null);
+    setAvailabilityMappings([]);
     setSupplierImportProfileForm(emptySupplierImportProfileForm);
     setPreviewProfile(null);
     setPreviewFile(null);
@@ -1208,6 +1258,8 @@ const login = async (e: React.FormEvent) => {
     setSupplierImportProfilesSuccess('');
     setShowSupplierImportProfileForm(false);
     setEditingSupplierImportProfileId(null);
+    setAvailabilityProfile(null);
+    setAvailabilityMappings([]);
     setSupplierImportProfileForm(emptySupplierImportProfileForm);
     setPreviewProfile(null);
     setPreviewFile(null);
@@ -1242,6 +1294,7 @@ const login = async (e: React.FormEvent) => {
       decimal_separator: profile.parser_options.decimal_separator ?? '.',
       default_currency_code:
         profile.parser_options.default_currency_code || '',
+      arrival_date_format: profile.arrival_date_format || '',
       is_active: profile.is_active,
     });
     setSupplierImportProfilesError('');
@@ -1327,6 +1380,7 @@ const login = async (e: React.FormEvent) => {
             decimal_separator: supplierImportProfileForm.decimal_separator,
             default_currency_code: currencyCode || null,
           },
+          arrival_date_format: supplierImportProfileForm.arrival_date_format || null,
           is_active: supplierImportProfileForm.is_active,
         }),
       });
@@ -1355,6 +1409,78 @@ const login = async (e: React.FormEvent) => {
     } finally {
       supplierImportProfileWritePendingRef.current = false;
       setSavingSupplierImportProfile(false);
+    }
+  };
+
+  const loadAvailabilityMappings = async (profile: SupplierImportProfile) => {
+    setAvailabilityProfile(profile);
+    setAvailabilityMappingsLoading(true);
+    setAvailabilityMappingError('');
+    try {
+      const response = await fetch(`${MANAGER_API}?action=supplier_availability_mappings_list&profile_id=${profile.id}`, {
+        credentials: 'include', headers: { Accept: 'application/json' },
+      });
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success) throw new Error(data.message || 'Не удалось загрузить правила наличия');
+      setAvailabilityMappings(Array.isArray(data.mappings) ? data.mappings : []);
+    } catch (err) {
+      setAvailabilityMappingError(err instanceof Error ? err.message : 'Не удалось загрузить правила наличия');
+    } finally {
+      setAvailabilityMappingsLoading(false);
+    }
+  };
+
+  const resetAvailabilityMappingForm = () => setAvailabilityMappingForm({
+    id: null, updated_at: '', raw_value: '', normalized_status: 'in_stock', is_active: true,
+  });
+
+  const saveAvailabilityMapping = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!availabilityProfile || availabilityMappingPendingRef.current) return;
+    availabilityMappingPendingRef.current = true;
+    setAvailabilityMappingError('');
+    try {
+      const editing = availabilityMappingForm.id !== null;
+      const response = await fetch(MANAGER_API, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken || '' },
+        body: JSON.stringify({
+          action: editing ? 'supplier_availability_mapping_update' : 'supplier_availability_mapping_create',
+          ...(editing ? { id: availabilityMappingForm.id, updated_at: availabilityMappingForm.updated_at } : { profile_id: availabilityProfile.id }),
+          raw_value: availabilityMappingForm.raw_value.trim(),
+          normalized_status: availabilityMappingForm.normalized_status,
+          is_active: availabilityMappingForm.is_active,
+        }),
+      });
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success) throw new Error(data.message || 'Не удалось сохранить правило наличия');
+      resetAvailabilityMappingForm();
+      await loadAvailabilityMappings(availabilityProfile);
+      if (selectedImportJob) await loadSupplierImportJobRows(selectedImportJob, stagedRowsPage, stagedRowsFilter);
+    } catch (err) {
+      setAvailabilityMappingError(err instanceof Error ? err.message : 'Не удалось сохранить правило наличия');
+    } finally {
+      availabilityMappingPendingRef.current = false;
+    }
+  };
+
+  const toggleAvailabilityMapping = async (mapping: SupplierAvailabilityMapping) => {
+    if (!availabilityProfile || availabilityMappingPendingRef.current) return;
+    availabilityMappingPendingRef.current = true;
+    setAvailabilityMappingError('');
+    try {
+      const response = await fetch(MANAGER_API, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken || '' },
+        body: JSON.stringify({ action: 'supplier_availability_mapping_set_active', id: mapping.id, updated_at: mapping.updated_at, is_active: !mapping.is_active }),
+      });
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success) throw new Error(data.message || 'Не удалось изменить статус правила');
+      await loadAvailabilityMappings(availabilityProfile);
+    } catch (err) {
+      setAvailabilityMappingError(err instanceof Error ? err.message : 'Не удалось изменить статус правила');
+    } finally {
+      availabilityMappingPendingRef.current = false;
     }
   };
 
@@ -4036,6 +4162,22 @@ const toggleProductStatus = async (product: AdminProduct) => {
                           placeholder="RUB"
                         />
                       </div>
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-2">Формат даты поступления</label>
+                        <select
+                          value={supplierImportProfileForm.arrival_date_format}
+                          onChange={(event) => setSupplierImportProfileForm((current) => ({
+                            ...current,
+                            arrival_date_format: event.target.value as typeof current.arrival_date_format,
+                          }))}
+                          className="admin-input"
+                        >
+                          <option value="">Не разбирать дату</option>
+                          <option value="dmy_dot">ДД.ММ.ГГГГ</option>
+                          <option value="ymd_dash">ГГГГ-ММ-ДД</option>
+                          <option value="dmy_slash">ДД/ММ/ГГГГ</option>
+                        </select>
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap gap-5 mt-5 text-sm text-gray-700">
@@ -4158,6 +4300,13 @@ const toggleProductStatus = async (product: AdminProduct) => {
                                 <div className="flex justify-end gap-2">
                                   <button
                                     type="button"
+                                    onClick={() => { resetAvailabilityMappingForm(); loadAvailabilityMappings(profile); }}
+                                    className="px-3 py-2 rounded-lg border border-blue-200 text-blue-700 text-sm"
+                                  >
+                                    Наличие
+                                  </button>
+                                  <button
+                                    type="button"
                                     onClick={() => openSupplierImportPreview(profile)}
                                     disabled={!profile.is_active || supplierImportPreviewLoading}
                                     className="px-3 py-2 rounded-lg border border-accent-200 text-accent-600 hover:bg-accent-50 disabled:opacity-50 text-sm"
@@ -4193,6 +4342,39 @@ const toggleProductStatus = async (product: AdminProduct) => {
                         })}
                       </tbody>
                     </table>
+                  </div>
+                )}
+
+                {availabilityProfile && (
+                  <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50/30 p-5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h4 className="font-semibold text-graphite-900">Правила наличия · {availabilityProfile.name}</h4>
+                        <p className="text-sm text-gray-500 mt-1">Точное profile-specific сопоставление. Неизвестные значения остаются unknown.</p>
+                      </div>
+                      <button type="button" onClick={() => setAvailabilityProfile(null)} aria-label="Закрыть"><X className="w-5 h-5" /></button>
+                    </div>
+                    {availabilityMappingError && <div className="mt-3 text-sm text-red-700">{availabilityMappingError}</div>}
+                    <form onSubmit={saveAvailabilityMapping} className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                      <label className="text-sm text-gray-600 md:col-span-2">Точное значение поставщика
+                        <input required maxLength={191} value={availabilityMappingForm.raw_value} onChange={(event) => setAvailabilityMappingForm((current) => ({ ...current, raw_value: event.target.value }))} className="admin-input mt-1" />
+                      </label>
+                      <label className="text-sm text-gray-600">Canonical status
+                        <select value={availabilityMappingForm.normalized_status} onChange={(event) => setAvailabilityMappingForm((current) => ({ ...current, normalized_status: event.target.value as Exclude<SupplierAvailabilityStatus, 'unknown'> }))} className="admin-input mt-1">
+                          <option value="in_stock">В наличии</option><option value="out_of_stock">Нет в наличии</option><option value="expected">Ожидается</option>
+                        </select>
+                      </label>
+                      <button className="px-4 py-2.5 rounded-xl bg-blue-600 text-white font-semibold disabled:opacity-50" disabled={availabilityMappingsLoading}>{availabilityMappingForm.id ? 'Сохранить' : 'Добавить mapping'}</button>
+                    </form>
+                    {availabilityMappingForm.id && <button type="button" onClick={resetAvailabilityMappingForm} className="mt-2 text-xs text-gray-600">Отменить редактирование</button>}
+                    {availabilityMappingsLoading ? <div className="py-5 text-center text-gray-500">Загрузка...</div> : (
+                      <div className="mt-4 space-y-2">{availabilityMappings.map((mapping) => (
+                        <div key={mapping.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white p-3 text-sm">
+                          <div><span className="font-medium">{mapping.raw_value}</span> → {mapping.normalized_status} · {mapping.is_active ? 'активно' : 'отключено'}</div>
+                          <div className="flex gap-2"><button type="button" onClick={() => setAvailabilityMappingForm({ id: mapping.id, updated_at: mapping.updated_at, raw_value: mapping.raw_value, normalized_status: mapping.normalized_status, is_active: mapping.is_active })} className="px-3 py-1.5 border rounded-lg">Изменить</button><button type="button" onClick={() => toggleAvailabilityMapping(mapping)} className="px-3 py-1.5 border rounded-lg">{mapping.is_active ? 'Отключить' : 'Включить'}</button></div>
+                        </div>
+                      ))}{availabilityMappings.length === 0 && <div className="text-sm text-gray-500">Правила пока не созданы.</div>}</div>
+                    )}
                   </div>
                 )}
 
@@ -4283,7 +4465,13 @@ const toggleProductStatus = async (product: AdminProduct) => {
                             <td className="px-3 py-3 font-mono">{row.source_row_number}</td><td className="px-3 py-3">{row.supplier_sku || '—'}</td>
                             <td className="px-3 py-3"><div>{row.raw_product_name || '—'}</div><div className="text-xs text-gray-500">{row.normalized_model || '—'}</div></td>
                             <td className="px-3 py-3">{row.purchase_price ?? '—'} {row.currency_code || ''}</td>
-                            <td className="px-3 py-3"><div>{row.raw_availability || '—'}</div><div className="text-xs text-gray-500">{row.raw_arrival_info || '—'}</div></td>
+                            <td className="px-3 py-3">
+                              <div>Raw: {row.raw_availability || '—'}</div>
+                              <div className="font-medium">Canonical: {supplierAvailabilityLabels[row.availability_normalization.status]}</div>
+                              <div className="text-xs text-gray-500">Поступление raw: {row.raw_arrival_info || '—'} · parsed: {row.availability_normalization.expected_arrival_at?.slice(0, 10) || '—'}</div>
+                              <div className="text-xs text-gray-500">Количество: {row.availability_normalization.stock_quantity ?? 'неизвестно'}</div>
+                              {row.availability_normalization.warnings.map((warning) => <div key={warning.code} className="text-xs text-amber-700">{warning.message}</div>)}
+                            </td>
                             <td className="px-3 py-3"><div className="font-medium">{row.status}</div>{row.errors.map((message) => <div key={message} className="text-xs text-red-600">{message}</div>)}{row.warnings.map((message) => <div key={message} className="text-xs text-amber-700">{message}</div>)}</td>
                             <td className="px-3 py-3"><div>{row.matched_product_name || 'Не сопоставлено'}</div><div className="text-xs text-gray-500">{row.matched_variant_name || row.matched_variant_key || ''}</div>{row.status !== 'validation_error' && <button type="button" onClick={() => { setManualMatchRow(row); setManualProductQuery(row.normalized_model || row.raw_product_name || ''); setManualProductResults([]); }} className="mt-2 px-3 py-1.5 rounded-lg border border-accent-200 text-accent-700 text-xs">Сопоставить</button>}</td>
                           </tr>
@@ -4299,7 +4487,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                           <th className="px-3 py-3 text-left">Поставщик / вариант</th><th className="px-3 py-3 text-left">Закупка</th><th className="px-3 py-3 text-left">Наличие</th><th className="px-3 py-3 text-left">Правило</th><th className="px-3 py-3 text-left">До округления</th><th className="px-3 py-3 text-left">Candidate</th><th className="px-3 py-3 text-left">Маржа</th><th className="px-3 py-3 text-left">Предупреждения</th><th className="px-3 py-3 text-right">Публикация</th>
                         </tr></thead><tbody>{offerPricingRows.map((offer) => <tr key={offer.id} className="border-t border-gray-100 align-top">
                           <td className="px-3 py-3"><div>{offer.supplier_name}</div><div className="font-medium">{offer.product_name}</div><div className="text-xs text-gray-500">{offer.variant_name || offer.variant_key} · row #{offer.source_import_row_id}</div></td>
-                          <td className="px-3 py-3">{offer.purchase_price} {offer.currency_code}</td><td className="px-3 py-3"><div>{offer.availability_status}</div><div className="text-xs text-gray-500">{offer.delivery_info || '—'}</div></td>
+                          <td className="px-3 py-3">{offer.purchase_price} {offer.currency_code}</td><td className="px-3 py-3"><div>{supplierAvailabilityLabels[(offer.availability_status in supplierAvailabilityLabels ? offer.availability_status : 'unknown') as SupplierAvailabilityStatus]}</div><div className="text-xs text-gray-500">Количество: {offer.stock_quantity ?? 'неизвестно'} · ETA: {offer.expected_arrival_at?.slice(0, 10) || '—'}</div><div className="text-xs text-gray-500">Raw: {offer.raw_availability || '—'} · {offer.raw_arrival_info || '—'}</div><div className="text-xs text-gray-500">{offer.delivery_info || '—'}</div></td>
                           <td className="px-3 py-3"><div>{offer.pricing.rule?.name || '—'}</div>{offer.pricing.rule?.markup_percent !== null && offer.pricing.rule?.markup_percent !== undefined && <div className="text-xs text-gray-500">Наценка: {offer.pricing.rule.markup_percent}%</div>}</td><td className="px-3 py-3">{offer.pricing.price_before_rounding || '—'}</td><td className="px-3 py-3 font-semibold">{offer.pricing.candidate_retail_price || '—'}</td>
                           <td className="px-3 py-3">{offer.pricing.expected_margin ? `${offer.pricing.expected_margin} ₽ · ${offer.pricing.expected_margin_percent}%` : '—'}</td><td className="px-3 py-3">{offer.pricing.warnings.map((warning) => <div key={warning} className="text-xs text-amber-700">{warning}</div>)}</td>
                           <td className="px-3 py-3 text-right"><button type="button" disabled={!offer.pricing.calculable || pricePublicationLoading} onClick={() => preparePricePublication(offer.id)} className="px-3 py-2 rounded-lg border border-red-200 text-red-700 disabled:opacity-40">Подготовить изменение цены</button></td>

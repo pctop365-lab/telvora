@@ -7,6 +7,8 @@ if (!defined('TELVORA_MANAGER_REQUEST')) {
     exit;
 }
 
+require_once __DIR__ . '/supplier_availability_service.php';
+
 function supplierOfferMinorUnits(mixed $value, bool $allowZero = false): ?int
 {
     if (!is_string($value) && !is_int($value)) {
@@ -43,10 +45,11 @@ function supplierOfferDeliveryInfo(?string $availability, ?string $arrival): ?st
 function supplierOfferPublishAnalysis(PDO $pdo, int $jobId, bool $publish): array
 {
     $jobSql = "
-        SELECT j.id, j.supplier_id, j.status, j.created_at,
-               s.id AS existing_supplier_id
+        SELECT j.id, j.supplier_id, j.import_profile_id, j.status, j.created_at,
+               p.arrival_date_format, s.id AS existing_supplier_id
         FROM supplier_import_jobs j
         INNER JOIN suppliers s ON s.id = j.supplier_id
+        LEFT JOIN supplier_import_profiles p ON p.id = j.import_profile_id
         WHERE j.id = :id LIMIT 1" . ($publish ? ' FOR UPDATE' : '');
     $jobStmt = $pdo->prepare($jobSql);
     $jobStmt->execute([':id' => $jobId]);
@@ -59,6 +62,10 @@ function supplierOfferPublishAnalysis(PDO $pdo, int $jobId, bool $publish): arra
     if ((int)$rowCountStmt->fetchColumn() > 50000) {
         throw new RuntimeException('supplier offer publish row limit exceeded');
     }
+    $availabilityMappings = $job['import_profile_id'] === null
+        ? []
+        : supplierAvailabilityLoadMappings($pdo, (int)$job['import_profile_id'], $publish);
+    $availabilityProfile = ['arrival_date_format' => $job['arrival_date_format']];
 
     $duplicateStmt = $pdo->prepare("
         SELECT r.id
@@ -209,10 +216,18 @@ function supplierOfferPublishAnalysis(PDO $pdo, int $jobId, bool $publish): arra
                 $summary['offers_to_update']++;
             }
             if ($publish) {
+                $availability = normalizeSupplierAvailability(
+                    $availabilityProfile,
+                    $row['raw_availability'],
+                    $row['raw_arrival_info'],
+                    null,
+                    $availabilityMappings
+                );
                 $publishRows[] = [
                     (int)$job['supplier_id'], $variantId, $sku,
                     mb_substr($productName, 0, 500, 'UTF-8'),
-                    supplierOfferMoney($priceMinor), $currency, 'unknown', null, null,
+                    supplierOfferMoney($priceMinor), $currency, $availability['status'],
+                    $availability['stock_quantity'], $availability['expected_arrival_at'],
                     supplierOfferDeliveryInfo($row['raw_availability'], $row['raw_arrival_info']),
                     (int)$row['id']
                 ];

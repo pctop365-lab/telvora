@@ -455,6 +455,9 @@ $csrfProtectedActions = [
     'supplier_import_profile_create',
     'supplier_import_profile_update',
     'supplier_import_profile_set_active',
+    'supplier_availability_mapping_create',
+    'supplier_availability_mapping_update',
+    'supplier_availability_mapping_set_active',
     'supplier_import_preview',
     'supplier_import_stage',
     'supplier_import_row_set_match',
@@ -908,6 +911,7 @@ function validateSupplierImportProfileInput(array $data): array
         'header_row_number',
         'column_mapping',
         'parser_options',
+        'arrival_date_format',
         'is_active'
     ];
 
@@ -1081,6 +1085,13 @@ function validateSupplierImportProfileInput(array $data): array
         }
     }
 
+    require_once __DIR__ . '/supplier_availability_service.php';
+    try {
+        $arrivalDateFormat = supplierAvailabilityValidateDateFormat($data['arrival_date_format'] ?? null);
+    } catch (InvalidArgumentException $error) {
+        sendManagerJson(400, ['success' => false, 'message' => $error->getMessage()]);
+    }
+
     $parserOptions = [
         'trim_values' => $trimValues,
         'skip_empty_rows' => $skipEmptyRows,
@@ -1094,6 +1105,8 @@ function validateSupplierImportProfileInput(array $data): array
         'header_row_number' => $headerRowNumber,
         'column_mapping' => $columnMapping,
         'parser_options' => $parserOptions,
+        'arrival_date_format' => $arrivalDateFormat,
+        'arrival_date_format_provided' => array_key_exists('arrival_date_format', $data),
         'is_active' => requireSupplierActiveValue($data),
         'sku_column' => $columnMapping['supplier_sku'] ?? null,
         'product_name_column' => $columnMapping['product_name'] ?? null,
@@ -1180,9 +1193,34 @@ function prepareSupplierImportProfileForResponse(array $profile): array
         'header_row_number' => (int)$profile['header_row_number'],
         'column_mapping' => $safeColumnMapping,
         'parser_options' => $safeParserOptions,
+        'arrival_date_format' => $profile['arrival_date_format'] === null ? null : (string)$profile['arrival_date_format'],
         'is_active' => (bool)$profile['is_active'],
         'created_at' => (string)$profile['created_at'],
         'updated_at' => (string)$profile['updated_at']
+    ];
+}
+
+function supplierAvailabilityCollationHash(PDO $pdo, string $rawValue): string
+{
+    $stmt = $pdo->prepare("SELECT SHA2(WEIGHT_STRING(CONVERT(:raw_value USING utf8mb4) COLLATE utf8mb4_unicode_ci), 256)");
+    $stmt->execute([':raw_value' => $rawValue]);
+    $hash = $stmt->fetchColumn();
+    if (!is_string($hash) || preg_match('/\A[0-9a-f]{64}\z/iD', $hash) !== 1) {
+        throw new RuntimeException('unable to create supplier availability collation key');
+    }
+    return strtolower($hash);
+}
+
+function prepareSupplierAvailabilityMappingForResponse(array $row): array
+{
+    return [
+        'id' => (int)$row['id'],
+        'profile_id' => (int)$row['import_profile_id'],
+        'raw_value' => (string)$row['raw_value'],
+        'normalized_status' => (string)$row['normalized_status'],
+        'is_active' => (bool)$row['is_active'],
+        'created_at' => (string)$row['created_at'],
+        'updated_at' => (string)$row['updated_at']
     ];
 }
 
@@ -1676,7 +1714,8 @@ if ($action === 'supplier_import_job_rows') {
             SELECT j.id, j.supplier_id, j.import_profile_id, j.original_filename,
                    j.status, j.rows_total, j.rows_matched, j.rows_unmatched,
                    j.rows_errors, j.created_at, j.finished_at,
-                   p.name AS profile_name, s.name AS supplier_name
+                   p.name AS profile_name, p.arrival_date_format,
+                   s.name AS supplier_name
             FROM supplier_import_jobs j
             INNER JOIN suppliers s ON s.id = j.supplier_id
             LEFT JOIN supplier_import_profiles p ON p.id = j.import_profile_id
@@ -1710,7 +1749,12 @@ if ($action === 'supplier_import_job_rows') {
             LIMIT $pageSize OFFSET $offset
         ");
         $rowsStmt->execute([':job_id' => $jobId]);
-        $rows = array_map(static function (array $row): array {
+        require_once __DIR__ . '/supplier_availability_service.php';
+        $availabilityMappings = $job['import_profile_id'] === null
+            ? []
+            : supplierAvailabilityLoadMappings($pdo, (int)$job['import_profile_id']);
+        $normalizationProfile = ['arrival_date_format' => $job['arrival_date_format']];
+        $rows = array_map(static function (array $row) use ($normalizationProfile, $availabilityMappings): array {
             foreach (['id', 'source_row_number', 'matched_product_id', 'matched_product_variant_id', 'match_id'] as $key) {
                 $row[$key] = $row[$key] === null ? null : (int)$row[$key];
             }
@@ -1718,6 +1762,13 @@ if ($action === 'supplier_import_job_rows') {
             unset($row['review_reason']);
             $row['errors'] = $reason['errors'];
             $row['warnings'] = $reason['warnings'];
+            $row['availability_normalization'] = normalizeSupplierAvailability(
+                $normalizationProfile,
+                $row['raw_availability'],
+                $row['raw_arrival_info'],
+                null,
+                $availabilityMappings
+            );
             return $row;
         }, $rowsStmt->fetchAll());
         foreach (['id', 'supplier_id', 'import_profile_id', 'rows_total', 'rows_matched', 'rows_unmatched', 'rows_errors'] as $key) {
@@ -2068,7 +2119,9 @@ if ($action === 'supplier_offer_pricing_preview') {
         $offersStmt = $pdo->prepare("
             SELECT o.id, o.supplier_id, o.product_variant_id, o.supplier_sku,
                    o.supplier_product_name, o.purchase_price, o.currency_code,
-                   o.availability_status, o.stock_quantity, o.delivery_info,
+                   o.availability_status, o.stock_quantity, o.expected_arrival_at,
+                   o.delivery_info, r.raw_availability, r.raw_arrival_info,
+                   r.import_job_id AS source_import_job_id,
                    o.source_import_row_id, o.imported_at, o.is_active,
                    s.name AS supplier_name, p.id AS product_id,
                    p.name AS product_name, p.category,
@@ -2100,9 +2153,10 @@ if ($action === 'supplier_offer_pricing_preview') {
         foreach ($offersStmt->fetchAll() as $offer) {
             $applicableRules = supplierPricingApplicableRules($offer, $activeRules);
             $calculation = supplierPricingCalculate($offer, $applicableRules);
-            foreach (['id', 'supplier_id', 'product_variant_id', 'source_import_row_id', 'product_id'] as $key) {
+            foreach (['id', 'supplier_id', 'product_variant_id', 'source_import_row_id', 'source_import_job_id', 'product_id'] as $key) {
                 $offer[$key] = (int)$offer[$key];
             }
+            $offer['stock_quantity'] = $offer['stock_quantity'] === null ? null : (int)$offer['stock_quantity'];
             $offer['is_active'] = (bool)$offer['is_active'];
             $offer['pricing'] = $calculation;
             $offers[] = $offer;
@@ -2394,6 +2448,169 @@ if ($action === 'pricing_rule_set_active') {
     }
 }
 
+if ($action === 'supplier_availability_mappings_list') {
+    requireManagerMethod('GET');
+    $profileId = requirePositiveManagerId($_GET['profile_id'] ?? null, 'профиль импорта');
+    try {
+        require_once __DIR__ . '/supplier_availability_service.php';
+        $profileStmt = $pdo->prepare('SELECT id, supplier_id, name, arrival_date_format FROM supplier_import_profiles WHERE id = :id LIMIT 1');
+        $profileStmt->execute([':id' => $profileId]);
+        $profile = $profileStmt->fetch();
+        if (!is_array($profile)) {
+            sendManagerJson(404, ['success' => false, 'message' => 'Профиль импорта не найден']);
+        }
+        $mappings = array_map('prepareSupplierAvailabilityMappingForResponse', supplierAvailabilityLoadMappings($pdo, $profileId));
+        sendManagerJson(200, [
+            'success' => true,
+            'profile' => [
+                'id' => (int)$profile['id'],
+                'supplier_id' => (int)$profile['supplier_id'],
+                'name' => (string)$profile['name'],
+                'arrival_date_format' => $profile['arrival_date_format']
+            ],
+            'mappings' => $mappings
+        ]);
+    } catch (Throwable $error) {
+        error_log('supplier availability mappings list failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось загрузить правила наличия']);
+    }
+}
+
+if ($action === 'supplier_availability_mapping_create') {
+    requireManagerMethod('POST');
+    requirePricingRuleJsonRequest($requestJsonIsValid);
+    requireOnlyPayloadKeys($data, ['action', 'profile_id', 'raw_value', 'normalized_status', 'is_active']);
+    $profileId = requirePositiveManagerId($data['profile_id'] ?? null, 'профиль импорта');
+    if (!is_bool($data['is_active'] ?? null)) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Некорректный статус правила наличия']);
+    }
+    try {
+        require_once __DIR__ . '/supplier_availability_service.php';
+        $rawValue = supplierAvailabilityValidateRawMapping($data['raw_value'] ?? null);
+        $status = supplierAvailabilityValidateStatus($data['normalized_status'] ?? null);
+        $pdo->beginTransaction();
+        $profileStmt = $pdo->prepare('SELECT id FROM supplier_import_profiles WHERE id = :id FOR UPDATE');
+        $profileStmt->execute([':id' => $profileId]);
+        if (!$profileStmt->fetch()) {
+            $pdo->rollBack();
+            sendManagerJson(404, ['success' => false, 'message' => 'Профиль импорта не найден']);
+        }
+        if (count(supplierAvailabilityLoadMappings($pdo, $profileId, true)) >= SUPPLIER_AVAILABILITY_MAPPING_LIMIT) {
+            $pdo->rollBack();
+            sendManagerJson(409, ['success' => false, 'message' => 'Достигнут лимит правил наличия для профиля']);
+        }
+        $stmt = $pdo->prepare("INSERT INTO supplier_availability_mappings
+            (import_profile_id, raw_value, raw_value_hash, collation_weight_hash, normalized_status, is_active)
+            VALUES (:profile_id, :raw_value, :raw_hash, :collation_hash, :normalized_status, :is_active)");
+        $stmt->execute([
+            ':profile_id' => $profileId,
+            ':raw_value' => $rawValue,
+            ':raw_hash' => hash('sha256', $rawValue),
+            ':collation_hash' => supplierAvailabilityCollationHash($pdo, $rawValue),
+            ':normalized_status' => $status,
+            ':is_active' => $data['is_active'] ? 1 : 0
+        ]);
+        $id = (int)$pdo->lastInsertId();
+        $pdo->commit();
+        sendManagerJson(201, ['success' => true, 'message' => 'Правило наличия создано', 'mapping_id' => $id]);
+    } catch (InvalidArgumentException $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        sendManagerJson(400, ['success' => false, 'message' => $error->getMessage()]);
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($error instanceof PDOException && (int)($error->errorInfo[1] ?? 0) === 1062) {
+            sendManagerJson(409, ['success' => false, 'message' => 'Такое или эквивалентное по collation значение уже настроено']);
+        }
+        error_log('supplier availability mapping create failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось создать правило наличия']);
+    }
+}
+
+if ($action === 'supplier_availability_mapping_update') {
+    requireManagerMethod('POST');
+    requirePricingRuleJsonRequest($requestJsonIsValid);
+    requireOnlyPayloadKeys($data, ['action', 'id', 'updated_at', 'raw_value', 'normalized_status', 'is_active']);
+    $id = requirePositiveManagerId($data['id'] ?? null, 'правило наличия');
+    $expectedUpdatedAt = $data['updated_at'] ?? null;
+    if (!is_string($expectedUpdatedAt) || $expectedUpdatedAt === '' || !is_bool($data['is_active'] ?? null)) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Некорректные данные правила наличия']);
+    }
+    try {
+        require_once __DIR__ . '/supplier_availability_service.php';
+        $rawValue = supplierAvailabilityValidateRawMapping($data['raw_value'] ?? null);
+        $status = supplierAvailabilityValidateStatus($data['normalized_status'] ?? null);
+        $pdo->beginTransaction();
+        $lockStmt = $pdo->prepare('SELECT id, updated_at FROM supplier_availability_mappings WHERE id = :id FOR UPDATE');
+        $lockStmt->execute([':id' => $id]);
+        $existing = $lockStmt->fetch();
+        if (!is_array($existing)) {
+            $pdo->rollBack();
+            sendManagerJson(404, ['success' => false, 'message' => 'Правило наличия не найдено']);
+        }
+        if (!hash_equals((string)$existing['updated_at'], $expectedUpdatedAt)) {
+            $pdo->rollBack();
+            sendManagerJson(409, ['success' => false, 'message' => 'Правило уже изменено. Обновите список']);
+        }
+        $stmt = $pdo->prepare("UPDATE supplier_availability_mappings SET
+            raw_value = :raw_value, raw_value_hash = :raw_hash,
+            collation_weight_hash = :collation_hash, normalized_status = :normalized_status,
+            is_active = :is_active WHERE id = :id");
+        $stmt->execute([
+            ':id' => $id,
+            ':raw_value' => $rawValue,
+            ':raw_hash' => hash('sha256', $rawValue),
+            ':collation_hash' => supplierAvailabilityCollationHash($pdo, $rawValue),
+            ':normalized_status' => $status,
+            ':is_active' => $data['is_active'] ? 1 : 0
+        ]);
+        $pdo->commit();
+        sendManagerJson(200, ['success' => true, 'message' => 'Правило наличия обновлено']);
+    } catch (InvalidArgumentException $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        sendManagerJson(400, ['success' => false, 'message' => $error->getMessage()]);
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($error instanceof PDOException && (int)($error->errorInfo[1] ?? 0) === 1062) {
+            sendManagerJson(409, ['success' => false, 'message' => 'Такое или эквивалентное по collation значение уже настроено']);
+        }
+        error_log('supplier availability mapping update failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось обновить правило наличия']);
+    }
+}
+
+if ($action === 'supplier_availability_mapping_set_active') {
+    requireManagerMethod('POST');
+    requirePricingRuleJsonRequest($requestJsonIsValid);
+    requireOnlyPayloadKeys($data, ['action', 'id', 'updated_at', 'is_active']);
+    $id = requirePositiveManagerId($data['id'] ?? null, 'правило наличия');
+    $expectedUpdatedAt = $data['updated_at'] ?? null;
+    if (!is_string($expectedUpdatedAt) || $expectedUpdatedAt === '' || !is_bool($data['is_active'] ?? null)) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Некорректные данные статуса правила']);
+    }
+    try {
+        $pdo->beginTransaction();
+        $lockStmt = $pdo->prepare('SELECT id, updated_at FROM supplier_availability_mappings WHERE id = :id FOR UPDATE');
+        $lockStmt->execute([':id' => $id]);
+        $existing = $lockStmt->fetch();
+        if (!is_array($existing)) {
+            $pdo->rollBack();
+            sendManagerJson(404, ['success' => false, 'message' => 'Правило наличия не найдено']);
+        }
+        if (!hash_equals((string)$existing['updated_at'], $expectedUpdatedAt)) {
+            $pdo->rollBack();
+            sendManagerJson(409, ['success' => false, 'message' => 'Правило уже изменено. Обновите список']);
+        }
+        $stmt = $pdo->prepare('UPDATE supplier_availability_mappings SET is_active = :is_active WHERE id = :id');
+        $stmt->execute([':id' => $id, ':is_active' => $data['is_active'] ? 1 : 0]);
+        $pdo->commit();
+        sendManagerJson(200, ['success' => true, 'message' => 'Статус правила наличия изменён']);
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        error_log('supplier availability mapping status failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось изменить статус правила наличия']);
+    }
+}
+
 if ($action === 'supplier_import_profiles_list') {
     requireManagerMethod('GET');
     $supplierId = requireSupplierImportProfileSupplierId([
@@ -2407,7 +2624,7 @@ if ($action === 'supplier_import_profiles_list') {
             SELECT id, supplier_id, name, sheet_name, header_row_number,
                    sku_column, product_name_column, purchase_price_column,
                    stock_column, arrival_column, variant_region_column,
-                   column_mapping, parser_options, is_active,
+                   column_mapping, parser_options, arrival_date_format, is_active,
                    created_at, updated_at
             FROM supplier_import_profiles
             WHERE supplier_id = :supplier_id
@@ -2447,12 +2664,12 @@ if ($action === 'supplier_import_profile_create') {
                 supplier_id, name, sheet_name, header_row_number,
                 sku_column, product_name_column, purchase_price_column,
                 stock_column, arrival_column, variant_region_column,
-                column_mapping, parser_options, is_active
+                column_mapping, parser_options, arrival_date_format, is_active
             ) VALUES (
                 :supplier_id, :name, :sheet_name, :header_row_number,
                 :sku_column, :product_name_column, :purchase_price_column,
                 :stock_column, :arrival_column, :variant_region_column,
-                :column_mapping, :parser_options, :is_active
+                :column_mapping, :parser_options, :arrival_date_format, :is_active
             )
         ");
         $stmt->execute([
@@ -2468,6 +2685,7 @@ if ($action === 'supplier_import_profile_create') {
             ':variant_region_column' => $profile['variant_region_column'],
             ':column_mapping' => json_encode($profile['column_mapping'], JSON_UNESCAPED_UNICODE),
             ':parser_options' => json_encode($profile['parser_options'], JSON_UNESCAPED_UNICODE),
+            ':arrival_date_format' => $profile['arrival_date_format'],
             ':is_active' => $profile['is_active']
         ]);
 
@@ -2514,6 +2732,10 @@ if ($action === 'supplier_import_profile_update') {
                 variant_region_column = :variant_region_column,
                 column_mapping = :column_mapping,
                 parser_options = :parser_options,
+                arrival_date_format = CASE
+                    WHEN :arrival_date_format_provided = 1 THEN :arrival_date_format
+                    ELSE arrival_date_format
+                END,
                 is_active = :is_active
             WHERE id = :id AND supplier_id = :supplier_id
         ");
@@ -2529,6 +2751,8 @@ if ($action === 'supplier_import_profile_update') {
             ':variant_region_column' => $profile['variant_region_column'],
             ':column_mapping' => json_encode($profile['column_mapping'], JSON_UNESCAPED_UNICODE),
             ':parser_options' => json_encode($profile['parser_options'], JSON_UNESCAPED_UNICODE),
+            ':arrival_date_format' => $profile['arrival_date_format'],
+            ':arrival_date_format_provided' => $profile['arrival_date_format_provided'] ? 1 : 0,
             ':is_active' => $profile['is_active'],
             ':id' => $profileId,
             ':supplier_id' => $supplierId
