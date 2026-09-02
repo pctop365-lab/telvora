@@ -1,5 +1,8 @@
 <?php
 
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
+
 session_set_cookie_params([
     'lifetime' => 0,
     'path' => '/',
@@ -216,13 +219,14 @@ if (
     exit;
 }
 
-$rawRequestBody = file_get_contents(
-    'php://input',
-    false,
-    null,
-    0,
-    $maxManagerRequestBytes + 1
-);
+$inputStream = @fopen('php://input', 'rb');
+$rawRequestBody = $inputStream === false
+    ? false
+    : @stream_get_contents($inputStream, $maxManagerRequestBytes + 1);
+
+if (is_resource($inputStream)) {
+    fclose($inputStream);
+}
 
 if ($rawRequestBody === false || strlen($rawRequestBody) > $maxManagerRequestBytes) {
     http_response_code($rawRequestBody === false ? 400 : 413);
@@ -453,8 +457,19 @@ if (in_array($action, $csrfProtectedActions, true)) {
 
 function sendManagerJson(int $status, array $payload): void
 {
+    $encodedPayload = json_encode($payload, JSON_UNESCAPED_UNICODE);
+
+    if ($encodedPayload === false) {
+        error_log('manager.php JSON encoding failed: ' . json_last_error_msg());
+        header('Content-Type: application/json; charset=utf-8');
+        http_response_code(500);
+        echo '{"success":false,"message":"Response encoding failed"}';
+        exit;
+    }
+
+    header('Content-Type: application/json; charset=utf-8');
     http_response_code($status);
-    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
+    echo $encodedPayload;
     exit;
 }
 
@@ -710,9 +725,14 @@ function validateSupplierImportProfileInput(array $data): array
     }
 
     $sheetName = is_string($sheetNameValue) ? trim($sheetNameValue) : '';
+    $hasForbiddenSheetPathSeparator =
+        str_contains($sheetName, '/') || str_contains($sheetName, '\\');
+    $sheetControlMatch = preg_match('/[\x00-\x1F\x7F]/u', $sheetName);
+
     if (
         supplierImportProfileStringLength($sheetName) > 255 ||
-        preg_match('/[\\\/\x00-\x1F\x7F]/u', $sheetName) === 1
+        $hasForbiddenSheetPathSeparator ||
+        $sheetControlMatch !== 0
     ) {
         sendManagerJson(400, [
             'success' => false,
