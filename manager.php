@@ -207,11 +207,14 @@ function processAdminLoginAttempt(
 $maxManagerRequestBytes = 16384;
 $declaredContentLength = $_SERVER['CONTENT_LENGTH'] ?? null;
 $queryAction = $_GET['action'] ?? '';
-$isSupplierImportPreviewRequest =
-    is_string($queryAction) && $queryAction === 'supplier_import_preview';
+$isSupplierImportMultipartRequest = is_string($queryAction) && in_array(
+    $queryAction,
+    ['supplier_import_preview', 'supplier_import_stage'],
+    true
+);
 
 if (
-    !$isSupplierImportPreviewRequest &&
+    !$isSupplierImportMultipartRequest &&
     is_string($declaredContentLength) &&
     ctype_digit($declaredContentLength) &&
     (int)$declaredContentLength > $maxManagerRequestBytes
@@ -224,10 +227,10 @@ if (
     exit;
 }
 
-$inputStream = $isSupplierImportPreviewRequest
+$inputStream = $isSupplierImportMultipartRequest
     ? false
     : @fopen('php://input', 'rb');
-$rawRequestBody = $isSupplierImportPreviewRequest
+$rawRequestBody = $isSupplierImportMultipartRequest
     ? ''
     : ($inputStream === false
         ? false
@@ -238,7 +241,7 @@ if (is_resource($inputStream)) {
 }
 
 if (
-    !$isSupplierImportPreviewRequest &&
+    !$isSupplierImportMultipartRequest &&
     ($rawRequestBody === false || strlen($rawRequestBody) > $maxManagerRequestBytes)
 ) {
     http_response_code($rawRequestBody === false ? 400 : 413);
@@ -251,17 +254,17 @@ if (
     exit;
 }
 
-$data = $isSupplierImportPreviewRequest
+$data = $isSupplierImportMultipartRequest
     ? $_POST
     : ($rawRequestBody === '' ? [] : json_decode($rawRequestBody, true));
-$requestJsonIsValid = !$isSupplierImportPreviewRequest &&
+$requestJsonIsValid = !$isSupplierImportMultipartRequest &&
     is_array($data) && json_last_error() === JSON_ERROR_NONE;
 
 if (!is_array($data)) {
     $data = [];
 }
 
-$action = $isSupplierImportPreviewRequest
+$action = $isSupplierImportMultipartRequest
     ? $queryAction
     : ($data['action'] ?? $queryAction);
 
@@ -452,7 +455,9 @@ $csrfProtectedActions = [
     'supplier_import_profile_create',
     'supplier_import_profile_update',
     'supplier_import_profile_set_active',
-    'supplier_import_preview'
+    'supplier_import_preview',
+    'supplier_import_stage',
+    'supplier_import_row_set_match'
 ];
 
 if (in_array($action, $csrfProtectedActions, true)) {
@@ -500,6 +505,27 @@ function requireManagerMethod(string $expectedMethod): void
             'message' => 'Метод не поддерживается'
         ]);
     }
+}
+
+function requirePositiveManagerId(mixed $value, string $label): int
+{
+    if (
+        !is_int($value) &&
+        (!is_string($value) || preg_match('/\A[1-9][0-9]*\z/D', $value) !== 1)
+    ) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Некорректный идентификатор: ' . $label
+        ]);
+    }
+    $id = filter_var($value, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    if ($id === false) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Некорректный идентификатор: ' . $label
+        ]);
+    }
+    return (int)$id;
 }
 
 function validateSupplierInput(array $data): array
@@ -1263,6 +1289,514 @@ if ($action === 'supplier_import_preview') {
             'success' => false,
             'message' => 'Не удалось сформировать предварительный просмотр'
         ]);
+    }
+}
+
+if ($action === 'supplier_import_stage') {
+    requireManagerMethod('POST');
+
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+    if (!is_string($contentType) || !str_starts_with(strtolower($contentType), 'multipart/form-data;')) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Для создания импорта требуется загрузка файла'
+        ]);
+    }
+
+    requireOnlyPayloadKeys($data, ['supplier_id', 'profile_id']);
+    $supplierId = requireSupplierImportProfileSupplierId($data);
+    $profileId = requireSupplierImportProfileId([
+        'id' => $data['profile_id'] ?? null
+    ]);
+
+    try {
+        $profileStmt = $pdo->prepare("
+            SELECT p.id, p.supplier_id, p.sheet_name, p.header_row_number,
+                   p.column_mapping, p.parser_options
+            FROM supplier_import_profiles p
+            INNER JOIN suppliers s ON s.id = p.supplier_id
+            WHERE p.id = :profile_id
+              AND p.supplier_id = :supplier_id
+              AND p.is_active = 1
+            LIMIT 1
+        ");
+        $profileStmt->execute([
+            ':profile_id' => $profileId,
+            ':supplier_id' => $supplierId
+        ]);
+        $profileRow = $profileStmt->fetch();
+        if (!is_array($profileRow)) {
+            sendManagerJson(404, [
+                'success' => false,
+                'message' => 'Активный профиль импорта не найден'
+            ]);
+        }
+
+        require_once __DIR__ . '/supplier_import_preview.php';
+        require_once __DIR__ . '/supplier_import_stage.php';
+        $autoloadFile = dirname(__DIR__, 2) . '/telvora_vendor/vendor/autoload.php';
+        if (!is_file($autoloadFile) || !is_readable($autoloadFile)) {
+            error_log('supplier staging import: private Composer autoload is unavailable');
+            sendManagerJson(500, [
+                'success' => false,
+                'message' => 'Создание импорта временно недоступно'
+            ]);
+        }
+        try {
+            require_once $autoloadFile;
+        } catch (Throwable $error) {
+            error_log('supplier staging import autoload failed: ' . $error->getMessage());
+            sendManagerJson(500, [
+                'success' => false,
+                'message' => 'Создание импорта временно недоступно'
+            ]);
+        }
+        if (
+            !class_exists(PhpOffice\PhpSpreadsheet\IOFactory::class) ||
+            !class_exists(ZipArchive::class) ||
+            !class_exists(finfo::class)
+        ) {
+            error_log('supplier staging import: required PHP library or extension is unavailable');
+            sendManagerJson(500, [
+                'success' => false,
+                'message' => 'Создание импорта временно недоступно'
+            ]);
+        }
+
+        $upload = supplierPreviewValidateUpload($_FILES);
+        $profile = supplierPreviewValidateProfile($profileRow);
+        $pdo->beginTransaction();
+
+        $jobStmt = $pdo->prepare("
+            INSERT INTO supplier_import_jobs (
+                supplier_id, import_profile_id, original_filename, status
+            ) VALUES (
+                :supplier_id, :profile_id, :original_filename, 'processing'
+            )
+        ");
+        $jobStmt->execute([
+            ':supplier_id' => $supplierId,
+            ':profile_id' => $profileId,
+            ':original_filename' => $upload['original_filename']
+        ]);
+        $jobId = (int)$pdo->lastInsertId();
+        $rowBuffer = [];
+        $counters = ['total' => 0, 'matched' => 0, 'unmatched' => 0, 'errors' => 0];
+        $consumeRow = static function (array $row) use (
+            $pdo,
+            $jobId,
+            $supplierId,
+            &$rowBuffer,
+            &$counters
+        ): void {
+            $rowBuffer[] = supplierStagePrepareRow($row);
+            if (count($rowBuffer) >= 200) {
+                supplierStageInsertChunk($pdo, $jobId, $supplierId, $rowBuffer, $counters);
+                $rowBuffer = [];
+            }
+        };
+
+        supplierPreviewParse($upload, $profile, $consumeRow, 0);
+        supplierStageInsertChunk($pdo, $jobId, $supplierId, $rowBuffer, $counters);
+
+        $finishStmt = $pdo->prepare("
+            UPDATE supplier_import_jobs
+            SET status = 'ready_for_review', rows_total = :rows_total,
+                rows_matched = :rows_matched, rows_unmatched = :rows_unmatched,
+                rows_errors = :rows_errors, finished_at = CURRENT_TIMESTAMP
+            WHERE id = :id
+        ");
+        $finishStmt->execute([
+            ':rows_total' => $counters['total'],
+            ':rows_matched' => $counters['matched'],
+            ':rows_unmatched' => $counters['unmatched'],
+            ':rows_errors' => $counters['errors'],
+            ':id' => $jobId
+        ]);
+        $pdo->commit();
+
+        sendManagerJson(201, [
+            'success' => true,
+            'message' => 'Импорт создан для проверки. Товары, цены и остатки не изменены.',
+            'job_id' => $jobId,
+            'counters' => $counters
+        ]);
+    } catch (SupplierImportPreviewException $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        sendManagerJson($error->httpStatus, [
+            'success' => false,
+            'message' => $error->getMessage()
+        ]);
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('supplier staging import failed: ' . $error->getMessage());
+        sendManagerJson(500, [
+            'success' => false,
+            'message' => 'Не удалось создать staging-импорт'
+        ]);
+    }
+}
+
+if ($action === 'supplier_import_jobs_list') {
+    requireManagerMethod('GET');
+    $supplierId = requireSupplierImportProfileSupplierId([
+        'supplier_id' => $_GET['supplier_id'] ?? null
+    ]);
+    try {
+        requireSupplierExists($pdo, $supplierId);
+        $stmt = $pdo->prepare("
+            SELECT j.id, j.supplier_id, j.import_profile_id, j.original_filename,
+                   j.status, j.rows_total, j.rows_matched, j.rows_unmatched,
+                   j.rows_errors, j.created_at, j.finished_at,
+                   p.name AS profile_name
+            FROM supplier_import_jobs j
+            LEFT JOIN supplier_import_profiles p ON p.id = j.import_profile_id
+            WHERE j.supplier_id = :supplier_id
+            ORDER BY j.created_at DESC, j.id DESC
+            LIMIT 30
+        ");
+        $stmt->execute([':supplier_id' => $supplierId]);
+        $jobs = array_map(static function (array $job): array {
+            foreach (['id', 'supplier_id', 'import_profile_id', 'rows_total', 'rows_matched', 'rows_unmatched', 'rows_errors'] as $key) {
+                $job[$key] = $job[$key] === null ? null : (int)$job[$key];
+            }
+            return $job;
+        }, $stmt->fetchAll());
+        sendManagerJson(200, ['success' => true, 'jobs' => $jobs]);
+    } catch (Throwable $error) {
+        error_log('supplier import jobs list failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось загрузить историю импортов']);
+    }
+}
+
+if ($action === 'supplier_import_job_rows') {
+    requireManagerMethod('GET');
+    $jobId = requirePositiveManagerId($_GET['job_id'] ?? null, 'import job');
+    $page = requirePositiveManagerId($_GET['page'] ?? '1', 'страница');
+    $filter = $_GET['filter'] ?? 'all';
+    $allowedFilters = ['all', 'matched', 'unmatched', 'review'];
+    if (!is_string($filter) || !in_array($filter, $allowedFilters, true)) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Некорректный фильтр строк']);
+    }
+    $pageSize = 50;
+    $offset = ($page - 1) * $pageSize;
+    if ($offset > 5000000) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Некорректная страница']);
+    }
+    $whereByFilter = [
+        'all' => '',
+        'matched' => " AND r.status = 'matched'",
+        'unmatched' => " AND r.status = 'unmatched'",
+        'review' => " AND r.status IN ('needs_review', 'validation_error')"
+    ];
+    try {
+        require_once __DIR__ . '/supplier_import_stage.php';
+        $jobStmt = $pdo->prepare("
+            SELECT j.id, j.supplier_id, j.import_profile_id, j.original_filename,
+                   j.status, j.rows_total, j.rows_matched, j.rows_unmatched,
+                   j.rows_errors, j.created_at, j.finished_at,
+                   p.name AS profile_name, s.name AS supplier_name
+            FROM supplier_import_jobs j
+            INNER JOIN suppliers s ON s.id = j.supplier_id
+            LEFT JOIN supplier_import_profiles p ON p.id = j.import_profile_id
+            WHERE j.id = :id LIMIT 1
+        ");
+        $jobStmt->execute([':id' => $jobId]);
+        $job = $jobStmt->fetch();
+        if (!is_array($job)) {
+            sendManagerJson(404, ['success' => false, 'message' => 'Импорт не найден']);
+        }
+        $filterSql = $whereByFilter[$filter];
+        $countStmt = $pdo->prepare("SELECT COUNT(*) FROM supplier_import_rows r WHERE r.import_job_id = :job_id$filterSql");
+        $countStmt->execute([':job_id' => $jobId]);
+        $total = (int)$countStmt->fetchColumn();
+        $rowsStmt = $pdo->prepare("
+            SELECT r.id, r.source_row_number, r.supplier_sku,
+                   r.raw_product_name, r.normalized_model, r.purchase_price,
+                   r.currency_code, r.raw_availability, r.raw_arrival_info,
+                   r.detected_assembly_country, r.detected_market_region,
+                   r.detected_certification_supply_type, r.status,
+                   r.review_reason, r.matched_product_id,
+                   r.matched_product_variant_id, r.match_id,
+                   p.name AS matched_product_name,
+                   pv.display_name AS matched_variant_name,
+                   pv.variant_key AS matched_variant_key
+            FROM supplier_import_rows r
+            LEFT JOIN products p ON p.id = r.matched_product_id
+            LEFT JOIN product_variants pv ON pv.id = r.matched_product_variant_id
+            WHERE r.import_job_id = :job_id$filterSql
+            ORDER BY r.source_row_number ASC, r.id ASC
+            LIMIT $pageSize OFFSET $offset
+        ");
+        $rowsStmt->execute([':job_id' => $jobId]);
+        $rows = array_map(static function (array $row): array {
+            foreach (['id', 'source_row_number', 'matched_product_id', 'matched_product_variant_id', 'match_id'] as $key) {
+                $row[$key] = $row[$key] === null ? null : (int)$row[$key];
+            }
+            $reason = supplierStageDecodeReviewReason($row['review_reason']);
+            unset($row['review_reason']);
+            $row['errors'] = $reason['errors'];
+            $row['warnings'] = $reason['warnings'];
+            return $row;
+        }, $rowsStmt->fetchAll());
+        foreach (['id', 'supplier_id', 'import_profile_id', 'rows_total', 'rows_matched', 'rows_unmatched', 'rows_errors'] as $key) {
+            $job[$key] = $job[$key] === null ? null : (int)$job[$key];
+        }
+        sendManagerJson(200, [
+            'success' => true,
+            'job' => $job,
+            'filter' => $filter,
+            'page' => $page,
+            'page_size' => $pageSize,
+            'total' => $total,
+            'pages' => max(1, (int)ceil($total / $pageSize)),
+            'rows' => $rows
+        ]);
+    } catch (Throwable $error) {
+        error_log('supplier import job rows failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось загрузить строки импорта']);
+    }
+}
+
+if ($action === 'supplier_import_product_search') {
+    requireManagerMethod('GET');
+    $query = $_GET['q'] ?? '';
+    if (!is_string($query)) {
+        $query = '';
+    }
+    $query = trim($query);
+    if (mb_strlen($query, 'UTF-8') < 2 || mb_strlen($query, 'UTF-8') > 100) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Введите от 2 до 100 символов']);
+    }
+    $escaped = str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $query);
+    try {
+        $stmt = $pdo->prepare("
+            SELECT id, name, series
+            FROM products
+            WHERE name LIKE :name_query ESCAPE '!'
+               OR series LIKE :series_query ESCAPE '!'
+            ORDER BY name ASC, id ASC
+            LIMIT 20
+        ");
+        $searchPattern = '%' . $escaped . '%';
+        $stmt->execute([
+            ':name_query' => $searchPattern,
+            ':series_query' => $searchPattern
+        ]);
+        $productsFound = $stmt->fetchAll();
+        $productIds = array_map(static fn(array $product): int => (int)$product['id'], $productsFound);
+        $variantsByProduct = [];
+        if ($productIds !== []) {
+            $placeholders = implode(',', array_fill(0, count($productIds), '?'));
+            $variantStmt = $pdo->prepare("
+                SELECT id, product_id, variant_key, display_name,
+                       assembly_country, manufacturer_part_number
+                FROM product_variants
+                WHERE product_id IN ($placeholders) AND is_active = 1
+                ORDER BY product_id ASC, display_name ASC, id ASC
+            ");
+            $variantStmt->execute($productIds);
+            foreach ($variantStmt->fetchAll() as $variant) {
+                $variant['id'] = (int)$variant['id'];
+                $variant['product_id'] = (int)$variant['product_id'];
+                $variantsByProduct[$variant['product_id']][] = $variant;
+            }
+        }
+        $results = array_map(static function (array $product) use ($variantsByProduct): array {
+            $product['id'] = (int)$product['id'];
+            $product['variants'] = $variantsByProduct[$product['id']] ?? [];
+            return $product;
+        }, $productsFound);
+        sendManagerJson(200, ['success' => true, 'results' => $results]);
+    } catch (Throwable $error) {
+        error_log('supplier import product search failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось выполнить поиск товаров']);
+    }
+}
+
+if ($action === 'supplier_import_row_set_match') {
+    requireManagerMethod('POST');
+    if (!$requestJsonIsValid) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Некорректный JSON запроса']);
+    }
+    requireOnlyPayloadKeys($data, ['action', 'row_id', 'product_id', 'product_variant_id']);
+    $rowId = requirePositiveManagerId($data['row_id'] ?? null, 'строка импорта');
+    $productId = requirePositiveManagerId($data['product_id'] ?? null, 'товар');
+    $variantValue = $data['product_variant_id'] ?? null;
+    $variantId = ($variantValue === null || $variantValue === '')
+        ? null
+        : requirePositiveManagerId($variantValue, 'вариант товара');
+    try {
+        require_once __DIR__ . '/supplier_import_stage.php';
+        $pdo->beginTransaction();
+        $rowStmt = $pdo->prepare("
+            SELECT r.id, r.import_job_id, r.supplier_sku, r.normalized_model,
+                   r.status, j.supplier_id
+            FROM supplier_import_rows r
+            INNER JOIN supplier_import_jobs j ON j.id = r.import_job_id
+            WHERE r.id = :id FOR UPDATE
+        ");
+        $rowStmt->execute([':id' => $rowId]);
+        $row = $rowStmt->fetch();
+        if (!is_array($row)) {
+            $pdo->rollBack();
+            sendManagerJson(404, ['success' => false, 'message' => 'Строка импорта не найдена']);
+        }
+        if ($row['status'] === 'validation_error') {
+            $pdo->rollBack();
+            sendManagerJson(409, ['success' => false, 'message' => 'Сначала исправьте ошибки данных строки']);
+        }
+        $productStmt = $pdo->prepare('SELECT id FROM products WHERE id = :id LIMIT 1');
+        $productStmt->execute([':id' => $productId]);
+        if (!$productStmt->fetch()) {
+            $pdo->rollBack();
+            sendManagerJson(404, ['success' => false, 'message' => 'Товар не найден']);
+        }
+        if ($variantId !== null) {
+            $variantStmt = $pdo->prepare('SELECT id FROM product_variants WHERE id = :id AND product_id = :product_id LIMIT 1');
+            $variantStmt->execute([':id' => $variantId, ':product_id' => $productId]);
+            if (!$variantStmt->fetch()) {
+                $pdo->rollBack();
+                sendManagerJson(400, ['success' => false, 'message' => 'Вариант не принадлежит выбранному товару']);
+            }
+        }
+
+        $matchId = null;
+        $supplierSku = $row['supplier_sku'];
+        if (is_string($supplierSku) && $supplierSku !== '') {
+            $matchStmt = $pdo->prepare("
+                SELECT id, product_id, product_variant_id
+                FROM supplier_product_matches
+                WHERE supplier_id = :supplier_id
+                  AND BINARY supplier_sku = BINARY :supplier_sku
+                LIMIT 1 FOR UPDATE
+            ");
+            $matchStmt->execute([
+                ':supplier_id' => (int)$row['supplier_id'],
+                ':supplier_sku' => $supplierSku
+            ]);
+            $existingMatch = $matchStmt->fetch();
+            if (is_array($existingMatch)) {
+                $existingProductId = $existingMatch['product_id'] === null ? null : (int)$existingMatch['product_id'];
+                $existingVariantId = $existingMatch['product_variant_id'] === null ? null : (int)$existingMatch['product_variant_id'];
+                if (
+                    ($existingProductId !== null && $existingProductId !== $productId) ||
+                    ($existingVariantId !== null && $existingVariantId !== $variantId)
+                ) {
+                    $pdo->rollBack();
+                    sendManagerJson(409, ['success' => false, 'message' => 'Артикул поставщика уже связан с другим товаром или вариантом']);
+                }
+                $matchId = (int)$existingMatch['id'];
+                $updateMatch = $pdo->prepare("
+                    UPDATE supplier_product_matches
+                    SET product_id = :product_id,
+                        product_variant_id = :variant_id,
+                        normalized_model = :normalized_model,
+                        match_method = 'manual', confidence = 1.0000,
+                        status = 'confirmed',
+                        variant_confirmation_source = :variant_source,
+                        reviewed_by = 'admin_session',
+                        reviewed_at = CURRENT_TIMESTAMP, is_active = 1
+                    WHERE id = :id
+                ");
+                $updateMatch->execute([
+                    ':product_id' => $productId,
+                    ':variant_id' => $variantId,
+                    ':normalized_model' => $row['normalized_model'],
+                    ':variant_source' => $variantId === null ? null : 'manual_admin',
+                    ':id' => $matchId
+                ]);
+            } else {
+                $insertMatch = $pdo->prepare("
+                    INSERT INTO supplier_product_matches (
+                        supplier_id, supplier_sku, normalized_model,
+                        product_id, product_variant_id, match_method,
+                        confidence, status, variant_confirmation_source,
+                        reviewed_by, reviewed_at, is_active
+                    ) VALUES (
+                        :supplier_id, :supplier_sku, :normalized_model,
+                        :product_id, :variant_id, 'manual', 1.0000,
+                        'confirmed', :variant_source, 'admin_session',
+                        CURRENT_TIMESTAMP, 1
+                    )
+                ");
+                $insertMatch->execute([
+                    ':supplier_id' => (int)$row['supplier_id'],
+                    ':supplier_sku' => $supplierSku,
+                    ':normalized_model' => $row['normalized_model'],
+                    ':product_id' => $productId,
+                    ':variant_id' => $variantId,
+                    ':variant_source' => $variantId === null ? null : 'manual_admin'
+                ]);
+                $matchId = (int)$pdo->lastInsertId();
+            }
+        }
+
+        $rowStatus = $variantId === null ? 'needs_review' : 'matched';
+        $rowReason = $variantId === null
+            ? supplierStageReviewReason([], ['Товар выбран, но вариант требует явного выбора'])
+            : null;
+        $updateRow = $pdo->prepare("
+            UPDATE supplier_import_rows
+            SET matched_product_id = :product_id,
+                matched_product_variant_id = :variant_id,
+                match_id = :match_id, status = :status,
+                review_reason = :review_reason
+            WHERE id = :id
+        ");
+        $updateRow->execute([
+            ':product_id' => $productId,
+            ':variant_id' => $variantId,
+            ':match_id' => $matchId,
+            ':status' => $rowStatus,
+            ':review_reason' => $rowReason,
+            ':id' => $rowId
+        ]);
+
+        $jobId = (int)$row['import_job_id'];
+        $counterStmt = $pdo->prepare("
+            SELECT COUNT(*) AS rows_total,
+                   SUM(status = 'matched') AS rows_matched,
+                   SUM(status IN ('unmatched', 'needs_review')) AS rows_unmatched,
+                   SUM(status = 'validation_error') AS rows_errors
+            FROM supplier_import_rows WHERE import_job_id = :job_id
+        ");
+        $counterStmt->execute([':job_id' => $jobId]);
+        $counts = $counterStmt->fetch();
+        $updateJob = $pdo->prepare("
+            UPDATE supplier_import_jobs
+            SET rows_total = :rows_total, rows_matched = :rows_matched,
+                rows_unmatched = :rows_unmatched, rows_errors = :rows_errors
+            WHERE id = :id
+        ");
+        $updateJob->execute([
+            ':rows_total' => (int)$counts['rows_total'],
+            ':rows_matched' => (int)$counts['rows_matched'],
+            ':rows_unmatched' => (int)$counts['rows_unmatched'],
+            ':rows_errors' => (int)$counts['rows_errors'],
+            ':id' => $jobId
+        ]);
+        $pdo->commit();
+        sendManagerJson(200, [
+            'success' => true,
+            'message' => $variantId === null
+                ? 'Товар сохранён; выберите точный вариант'
+                : 'Строка сопоставлена',
+            'job_id' => $jobId
+        ]);
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        if ($error instanceof PDOException && (int)($error->errorInfo[1] ?? 0) === 1062) {
+            sendManagerJson(409, ['success' => false, 'message' => 'Артикул поставщика уже имеет связь']);
+        }
+        error_log('supplier import manual match failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось сохранить сопоставление']);
     }
 }
 

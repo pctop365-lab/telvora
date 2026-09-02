@@ -498,14 +498,19 @@ function supplierPreviewBuildRow(
     ];
 }
 
-function supplierPreviewAccumulator(): array
+function supplierPreviewAccumulator(
+    ?callable $rowConsumer = null,
+    int $capturedRowLimit = SUPPLIER_PREVIEW_MAX_ROWS
+): array
 {
     return [
         'rows_scanned' => 0,
         'rows_skipped' => 0,
         'rows_with_errors' => 0,
         'eligible_rows' => 0,
-        'rows' => []
+        'rows' => [],
+        '_row_consumer' => $rowConsumer,
+        '_captured_row_limit' => $capturedRowLimit
     ];
 }
 
@@ -526,9 +531,23 @@ function supplierPreviewAccumulateRow(array &$result, array $row, bool $skipEmpt
     if ($row['errors'] !== []) {
         $result['rows_with_errors']++;
     }
-    if (count($result['rows']) < SUPPLIER_PREVIEW_MAX_ROWS) {
+    if (is_callable($result['_row_consumer'])) {
+        ($result['_row_consumer'])($row);
+    }
+    if (count($result['rows']) < $result['_captured_row_limit']) {
         $result['rows'][] = $row;
     }
+}
+
+function supplierPreviewFinalizeAccumulator(array &$result): void
+{
+    $result['preview_truncated'] =
+        $result['eligible_rows'] > $result['_captured_row_limit'];
+    unset(
+        $result['eligible_rows'],
+        $result['_row_consumer'],
+        $result['_captured_row_limit']
+    );
 }
 
 function supplierPreviewDetectCsvDelimiter(string $path): string
@@ -571,7 +590,12 @@ function supplierPreviewDetectCsvDelimiter(string $path): string
     return (string)$bestDelimiter;
 }
 
-function supplierPreviewParseCsv(string $path, array $profile): array
+function supplierPreviewParseCsv(
+    string $path,
+    array $profile,
+    ?callable $rowConsumer = null,
+    int $capturedRowLimit = SUPPLIER_PREVIEW_MAX_ROWS
+): array
 {
     $delimiter = supplierPreviewDetectCsvDelimiter($path);
     $handle = fopen($path, 'rb');
@@ -579,7 +603,7 @@ function supplierPreviewParseCsv(string $path, array $profile): array
         supplierPreviewFail('Не удалось прочитать CSV-файл');
     }
 
-    $result = supplierPreviewAccumulator();
+    $result = supplierPreviewAccumulator($rowConsumer, $capturedRowLimit);
     $headers = [];
     $recordNumber = 0;
     try {
@@ -632,13 +656,18 @@ function supplierPreviewParseCsv(string $path, array $profile): array
     }
 
     $result['detected_headers'] = $headers;
-    $result['preview_truncated'] = $result['eligible_rows'] > SUPPLIER_PREVIEW_MAX_ROWS;
-    unset($result['eligible_rows']);
+    supplierPreviewFinalizeAccumulator($result);
     $result['csv_delimiter'] = $delimiter === "\t" ? 'tab' : $delimiter;
     return $result;
 }
 
-function supplierPreviewLoadSpreadsheet(string $path, string $extension, array $profile): array
+function supplierPreviewLoadSpreadsheet(
+    string $path,
+    string $extension,
+    array $profile,
+    ?callable $rowConsumer = null,
+    int $capturedRowLimit = SUPPLIER_PREVIEW_MAX_ROWS
+): array
 {
     if ($extension === 'xlsx') {
         supplierPreviewValidateXlsxArchive($path);
@@ -766,7 +795,7 @@ function supplierPreviewLoadSpreadsheet(string $path, string $extension, array $
             }
         }
 
-        $result = supplierPreviewAccumulator();
+        $result = supplierPreviewAccumulator($rowConsumer, $capturedRowLimit);
         $firstDataRow = $profile['header_row_number'] > 0
             ? $profile['header_row_number'] + 1
             : 1;
@@ -809,8 +838,7 @@ function supplierPreviewLoadSpreadsheet(string $path, string $extension, array $
         }
 
         $result['detected_headers'] = $headers;
-        $result['preview_truncated'] = $result['eligible_rows'] > SUPPLIER_PREVIEW_MAX_ROWS;
-        unset($result['eligible_rows']);
+        supplierPreviewFinalizeAccumulator($result);
         $result['sheet_name'] = $sheetName;
         return $result;
     } finally {
@@ -819,13 +847,29 @@ function supplierPreviewLoadSpreadsheet(string $path, string $extension, array $
     }
 }
 
-function supplierPreviewParse(array $upload, array $profile): array
+function supplierPreviewParse(
+    array $upload,
+    array $profile,
+    ?callable $rowConsumer = null,
+    int $capturedRowLimit = SUPPLIER_PREVIEW_MAX_ROWS
+): array
 {
     if ($upload['extension'] === 'csv') {
-        $result = supplierPreviewParseCsv($upload['path'], $profile);
+        $result = supplierPreviewParseCsv(
+            $upload['path'],
+            $profile,
+            $rowConsumer,
+            $capturedRowLimit
+        );
         $result['sheet_name'] = 'CSV';
         return $result;
     }
 
-    return supplierPreviewLoadSpreadsheet($upload['path'], $upload['extension'], $profile);
+    return supplierPreviewLoadSpreadsheet(
+        $upload['path'],
+        $upload['extension'],
+        $profile,
+        $rowConsumer,
+        $capturedRowLimit
+    );
 }

@@ -138,6 +138,55 @@ type SupplierImportPreview = {
   rows: SupplierImportPreviewRow[];
 };
 
+type SupplierImportJob = {
+  id: number;
+  supplier_id: number;
+  import_profile_id: number | null;
+  original_filename: string;
+  profile_name: string | null;
+  status: string;
+  rows_total: number;
+  rows_matched: number;
+  rows_unmatched: number;
+  rows_errors: number;
+  created_at: string;
+  finished_at: string | null;
+};
+
+type SupplierImportStagedRow = {
+  id: number;
+  source_row_number: number;
+  supplier_sku: string | null;
+  raw_product_name: string | null;
+  normalized_model: string | null;
+  purchase_price: string | null;
+  currency_code: string | null;
+  raw_availability: string | null;
+  raw_arrival_info: string | null;
+  status: string;
+  errors: string[];
+  warnings: string[];
+  matched_product_id: number | null;
+  matched_product_variant_id: number | null;
+  matched_product_name: string | null;
+  matched_variant_name: string | null;
+  matched_variant_key: string | null;
+};
+
+type SupplierImportProductResult = {
+  id: number;
+  name: string;
+  series: string;
+  variants: Array<{
+    id: number;
+    product_id: number;
+    variant_key: string;
+    display_name: string | null;
+    assembly_country: string | null;
+    manufacturer_part_number: string | null;
+  }>;
+};
+
 const MANAGER_API = '/manager.php';
 const PRODUCTS_API = '/products.php';
 
@@ -339,6 +388,20 @@ export default function AdminPage() {
   const [supplierImportPreviewLoading, setSupplierImportPreviewLoading] = useState(false);
   const [supplierImportPreviewError, setSupplierImportPreviewError] = useState('');
   const [previewFileInputKey, setPreviewFileInputKey] = useState(0);
+  const supplierImportStagePendingRef = useRef(false);
+  const [supplierImportStageLoading, setSupplierImportStageLoading] = useState(false);
+  const [supplierImportJobs, setSupplierImportJobs] = useState<SupplierImportJob[]>([]);
+  const [supplierImportJobsLoading, setSupplierImportJobsLoading] = useState(false);
+  const [selectedImportJob, setSelectedImportJob] = useState<SupplierImportJob | null>(null);
+  const [stagedRows, setStagedRows] = useState<SupplierImportStagedRow[]>([]);
+  const [stagedRowsLoading, setStagedRowsLoading] = useState(false);
+  const [stagedRowsFilter, setStagedRowsFilter] = useState('all');
+  const [stagedRowsPage, setStagedRowsPage] = useState(1);
+  const [stagedRowsPages, setStagedRowsPages] = useState(1);
+  const [manualMatchRow, setManualMatchRow] = useState<SupplierImportStagedRow | null>(null);
+  const [manualProductQuery, setManualProductQuery] = useState('');
+  const [manualProductResults, setManualProductResults] = useState<SupplierImportProductResult[]>([]);
+  const [manualMatchLoading, setManualMatchLoading] = useState(false);
 
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -790,6 +853,33 @@ const login = async (e: React.FormEvent) => {
     }
   };
 
+  const loadSupplierImportJobs = async (supplier: Supplier) => {
+    setSupplierImportJobsLoading(true);
+    try {
+      const response = await fetch(
+        `${MANAGER_API}?action=supplier_import_jobs_list&supplier_id=${supplier.id}`,
+        { method: 'GET', credentials: 'include', headers: { Accept: 'application/json' } }
+      );
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Не удалось загрузить историю импортов');
+      }
+      if (profileSupplierIdRef.current === supplier.id) {
+        setSupplierImportJobs(Array.isArray(data.jobs) ? data.jobs : []);
+      }
+    } catch (err) {
+      if (profileSupplierIdRef.current === supplier.id) {
+        setSupplierImportProfilesError(
+          err instanceof Error ? err.message : 'Не удалось загрузить историю импортов'
+        );
+      }
+    } finally {
+      if (profileSupplierIdRef.current === supplier.id) {
+        setSupplierImportJobsLoading(false);
+      }
+    }
+  };
+
   const openSupplierImportProfiles = (supplier: Supplier) => {
     profileSupplierIdRef.current = supplier.id;
     setProfileSupplier(supplier);
@@ -803,8 +893,13 @@ const login = async (e: React.FormEvent) => {
     setPreviewFile(null);
     setSupplierImportPreview(null);
     setSupplierImportPreviewError('');
+    setSupplierImportJobs([]);
+    setSelectedImportJob(null);
+    setStagedRows([]);
+    setManualMatchRow(null);
     setPreviewFileInputKey((current) => current + 1);
     loadSupplierImportProfiles(supplier);
+    loadSupplierImportJobs(supplier);
   };
 
   const closeSupplierImportProfiles = () => {
@@ -820,6 +915,10 @@ const login = async (e: React.FormEvent) => {
     setPreviewFile(null);
     setSupplierImportPreview(null);
     setSupplierImportPreviewError('');
+    setSupplierImportJobs([]);
+    setSelectedImportJob(null);
+    setStagedRows([]);
+    setManualMatchRow(null);
     setPreviewFileInputKey((current) => current + 1);
   };
 
@@ -1032,7 +1131,7 @@ const login = async (e: React.FormEvent) => {
   };
 
   const closeSupplierImportPreview = () => {
-    if (supplierImportPreviewLoading) {
+    if (supplierImportPreviewLoading || supplierImportStageLoading) {
       return;
     }
     setPreviewProfile(null);
@@ -1131,6 +1230,152 @@ const login = async (e: React.FormEvent) => {
     } finally {
       supplierImportPreviewPendingRef.current = false;
       setSupplierImportPreviewLoading(false);
+    }
+  };
+
+  const loadSupplierImportJobRows = async (
+    job: SupplierImportJob,
+    page = 1,
+    filter = stagedRowsFilter
+  ) => {
+    setStagedRowsLoading(true);
+    setSupplierImportProfilesError('');
+    try {
+      const response = await fetch(
+        `${MANAGER_API}?action=supplier_import_job_rows&job_id=${job.id}&page=${page}&filter=${encodeURIComponent(filter)}`,
+        { method: 'GET', credentials: 'include', headers: { Accept: 'application/json' } }
+      );
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Не удалось загрузить строки импорта');
+      }
+      setSelectedImportJob(data.job as SupplierImportJob);
+      setStagedRows(Array.isArray(data.rows) ? data.rows : []);
+      setStagedRowsPage(Number(data.page) || 1);
+      setStagedRowsPages(Number(data.pages) || 1);
+      setStagedRowsFilter(filter);
+    } catch (err) {
+      setSupplierImportProfilesError(
+        err instanceof Error ? err.message : 'Не удалось загрузить строки импорта'
+      );
+    } finally {
+      setStagedRowsLoading(false);
+    }
+  };
+
+  const createSupplierStagingImport = async () => {
+    if (
+      !profileSupplier || !previewProfile || !previewFile || !supplierImportPreview ||
+      supplierImportStagePendingRef.current
+    ) {
+      return;
+    }
+    const formData = new FormData();
+    formData.append('supplier_id', String(profileSupplier.id));
+    formData.append('profile_id', String(previewProfile.id));
+    formData.append('file', previewFile);
+    supplierImportStagePendingRef.current = true;
+    setSupplierImportStageLoading(true);
+    setSupplierImportPreviewError('');
+    try {
+      const response = await fetch(`${MANAGER_API}?action=supplier_import_stage`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Accept: 'application/json', 'X-CSRF-Token': csrfToken || '' },
+        body: formData,
+      });
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success || !data.job_id) {
+        if (response.status === 401 || response.status === 403) {
+          setAuthenticated(false);
+          setCsrfToken(null);
+        }
+        if (response.status === 413) {
+          throw new Error('Файл слишком большой. Максимальный размер — 2 МБ.');
+        }
+        throw new Error(data.message || 'Не удалось создать staging-импорт');
+      }
+      setSupplierImportProfilesSuccess(data.message || 'Импорт создан для проверки');
+      await loadSupplierImportJobs(profileSupplier);
+      const createdJob: SupplierImportJob = {
+        id: Number(data.job_id), supplier_id: profileSupplier.id,
+        import_profile_id: previewProfile.id,
+        original_filename: previewFile.name, profile_name: previewProfile.name,
+        status: 'ready_for_review', rows_total: Number(data.counters?.total || 0),
+        rows_matched: Number(data.counters?.matched || 0),
+        rows_unmatched: Number(data.counters?.unmatched || 0),
+        rows_errors: Number(data.counters?.errors || 0),
+        created_at: new Date().toISOString(), finished_at: new Date().toISOString(),
+      };
+      await loadSupplierImportJobRows(createdJob, 1, 'all');
+    } catch (err) {
+      setSupplierImportPreviewError(
+        err instanceof Error ? err.message : 'Не удалось создать staging-импорт'
+      );
+    } finally {
+      supplierImportStagePendingRef.current = false;
+      setSupplierImportStageLoading(false);
+    }
+  };
+
+  const searchProductsForImportRow = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const query = manualProductQuery.trim();
+    if (query.length < 2) {
+      setSupplierImportProfilesError('Введите минимум 2 символа для поиска товара');
+      return;
+    }
+    setManualMatchLoading(true);
+    setSupplierImportProfilesError('');
+    try {
+      const response = await fetch(
+        `${MANAGER_API}?action=supplier_import_product_search&q=${encodeURIComponent(query)}`,
+        { method: 'GET', credentials: 'include', headers: { Accept: 'application/json' } }
+      );
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Не удалось найти товары');
+      }
+      setManualProductResults(Array.isArray(data.results) ? data.results : []);
+    } catch (err) {
+      setSupplierImportProfilesError(err instanceof Error ? err.message : 'Не удалось найти товары');
+    } finally {
+      setManualMatchLoading(false);
+    }
+  };
+
+  const setManualImportMatch = async (productId: number, variantId: number | null) => {
+    if (!manualMatchRow || !selectedImportJob || manualMatchLoading) return;
+    setManualMatchLoading(true);
+    setSupplierImportProfilesError('');
+    try {
+      const response = await fetch(MANAGER_API, {
+        method: 'POST', credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json', Accept: 'application/json',
+          'X-CSRF-Token': csrfToken || '',
+        },
+        body: JSON.stringify({
+          action: 'supplier_import_row_set_match', row_id: manualMatchRow.id,
+          product_id: productId, product_variant_id: variantId,
+        }),
+      });
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Не удалось сохранить сопоставление');
+      }
+      setManualMatchRow(null);
+      setManualProductResults([]);
+      setManualProductQuery('');
+      setSupplierImportProfilesSuccess(data.message || 'Сопоставление сохранено');
+      await loadSupplierImportJobRows(selectedImportJob, stagedRowsPage, stagedRowsFilter);
+      if (profileSupplier) await loadSupplierImportJobs(profileSupplier);
+    } catch (err) {
+      setSupplierImportProfilesError(
+        err instanceof Error ? err.message : 'Не удалось сохранить сопоставление'
+      );
+    } finally {
+      setManualMatchLoading(false);
     }
   };
 
@@ -2953,7 +3198,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                       <button
                         type="button"
                         onClick={closeSupplierImportPreview}
-                        disabled={supplierImportPreviewLoading}
+                        disabled={supplierImportPreviewLoading || supplierImportStageLoading}
                         className="p-2 rounded-lg text-gray-500 hover:bg-white disabled:opacity-50"
                         aria-label="Закрыть предварительный просмотр"
                       >
@@ -2968,7 +3213,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                           key={previewFileInputKey}
                           type="file"
                           accept=".csv,.xls,.xlsx"
-                          disabled={supplierImportPreviewLoading}
+                          disabled={supplierImportPreviewLoading || supplierImportStageLoading}
                           onChange={(event) => {
                             setPreviewFile(event.target.files?.[0] || null);
                             setSupplierImportPreview(null);
@@ -2982,7 +3227,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                       </div>
                       <button
                         type="submit"
-                        disabled={!previewFile || supplierImportPreviewLoading}
+                        disabled={!previewFile || supplierImportPreviewLoading || supplierImportStageLoading}
                         className="px-5 py-2.5 rounded-xl bg-accent-500 text-white font-semibold hover:bg-accent-600 disabled:opacity-50"
                       >
                         {supplierImportPreviewLoading ? 'Проверка...' : 'Показать предварительный просмотр'}
@@ -3022,6 +3267,19 @@ const toggleProductStatus = async (product: AdminProduct) => {
                         <div className="mt-3 text-xs text-gray-500">
                           Файл: {supplierImportPreview.original_filename}
                           {supplierImportPreview.preview_truncated && ' · Показаны первые 100 строк'}
+                        </div>
+                        <div className="mt-4 flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                          <p className="text-sm text-amber-900">
+                            Будет создан импорт для проверки и сопоставления. Товары, цены и остатки на сайте не изменятся.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={createSupplierStagingImport}
+                            disabled={supplierImportStageLoading}
+                            className="shrink-0 px-5 py-2.5 rounded-xl bg-amber-600 text-white font-semibold hover:bg-amber-700 disabled:opacity-50"
+                          >
+                            {supplierImportStageLoading ? 'Создание импорта...' : 'Сохранить в staging'}
+                          </button>
                         </div>
 
                         <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200 bg-white">
@@ -3387,6 +3645,91 @@ const toggleProductStatus = async (product: AdminProduct) => {
                         })}
                       </tbody>
                     </table>
+                  </div>
+                )}
+
+                <div className="mt-8 border-t border-gray-200 pt-6">
+                  <div className="flex items-center justify-between gap-3 mb-4">
+                    <div>
+                      <h4 className="font-semibold text-graphite-900">Импорты</h4>
+                      <p className="text-sm text-gray-500 mt-1">Staging-история без применения цен и остатков к сайту.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => profileSupplier && loadSupplierImportJobs(profileSupplier)}
+                      disabled={supplierImportJobsLoading}
+                      className="px-3 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 disabled:opacity-50"
+                    >
+                      Обновить
+                    </button>
+                  </div>
+                  {supplierImportJobsLoading ? (
+                    <div className="py-6 text-center text-gray-500">Загрузка импортов...</div>
+                  ) : supplierImportJobs.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-gray-300 p-6 text-center text-gray-500">Импортов пока нет.</div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-gray-200">
+                      <table className="w-full min-w-[850px] text-sm">
+                        <thead className="bg-gray-50 border-b border-gray-200"><tr>
+                          <th className="px-3 py-3 text-left">ID / файл</th><th className="px-3 py-3 text-left">Профиль / дата</th>
+                          <th className="px-3 py-3 text-left">Статус</th><th className="px-3 py-3 text-left">Всего</th>
+                          <th className="px-3 py-3 text-left">Сопоставлено</th><th className="px-3 py-3 text-left">Без связи</th>
+                          <th className="px-3 py-3 text-left">Ошибки</th>
+                        </tr></thead>
+                        <tbody>{supplierImportJobs.map((job) => (
+                          <tr key={job.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50 cursor-pointer" onClick={() => loadSupplierImportJobRows(job, 1, 'all')}>
+                            <td className="px-3 py-3"><div className="font-semibold">#{job.id}</div><div className="text-xs text-gray-500 break-all">{job.original_filename}</div></td>
+                            <td className="px-3 py-3"><div>{job.profile_name || 'Профиль удалён'}</div><div className="text-xs text-gray-500">{formatDate(job.created_at)}</div></td>
+                            <td className="px-3 py-3">{job.status}</td><td className="px-3 py-3">{job.rows_total}</td>
+                            <td className="px-3 py-3 text-emerald-700">{job.rows_matched}</td><td className="px-3 py-3 text-amber-700">{job.rows_unmatched}</td>
+                            <td className="px-3 py-3 text-red-600">{job.rows_errors}</td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+                {selectedImportJob && (
+                  <div className="mt-6 rounded-2xl border border-gray-200 p-5">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                      <div><h4 className="font-semibold text-graphite-900">Проверка импорта #{selectedImportJob.id}</h4><p className="text-xs text-gray-500 mt-1">{selectedImportJob.original_filename}</p></div>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          ['all', 'Все'], ['matched', 'Сопоставленные'], ['unmatched', 'Без связи'], ['review', 'Проверка / ошибки'],
+                        ].map(([value, label]) => (
+                          <button key={value} type="button" onClick={() => loadSupplierImportJobRows(selectedImportJob, 1, value)} className={`px-3 py-2 rounded-lg border text-xs ${stagedRowsFilter === value ? 'border-accent-300 bg-accent-50 text-accent-700' : 'border-gray-200 text-gray-600'}`}>{label}</button>
+                        ))}
+                      </div>
+                    </div>
+                    {stagedRowsLoading ? <div className="py-8 text-center text-gray-500">Загрузка строк...</div> : (
+                      <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200">
+                        <table className="w-full min-w-[1200px] text-sm"><thead className="bg-gray-50"><tr>
+                          <th className="px-3 py-3 text-left">Строка</th><th className="px-3 py-3 text-left">SKU</th><th className="px-3 py-3 text-left">Товар / модель</th>
+                          <th className="px-3 py-3 text-left">Цена</th><th className="px-3 py-3 text-left">Наличие / поступление</th><th className="px-3 py-3 text-left">Статус / замечания</th><th className="px-3 py-3 text-left">Связь</th>
+                        </tr></thead><tbody>{stagedRows.map((row) => (
+                          <tr key={row.id} className="border-t border-gray-100 align-top">
+                            <td className="px-3 py-3 font-mono">{row.source_row_number}</td><td className="px-3 py-3">{row.supplier_sku || '—'}</td>
+                            <td className="px-3 py-3"><div>{row.raw_product_name || '—'}</div><div className="text-xs text-gray-500">{row.normalized_model || '—'}</div></td>
+                            <td className="px-3 py-3">{row.purchase_price ?? '—'} {row.currency_code || ''}</td>
+                            <td className="px-3 py-3"><div>{row.raw_availability || '—'}</div><div className="text-xs text-gray-500">{row.raw_arrival_info || '—'}</div></td>
+                            <td className="px-3 py-3"><div className="font-medium">{row.status}</div>{row.errors.map((message) => <div key={message} className="text-xs text-red-600">{message}</div>)}{row.warnings.map((message) => <div key={message} className="text-xs text-amber-700">{message}</div>)}</td>
+                            <td className="px-3 py-3"><div>{row.matched_product_name || 'Не сопоставлено'}</div><div className="text-xs text-gray-500">{row.matched_variant_name || row.matched_variant_key || ''}</div>{row.status !== 'validation_error' && <button type="button" onClick={() => { setManualMatchRow(row); setManualProductQuery(row.normalized_model || row.raw_product_name || ''); setManualProductResults([]); }} className="mt-2 px-3 py-1.5 rounded-lg border border-accent-200 text-accent-700 text-xs">Сопоставить</button>}</td>
+                          </tr>
+                        ))}</tbody></table>
+                      </div>
+                    )}
+                    <div className="mt-4 flex items-center justify-center gap-3"><button type="button" disabled={stagedRowsPage <= 1 || stagedRowsLoading} onClick={() => loadSupplierImportJobRows(selectedImportJob, stagedRowsPage - 1, stagedRowsFilter)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Назад</button><span className="text-sm text-gray-500">{stagedRowsPage} / {stagedRowsPages}</span><button type="button" disabled={stagedRowsPage >= stagedRowsPages || stagedRowsLoading} onClick={() => loadSupplierImportJobRows(selectedImportJob, stagedRowsPage + 1, stagedRowsFilter)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Далее</button></div>
+                  </div>
+                )}
+
+                {manualMatchRow && (
+                  <div className="mt-6 rounded-2xl border border-accent-200 bg-accent-50/40 p-5">
+                    <div className="flex justify-between gap-3"><div><h4 className="font-semibold">Ручное сопоставление строки {manualMatchRow.source_row_number}</h4><p className="text-xs text-gray-500 mt-1">Выбор создаёт долговременную связь только при наличии SKU поставщика.</p></div><button type="button" onClick={() => setManualMatchRow(null)}><X className="w-5 h-5" /></button></div>
+                    <form onSubmit={searchProductsForImportRow} className="mt-4 flex gap-3"><input value={manualProductQuery} onChange={(event) => setManualProductQuery(event.target.value)} minLength={2} maxLength={100} className="admin-input" placeholder="Название или серия"/><button disabled={manualMatchLoading} className="px-4 py-2 rounded-xl bg-accent-500 text-white disabled:opacity-50">Найти</button></form>
+                    <div className="mt-4 space-y-3">{manualProductResults.map((product) => (
+                      <div key={product.id} className="rounded-xl border border-gray-200 bg-white p-4"><div className="flex justify-between gap-3"><div><div className="font-semibold">{product.name}</div><div className="text-xs text-gray-500">{product.series}</div></div><button type="button" disabled={manualMatchLoading} onClick={() => setManualImportMatch(product.id, null)} className="px-3 py-1.5 rounded-lg border text-xs">Выбрать товар без варианта</button></div><div className="mt-3 flex flex-wrap gap-2">{product.variants.map((variant) => <button key={variant.id} type="button" disabled={manualMatchLoading} onClick={() => setManualImportMatch(product.id, variant.id)} className="px-3 py-2 rounded-lg border border-emerald-200 text-emerald-700 text-xs">{variant.display_name || variant.variant_key}{variant.assembly_country ? ` · ${variant.assembly_country}` : ''}</button>)}</div></div>
+                    ))}</div>
                   </div>
                 )}
               </section>
