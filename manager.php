@@ -2,6 +2,7 @@
 
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
+define('TELVORA_MANAGER_REQUEST', true);
 
 session_set_cookie_params([
     'lifetime' => 0,
@@ -205,8 +206,12 @@ function processAdminLoginAttempt(
 
 $maxManagerRequestBytes = 16384;
 $declaredContentLength = $_SERVER['CONTENT_LENGTH'] ?? null;
+$queryAction = $_GET['action'] ?? '';
+$isSupplierImportPreviewRequest =
+    is_string($queryAction) && $queryAction === 'supplier_import_preview';
 
 if (
+    !$isSupplierImportPreviewRequest &&
     is_string($declaredContentLength) &&
     ctype_digit($declaredContentLength) &&
     (int)$declaredContentLength > $maxManagerRequestBytes
@@ -219,16 +224,23 @@ if (
     exit;
 }
 
-$inputStream = @fopen('php://input', 'rb');
-$rawRequestBody = $inputStream === false
+$inputStream = $isSupplierImportPreviewRequest
     ? false
-    : @stream_get_contents($inputStream, $maxManagerRequestBytes + 1);
+    : @fopen('php://input', 'rb');
+$rawRequestBody = $isSupplierImportPreviewRequest
+    ? ''
+    : ($inputStream === false
+        ? false
+        : @stream_get_contents($inputStream, $maxManagerRequestBytes + 1));
 
 if (is_resource($inputStream)) {
     fclose($inputStream);
 }
 
-if ($rawRequestBody === false || strlen($rawRequestBody) > $maxManagerRequestBytes) {
+if (
+    !$isSupplierImportPreviewRequest &&
+    ($rawRequestBody === false || strlen($rawRequestBody) > $maxManagerRequestBytes)
+) {
     http_response_code($rawRequestBody === false ? 400 : 413);
     echo json_encode([
         'success' => false,
@@ -239,14 +251,19 @@ if ($rawRequestBody === false || strlen($rawRequestBody) > $maxManagerRequestByt
     exit;
 }
 
-$data = $rawRequestBody === '' ? [] : json_decode($rawRequestBody, true);
-$requestJsonIsValid = is_array($data) && json_last_error() === JSON_ERROR_NONE;
+$data = $isSupplierImportPreviewRequest
+    ? $_POST
+    : ($rawRequestBody === '' ? [] : json_decode($rawRequestBody, true));
+$requestJsonIsValid = !$isSupplierImportPreviewRequest &&
+    is_array($data) && json_last_error() === JSON_ERROR_NONE;
 
 if (!is_array($data)) {
     $data = [];
 }
 
-$action = $data['action'] ?? $_GET['action'] ?? '';
+$action = $isSupplierImportPreviewRequest
+    ? $queryAction
+    : ($data['action'] ?? $queryAction);
 
 /*
  * Вход администратора
@@ -434,7 +451,8 @@ $csrfProtectedActions = [
     'supplier_set_active',
     'supplier_import_profile_create',
     'supplier_import_profile_update',
-    'supplier_import_profile_set_active'
+    'supplier_import_profile_set_active',
+    'supplier_import_preview'
 ];
 
 if (in_array($action, $csrfProtectedActions, true)) {
@@ -1133,6 +1151,117 @@ if ($action === 'supplier_set_active') {
         sendManagerJson(500, [
             'success' => false,
             'message' => 'Не удалось изменить статус поставщика'
+        ]);
+    }
+}
+
+if ($action === 'supplier_import_preview') {
+    requireManagerMethod('POST');
+
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+    if (!is_string($contentType) || !str_starts_with(strtolower($contentType), 'multipart/form-data;')) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Для предварительного просмотра требуется загрузка файла'
+        ]);
+    }
+
+    requireOnlyPayloadKeys($data, ['supplier_id', 'profile_id']);
+    $supplierId = requireSupplierImportProfileSupplierId($data);
+    $profileId = requireSupplierImportProfileId([
+        'id' => $data['profile_id'] ?? null
+    ]);
+
+    try {
+        $profileStmt = $pdo->prepare("
+            SELECT p.id, p.supplier_id, p.sheet_name, p.header_row_number,
+                   p.column_mapping, p.parser_options
+            FROM supplier_import_profiles p
+            INNER JOIN suppliers s ON s.id = p.supplier_id
+            WHERE p.id = :profile_id
+              AND p.supplier_id = :supplier_id
+              AND p.is_active = 1
+            LIMIT 1
+        ");
+        $profileStmt->execute([
+            ':profile_id' => $profileId,
+            ':supplier_id' => $supplierId
+        ]);
+        $profileRow = $profileStmt->fetch();
+
+        if (!is_array($profileRow)) {
+            sendManagerJson(404, [
+                'success' => false,
+                'message' => 'Активный профиль импорта не найден'
+            ]);
+        }
+
+        require_once __DIR__ . '/supplier_import_preview.php';
+
+        $autoloadFile = dirname(__DIR__, 2)
+            . '/telvora_vendor/vendor/autoload.php';
+        if (!is_file($autoloadFile) || !is_readable($autoloadFile)) {
+            error_log('supplier import preview: private Composer autoload is unavailable');
+            sendManagerJson(500, [
+                'success' => false,
+                'message' => 'Предварительный просмотр временно недоступен'
+            ]);
+        }
+
+        try {
+            require_once $autoloadFile;
+        } catch (Throwable $error) {
+            error_log('supplier import preview autoload failed: ' . $error->getMessage());
+            sendManagerJson(500, [
+                'success' => false,
+                'message' => 'Предварительный просмотр временно недоступен'
+            ]);
+        }
+
+        if (
+            !class_exists(PhpOffice\PhpSpreadsheet\IOFactory::class) ||
+            !class_exists(ZipArchive::class) ||
+            !class_exists(finfo::class)
+        ) {
+            error_log('supplier import preview: required PHP library or extension is unavailable');
+            sendManagerJson(500, [
+                'success' => false,
+                'message' => 'Предварительный просмотр временно недоступен'
+            ]);
+        }
+
+        $upload = supplierPreviewValidateUpload($_FILES);
+        $profile = supplierPreviewValidateProfile($profileRow);
+        $parsed = supplierPreviewParse($upload, $profile);
+
+        sendManagerJson(200, [
+            'success' => true,
+            'preview' => [
+                'supplier_id' => $supplierId,
+                'profile_id' => $profileId,
+                'original_filename' => $upload['original_filename'],
+                'format' => $upload['extension'],
+                'sheet_name' => $parsed['sheet_name'],
+                'header_row_number' => $profile['header_row_number'],
+                'detected_headers' => $parsed['detected_headers'],
+                'mapping' => $profile['mapping_response'],
+                'rows_scanned' => $parsed['rows_scanned'],
+                'rows_skipped' => $parsed['rows_skipped'],
+                'rows_with_errors' => $parsed['rows_with_errors'],
+                'preview_truncated' => $parsed['preview_truncated'],
+                'rows' => $parsed['rows']
+            ]
+        ]);
+    } catch (SupplierImportPreviewException $error) {
+        sendManagerJson($error->httpStatus, [
+            'success' => false,
+            'message' => $error->getMessage()
+        ]);
+    } catch (Throwable $error) {
+        error_log('supplier import preview failed: ' . $error->getMessage());
+        sendManagerJson(500, [
+            'success' => false,
+            'message' => 'Не удалось сформировать предварительный просмотр'
         ]);
     }
 }

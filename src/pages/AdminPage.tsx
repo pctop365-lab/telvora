@@ -114,6 +114,30 @@ type SupplierImportProfile = {
   updated_at: string;
 };
 
+type SupplierImportPreviewRow = {
+  source_row_number: number;
+  values: Partial<Record<SupplierImportMappingKey, string>>;
+  normalized: Partial<Record<SupplierImportMappingKey, string | null>>;
+  errors: string[];
+  warnings: string[];
+};
+
+type SupplierImportPreview = {
+  supplier_id: number;
+  profile_id: number;
+  original_filename: string;
+  format: 'csv' | 'xls' | 'xlsx';
+  sheet_name: string;
+  header_row_number: number;
+  detected_headers: Partial<Record<SupplierImportMappingKey, string>>;
+  mapping: Partial<Record<SupplierImportMappingKey, string>>;
+  rows_scanned: number;
+  rows_skipped: number;
+  rows_with_errors: number;
+  preview_truncated: boolean;
+  rows: SupplierImportPreviewRow[];
+};
+
 const MANAGER_API = '/manager.php';
 const PRODUCTS_API = '/products.php';
 
@@ -308,6 +332,13 @@ export default function AdminPage() {
   const [togglingSupplierImportProfileId, setTogglingSupplierImportProfileId] = useState<number | null>(null);
   const profileSupplierIdRef = useRef<number | null>(null);
   const supplierImportProfileWritePendingRef = useRef(false);
+  const supplierImportPreviewPendingRef = useRef(false);
+  const [previewProfile, setPreviewProfile] = useState<SupplierImportProfile | null>(null);
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [supplierImportPreview, setSupplierImportPreview] = useState<SupplierImportPreview | null>(null);
+  const [supplierImportPreviewLoading, setSupplierImportPreviewLoading] = useState(false);
+  const [supplierImportPreviewError, setSupplierImportPreviewError] = useState('');
+  const [previewFileInputKey, setPreviewFileInputKey] = useState(0);
 
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -768,6 +799,11 @@ const login = async (e: React.FormEvent) => {
     setShowSupplierImportProfileForm(false);
     setEditingSupplierImportProfileId(null);
     setSupplierImportProfileForm(emptySupplierImportProfileForm);
+    setPreviewProfile(null);
+    setPreviewFile(null);
+    setSupplierImportPreview(null);
+    setSupplierImportPreviewError('');
+    setPreviewFileInputKey((current) => current + 1);
     loadSupplierImportProfiles(supplier);
   };
 
@@ -780,6 +816,11 @@ const login = async (e: React.FormEvent) => {
     setShowSupplierImportProfileForm(false);
     setEditingSupplierImportProfileId(null);
     setSupplierImportProfileForm(emptySupplierImportProfileForm);
+    setPreviewProfile(null);
+    setPreviewFile(null);
+    setSupplierImportPreview(null);
+    setSupplierImportPreviewError('');
+    setPreviewFileInputKey((current) => current + 1);
   };
 
   const openAddSupplierImportProfile = () => {
@@ -979,6 +1020,117 @@ const login = async (e: React.FormEvent) => {
     } finally {
       supplierImportProfileWritePendingRef.current = false;
       setTogglingSupplierImportProfileId(null);
+    }
+  };
+
+  const openSupplierImportPreview = (profile: SupplierImportProfile) => {
+    setPreviewProfile(profile);
+    setPreviewFile(null);
+    setSupplierImportPreview(null);
+    setSupplierImportPreviewError('');
+    setPreviewFileInputKey((current) => current + 1);
+  };
+
+  const closeSupplierImportPreview = () => {
+    if (supplierImportPreviewLoading) {
+      return;
+    }
+    setPreviewProfile(null);
+    setPreviewFile(null);
+    setSupplierImportPreview(null);
+    setSupplierImportPreviewError('');
+    setPreviewFileInputKey((current) => current + 1);
+  };
+
+  const requestSupplierImportPreview = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (
+      !profileSupplier ||
+      !previewProfile ||
+      !previewFile ||
+      supplierImportPreviewPendingRef.current
+    ) {
+      setSupplierImportPreviewError('Выберите файл прайс-листа');
+      return;
+    }
+
+    if (previewFile.size <= 0 || previewFile.size > 2 * 1024 * 1024) {
+      setSupplierImportPreviewError(
+        previewFile.size > 2 * 1024 * 1024
+          ? 'Файл слишком большой. Максимальный размер — 2 МБ.'
+          : 'Выбранный файл пуст'
+      );
+      return;
+    }
+
+    if (!/\.(csv|xls|xlsx)$/i.test(previewFile.name)) {
+      setSupplierImportPreviewError('Поддерживаются только файлы CSV, XLS и XLSX');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('supplier_id', String(profileSupplier.id));
+    formData.append('profile_id', String(previewProfile.id));
+    formData.append('file', previewFile);
+
+    supplierImportPreviewPendingRef.current = true;
+    setSupplierImportPreviewLoading(true);
+    setSupplierImportPreviewError('');
+    setSupplierImportPreview(null);
+
+    let responseReceived = false;
+    try {
+      const response = await fetch(
+        `${MANAGER_API}?action=supplier_import_preview`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            Accept: 'application/json',
+            'X-CSRF-Token': csrfToken || '',
+          },
+          body: formData,
+        }
+      );
+      responseReceived = true;
+      const data = await parseSupplierResponse(response);
+
+      if (!response.ok || !data.success || !data.preview) {
+        if (response.status === 401 || response.status === 403) {
+          setAuthenticated(false);
+          setCsrfToken(null);
+        }
+
+        if (response.status === 401) {
+          throw new Error('Сессия администратора завершена. Войдите снова.');
+        }
+        if (response.status === 403) {
+          throw new Error('Не удалось подтвердить запрос. Войдите снова.');
+        }
+        if (response.status === 413) {
+          throw new Error('Файл слишком большой. Максимальный размер — 2 МБ.');
+        }
+        if (response.status >= 500) {
+          throw new Error('Предварительный просмотр временно недоступен');
+        }
+        throw new Error(
+          typeof data.message === 'string'
+            ? data.message
+            : 'Не удалось проверить прайс-лист'
+        );
+      }
+
+      setSupplierImportPreview(data.preview as SupplierImportPreview);
+    } catch (err) {
+      setSupplierImportPreviewError(
+        responseReceived && err instanceof Error
+          ? err.message
+          : 'Не удалось проверить прайс-лист. Проверьте соединение и повторите попытку.'
+      );
+    } finally {
+      supplierImportPreviewPendingRef.current = false;
+      setSupplierImportPreviewLoading(false);
     }
   };
 
@@ -2789,6 +2941,151 @@ const toggleProductStatus = async (product: AdminProduct) => {
                   </div>
                 )}
 
+                {previewProfile && (
+                  <div className="mb-6 rounded-2xl border border-accent-200 bg-accent-50/40 p-5">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h4 className="font-semibold text-graphite-900">Предварительный просмотр прайс-листа</h4>
+                        <p className="mt-1 text-sm text-gray-600">
+                          Профиль: {previewProfile.name}. Данные не будут сохранены и не изменят товары, цены или остатки.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={closeSupplierImportPreview}
+                        disabled={supplierImportPreviewLoading}
+                        className="p-2 rounded-lg text-gray-500 hover:bg-white disabled:opacity-50"
+                        aria-label="Закрыть предварительный просмотр"
+                      >
+                        <X className="w-5 h-5" />
+                      </button>
+                    </div>
+
+                    <form onSubmit={requestSupplierImportPreview} className="mt-5 flex flex-col md:flex-row md:items-end gap-4">
+                      <div className="flex-1">
+                        <label className="block text-sm text-gray-600 mb-2">Прайс-лист CSV, XLS или XLSX — до 2 МБ</label>
+                        <input
+                          key={previewFileInputKey}
+                          type="file"
+                          accept=".csv,.xls,.xlsx"
+                          disabled={supplierImportPreviewLoading}
+                          onChange={(event) => {
+                            setPreviewFile(event.target.files?.[0] || null);
+                            setSupplierImportPreview(null);
+                            setSupplierImportPreviewError('');
+                          }}
+                          className="block w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 file:mr-4 file:rounded-lg file:border-0 file:bg-accent-100 file:px-3 file:py-2 file:text-accent-700"
+                        />
+                        {previewFile && (
+                          <div className="mt-2 text-xs text-gray-500">Выбран файл: {previewFile.name}</div>
+                        )}
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={!previewFile || supplierImportPreviewLoading}
+                        className="px-5 py-2.5 rounded-xl bg-accent-500 text-white font-semibold hover:bg-accent-600 disabled:opacity-50"
+                      >
+                        {supplierImportPreviewLoading ? 'Проверка...' : 'Показать предварительный просмотр'}
+                      </button>
+                    </form>
+
+                    {supplierImportPreviewError && (
+                      <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                        {supplierImportPreviewError}
+                      </div>
+                    )}
+
+                    {supplierImportPreview && (
+                      <div className="mt-6">
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                          <div className="rounded-xl bg-white border border-gray-200 p-3">
+                            <div className="text-xs text-gray-500">Формат</div>
+                            <div className="mt-1 font-semibold uppercase">{supplierImportPreview.format}</div>
+                          </div>
+                          <div className="rounded-xl bg-white border border-gray-200 p-3">
+                            <div className="text-xs text-gray-500">Лист</div>
+                            <div className="mt-1 font-semibold break-all">{supplierImportPreview.sheet_name}</div>
+                          </div>
+                          <div className="rounded-xl bg-white border border-gray-200 p-3">
+                            <div className="text-xs text-gray-500">Просканировано</div>
+                            <div className="mt-1 font-semibold">{supplierImportPreview.rows_scanned}</div>
+                          </div>
+                          <div className="rounded-xl bg-white border border-gray-200 p-3">
+                            <div className="text-xs text-gray-500">Пропущено</div>
+                            <div className="mt-1 font-semibold">{supplierImportPreview.rows_skipped}</div>
+                          </div>
+                          <div className="rounded-xl bg-white border border-gray-200 p-3">
+                            <div className="text-xs text-gray-500">С ошибками</div>
+                            <div className="mt-1 font-semibold text-red-600">{supplierImportPreview.rows_with_errors}</div>
+                          </div>
+                        </div>
+                        <div className="mt-3 text-xs text-gray-500">
+                          Файл: {supplierImportPreview.original_filename}
+                          {supplierImportPreview.preview_truncated && ' · Показаны первые 100 строк'}
+                        </div>
+
+                        <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200 bg-white">
+                          <table className="min-w-full text-sm">
+                            <thead className="bg-gray-50 border-b border-gray-200">
+                              <tr>
+                                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500">Строка</th>
+                                {supplierImportMappingFields
+                                  .filter(({ key }) => Boolean(supplierImportPreview.mapping[key]))
+                                  .map(({ key, label }) => (
+                                    <th key={key} className="px-3 py-3 text-left text-xs font-semibold text-gray-500">
+                                      <div>{label}</div>
+                                      <div className="mt-1 font-normal text-gray-400">
+                                        {supplierImportPreview.mapping[key]}
+                                        {supplierImportPreview.detected_headers[key]
+                                          ? ` · ${supplierImportPreview.detected_headers[key]}`
+                                          : ''}
+                                      </div>
+                                    </th>
+                                  ))}
+                                <th className="px-3 py-3 text-left text-xs font-semibold text-gray-500">Проверка</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {supplierImportPreview.rows.map((row) => (
+                                <tr key={row.source_row_number} className="border-b border-gray-100 last:border-0 align-top">
+                                  <td className="px-3 py-3 font-mono text-gray-500">{row.source_row_number}</td>
+                                  {supplierImportMappingFields
+                                    .filter(({ key }) => Boolean(supplierImportPreview.mapping[key]))
+                                    .map(({ key }) => {
+                                      const rawValue = row.values[key] ?? '';
+                                      const normalizedValue = row.normalized[key];
+                                      return (
+                                        <td key={key} className="px-3 py-3 max-w-[260px] break-words text-gray-700">
+                                          <div>{rawValue || '—'}</div>
+                                          {normalizedValue !== undefined &&
+                                            normalizedValue !== null &&
+                                            normalizedValue !== rawValue && (
+                                              <div className="mt-1 text-xs text-emerald-700">→ {normalizedValue}</div>
+                                            )}
+                                        </td>
+                                      );
+                                    })}
+                                  <td className="px-3 py-3 min-w-[240px]">
+                                    {row.errors.map((message) => (
+                                      <div key={`error-${message}`} className="text-xs text-red-600">Ошибка: {message}</div>
+                                    ))}
+                                    {row.warnings.map((message) => (
+                                      <div key={`warning-${message}`} className="text-xs text-amber-700">Предупреждение: {message}</div>
+                                    ))}
+                                    {row.errors.length === 0 && row.warnings.length === 0 && (
+                                      <span className="text-xs text-emerald-700">Без замечаний</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {showSupplierImportProfileForm && (
                   <form
                     onSubmit={saveSupplierImportProfile}
@@ -3053,6 +3350,15 @@ const toggleProductStatus = async (product: AdminProduct) => {
                               <td className="px-4 py-4 text-sm text-gray-500">{formatDate(profile.updated_at)}</td>
                               <td className="px-4 py-4">
                                 <div className="flex justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => openSupplierImportPreview(profile)}
+                                    disabled={!profile.is_active || supplierImportPreviewLoading}
+                                    className="px-3 py-2 rounded-lg border border-accent-200 text-accent-600 hover:bg-accent-50 disabled:opacity-50 text-sm"
+                                    title={profile.is_active ? undefined : 'Для проверки активируйте профиль'}
+                                  >
+                                    Проверить прайс
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => openEditSupplierImportProfile(profile)}
