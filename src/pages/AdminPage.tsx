@@ -228,6 +228,25 @@ type SupplierOfferPricingPreview = {
   };
 };
 
+type PricingRule = {
+  id: number;
+  name: string;
+  priority: number;
+  category_scope: string | null;
+  purchase_price_min: string | null;
+  purchase_price_max: string | null;
+  markup_percent: string | null;
+  minimum_margin: string | null;
+  rounding_strategy: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  supported_by_stage6: boolean;
+  warning: string | null;
+};
+
 const MANAGER_API = '/manager.php';
 const PRODUCTS_API = '/products.php';
 
@@ -338,6 +357,23 @@ const emptySupplierForm = {
   is_active: true,
 };
 
+const emptyPricingRuleForm = {
+  name: '',
+  priority: '100',
+  category_scope: '',
+  purchase_price_min: '',
+  purchase_price_max: '',
+  markup_percent: '',
+  minimum_margin: '',
+  valid_from: '',
+  valid_until: '',
+  is_active: false,
+};
+
+function toDatetimeLocal(value: string | null) {
+  return value ? value.replace(' ', 'T').slice(0, 16) : '';
+}
+
 const supplierImportMappingFields: Array<{
   key: SupplierImportMappingKey;
   label: string;
@@ -410,6 +446,17 @@ export default function AdminPage() {
   const [supplierForm, setSupplierForm] = useState(emptySupplierForm);
   const [savingSupplier, setSavingSupplier] = useState(false);
   const [togglingSupplierId, setTogglingSupplierId] = useState<number | null>(null);
+  const [pricingRules, setPricingRules] = useState<PricingRule[]>([]);
+  const [pricingCategories, setPricingCategories] = useState<string[]>([]);
+  const [pricingRulesLoading, setPricingRulesLoading] = useState(false);
+  const [pricingRulesError, setPricingRulesError] = useState('');
+  const [pricingRulesSuccess, setPricingRulesSuccess] = useState('');
+  const [showPricingRuleForm, setShowPricingRuleForm] = useState(false);
+  const [editingPricingRule, setEditingPricingRule] = useState<PricingRule | null>(null);
+  const [pricingRuleForm, setPricingRuleForm] = useState(emptyPricingRuleForm);
+  const [savingPricingRule, setSavingPricingRule] = useState(false);
+  const [togglingPricingRuleId, setTogglingPricingRuleId] = useState<number | null>(null);
+  const pricingRuleWritePendingRef = useRef(false);
   const [profileSupplier, setProfileSupplier] = useState<Supplier | null>(null);
   const [supplierImportProfiles, setSupplierImportProfiles] = useState<SupplierImportProfile[]>([]);
   const [supplierImportProfilesLoading, setSupplierImportProfilesLoading] = useState(false);
@@ -646,6 +693,32 @@ const login = async (e: React.FormEvent) => {
     }
   };
 
+  const loadPricingRules = async () => {
+    setPricingRulesLoading(true);
+    setPricingRulesError('');
+    try {
+      const response = await fetch(`${MANAGER_API}?action=pricing_rules_list`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      });
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success) {
+        if (response.status === 401 || response.status === 403) {
+          setAuthenticated(false);
+          setCsrfToken(null);
+        }
+        throw new Error(data.message || 'Не удалось загрузить правила ценообразования');
+      }
+      setPricingRules(Array.isArray(data.rules) ? data.rules : []);
+      setPricingCategories(Array.isArray(data.categories) ? data.categories : []);
+    } catch (err) {
+      setPricingRulesError(err instanceof Error ? err.message : 'Не удалось загрузить правила ценообразования');
+    } finally {
+      setPricingRulesLoading(false);
+    }
+  };
+
   const logout = async () => {
     try {
       await fetch(MANAGER_API, {
@@ -665,6 +738,8 @@ const login = async (e: React.FormEvent) => {
       setOrders([]);
       setProducts([]);
       setSuppliers([]);
+      setPricingRules([]);
+      setPricingCategories([]);
       setShowProductForm(false);
       setShowSupplierForm(false);
       profileSupplierIdRef.current = null;
@@ -720,8 +795,126 @@ const login = async (e: React.FormEvent) => {
   useEffect(() => {
     if (authenticated && activeTab === 'suppliers') {
       loadSuppliers();
+      loadPricingRules();
     }
   }, [authenticated, activeTab]);
+
+  const openAddPricingRule = () => {
+    setEditingPricingRule(null);
+    setPricingRuleForm(emptyPricingRuleForm);
+    setPricingRulesError('');
+    setPricingRulesSuccess('');
+    setShowPricingRuleForm(true);
+  };
+
+  const openEditPricingRule = (rule: PricingRule) => {
+    if (!rule.supported_by_stage6) {
+      setPricingRulesError(rule.warning || 'Это правило нельзя редактировать в Stage 8');
+      return;
+    }
+    setEditingPricingRule(rule);
+    setPricingRuleForm({
+      name: rule.name,
+      priority: String(rule.priority),
+      category_scope: rule.category_scope || '',
+      purchase_price_min: rule.purchase_price_min || '',
+      purchase_price_max: rule.purchase_price_max || '',
+      markup_percent: rule.markup_percent || '',
+      minimum_margin: rule.minimum_margin || '',
+      valid_from: toDatetimeLocal(rule.valid_from),
+      valid_until: toDatetimeLocal(rule.valid_until),
+      is_active: rule.is_active,
+    });
+    setPricingRulesError('');
+    setPricingRulesSuccess('');
+    setShowPricingRuleForm(true);
+  };
+
+  const closePricingRuleForm = () => {
+    setShowPricingRuleForm(false);
+    setEditingPricingRule(null);
+    setPricingRuleForm(emptyPricingRuleForm);
+  };
+
+  const savePricingRule = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (pricingRuleWritePendingRef.current) return;
+    const priority = Number(pricingRuleForm.priority);
+    if (!Number.isInteger(priority)) {
+      setPricingRulesError('Приоритет должен быть целым числом');
+      return;
+    }
+    pricingRuleWritePendingRef.current = true;
+    setSavingPricingRule(true);
+    setPricingRulesError('');
+    setPricingRulesSuccess('');
+    try {
+      const response = await fetch(MANAGER_API, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken || '',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          action: editingPricingRule ? 'pricing_rule_update' : 'pricing_rule_create',
+          ...(editingPricingRule ? { id: editingPricingRule.id, updated_at: editingPricingRule.updated_at } : {}),
+          name: pricingRuleForm.name,
+          priority,
+          category_scope: pricingRuleForm.category_scope.trim() || null,
+          purchase_price_min: pricingRuleForm.purchase_price_min.trim() || null,
+          purchase_price_max: pricingRuleForm.purchase_price_max.trim() || null,
+          markup_percent: pricingRuleForm.markup_percent.trim() || null,
+          minimum_margin: pricingRuleForm.minimum_margin.trim() || null,
+          valid_from: pricingRuleForm.valid_from || null,
+          valid_until: pricingRuleForm.valid_until || null,
+          is_active: pricingRuleForm.is_active,
+        }),
+      });
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Не удалось сохранить правило');
+      }
+      closePricingRuleForm();
+      setPricingRulesSuccess(data.message || 'Правило сохранено');
+      await loadPricingRules();
+    } catch (err) {
+      setPricingRulesError(err instanceof Error ? err.message : 'Не удалось сохранить правило');
+    } finally {
+      pricingRuleWritePendingRef.current = false;
+      setSavingPricingRule(false);
+    }
+  };
+
+  const setPricingRuleActive = async (rule: PricingRule) => {
+    if (pricingRuleWritePendingRef.current) return;
+    const nextActive = !rule.is_active;
+    if (nextActive && !rule.supported_by_stage6) {
+      setPricingRulesError(rule.warning || 'Неподдерживаемое правило нельзя активировать');
+      return;
+    }
+    pricingRuleWritePendingRef.current = true;
+    setTogglingPricingRuleId(rule.id);
+    setPricingRulesError('');
+    setPricingRulesSuccess('');
+    try {
+      const response = await fetch(MANAGER_API, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken || '', Accept: 'application/json' },
+        body: JSON.stringify({ action: 'pricing_rule_set_active', id: rule.id, updated_at: rule.updated_at, is_active: nextActive }),
+      });
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success) throw new Error(data.message || 'Не удалось изменить статус правила');
+      setPricingRulesSuccess(data.message || 'Статус правила изменён');
+      await loadPricingRules();
+    } catch (err) {
+      setPricingRulesError(err instanceof Error ? err.message : 'Не удалось изменить статус правила');
+    } finally {
+      pricingRuleWritePendingRef.current = false;
+      setTogglingPricingRuleId(null);
+    }
+  };
 
   const openAddSupplier = () => {
     setEditingSupplierId(null);
@@ -3270,6 +3463,97 @@ const toggleProductStatus = async (product: AdminProduct) => {
                 </div>
               </div>
             )}
+
+            <section className="mt-6 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+              <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-graphite-900">Правила ценообразования</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Правила используются только для расчёта рекомендуемой цены. Цена товара на сайте автоматически не изменяется.
+                  </p>
+                  <p className="text-sm text-amber-700 mt-1">Расчёт на текущем этапе поддерживается только для предложений в RUB.</p>
+                </div>
+                <button type="button" onClick={openAddPricingRule} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent-500 text-white font-semibold hover:bg-accent-600 transition">
+                  <Plus className="w-4 h-4" /> Добавить правило
+                </button>
+              </div>
+
+              <div className="mt-3 text-xs text-gray-500">
+                Меньшее число означает более высокий приоритет. Пересекающиеся активные правила с одинаковым приоритетом и scope могут сделать расчёт неоднозначным — Stage 6 в таком случае не выдаёт Candidate.
+              </div>
+              {pricingRulesError && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{pricingRulesError}</div>}
+              {pricingRulesSuccess && <div className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{pricingRulesSuccess}</div>}
+
+              {showPricingRuleForm && (
+                <form onSubmit={savePricingRule} className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-5">
+                  <div className="flex items-center justify-between gap-4 mb-4">
+                    <h4 className="font-semibold text-graphite-900">{editingPricingRule ? 'Редактирование правила' : 'Новое правило'}</h4>
+                    <button type="button" onClick={closePricingRuleForm} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100" aria-label="Закрыть форму"><X className="w-5 h-5" /></button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <label className="text-sm text-gray-600">Название
+                      <input className="admin-input mt-2" required maxLength={255} value={pricingRuleForm.name} onChange={(e) => setPricingRuleForm((v) => ({ ...v, name: e.target.value }))} />
+                    </label>
+                    <label className="text-sm text-gray-600">Приоритет
+                      <input className="admin-input mt-2" required type="number" min="0" max="100000" step="1" value={pricingRuleForm.priority} onChange={(e) => setPricingRuleForm((v) => ({ ...v, priority: e.target.value }))} />
+                    </label>
+                    <label className="text-sm text-gray-600">Категория (пусто — все)
+                      <input className="admin-input mt-2" list="pricing-rule-categories" maxLength={100} value={pricingRuleForm.category_scope} onChange={(e) => setPricingRuleForm((v) => ({ ...v, category_scope: e.target.value }))} />
+                      <datalist id="pricing-rule-categories">{pricingCategories.map((category) => <option key={category} value={category} />)}</datalist>
+                    </label>
+                    <label className="text-sm text-gray-600">Мин. закупочная цена, ₽
+                      <input className="admin-input mt-2" inputMode="decimal" placeholder="Без нижней границы" value={pricingRuleForm.purchase_price_min} onChange={(e) => setPricingRuleForm((v) => ({ ...v, purchase_price_min: e.target.value }))} />
+                    </label>
+                    <label className="text-sm text-gray-600">Макс. закупочная цена, ₽
+                      <input className="admin-input mt-2" inputMode="decimal" placeholder="Без верхней границы" value={pricingRuleForm.purchase_price_max} onChange={(e) => setPricingRuleForm((v) => ({ ...v, purchase_price_max: e.target.value }))} />
+                    </label>
+                    <label className="text-sm text-gray-600">Наценка, %
+                      <input className="admin-input mt-2" inputMode="decimal" placeholder="0" value={pricingRuleForm.markup_percent} onChange={(e) => setPricingRuleForm((v) => ({ ...v, markup_percent: e.target.value }))} />
+                    </label>
+                    <label className="text-sm text-gray-600">Минимальная маржа, ₽
+                      <input className="admin-input mt-2" inputMode="decimal" placeholder="0" value={pricingRuleForm.minimum_margin} onChange={(e) => setPricingRuleForm((v) => ({ ...v, minimum_margin: e.target.value }))} />
+                    </label>
+                    <label className="text-sm text-gray-600">Действует с
+                      <input className="admin-input mt-2" type="datetime-local" value={pricingRuleForm.valid_from} onChange={(e) => setPricingRuleForm((v) => ({ ...v, valid_from: e.target.value }))} />
+                    </label>
+                    <label className="text-sm text-gray-600">Действует до
+                      <input className="admin-input mt-2" type="datetime-local" value={pricingRuleForm.valid_until} onChange={(e) => setPricingRuleForm((v) => ({ ...v, valid_until: e.target.value }))} />
+                    </label>
+                  </div>
+                  <div className="mt-4 rounded-lg bg-white border border-gray-200 px-4 py-3 text-sm text-gray-600">Округление: <span className="font-medium">Без дополнительного округления</span>. Дополнительный scope недоступен.</div>
+                  <label className="inline-flex items-center gap-3 mt-4 text-sm text-gray-700"><input type="checkbox" checked={pricingRuleForm.is_active} onChange={(e) => setPricingRuleForm((v) => ({ ...v, is_active: e.target.checked }))} /> Активно</label>
+                  <div className="flex justify-end gap-3 mt-5">
+                    <button type="button" onClick={closePricingRuleForm} className="px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-700">Отмена</button>
+                    <button type="submit" disabled={savingPricingRule} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent-500 text-white font-semibold disabled:opacity-50"><Save className="w-4 h-4" />{savingPricingRule ? 'Сохранение...' : 'Сохранить'}</button>
+                  </div>
+                </form>
+              )}
+
+              {pricingRulesLoading ? <div className="py-8 text-center text-gray-500">Загрузка правил...</div> : pricingRules.length === 0 ? (
+                <div className="mt-5 rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">Правил пока нет. Они не создаются автоматически.</div>
+              ) : (
+                <div className="mt-5 overflow-x-auto">
+                  <table className="w-full min-w-[1050px] text-sm">
+                    <thead><tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="px-3 py-3 text-left">Название / статус</th><th className="px-3 py-3 text-left">Приоритет</th><th className="px-3 py-3 text-left">Категория</th><th className="px-3 py-3 text-left">Диапазон закупки</th><th className="px-3 py-3 text-left">Наценка</th><th className="px-3 py-3 text-left">Мин. маржа</th><th className="px-3 py-3 text-left">Срок</th><th className="px-3 py-3 text-right">Действия</th>
+                    </tr></thead>
+                    <tbody>{pricingRules.map((rule) => (
+                      <tr key={rule.id} className="border-b border-gray-100 align-top">
+                        <td className="px-3 py-3"><div className="font-medium text-graphite-900">{rule.name}</div><div className={rule.is_active ? 'text-green-700' : 'text-gray-500'}>{rule.is_active ? 'Активно' : 'Неактивно'}</div>{rule.warning && <div className="mt-1 text-xs text-amber-700">{rule.warning}</div>}</td>
+                        <td className="px-3 py-3 font-mono">{rule.priority}</td>
+                        <td className="px-3 py-3">{rule.category_scope || 'Все категории'}</td>
+                        <td className="px-3 py-3">{rule.purchase_price_min || '—'} — {rule.purchase_price_max || '—'} ₽</td>
+                        <td className="px-3 py-3">{rule.markup_percent ?? '0.0000'}%</td>
+                        <td className="px-3 py-3">{rule.minimum_margin ?? '0.00'} ₽</td>
+                        <td className="px-3 py-3 text-xs"><div>с {rule.valid_from ? formatDate(rule.valid_from) : 'без ограничения'}</div><div>до {rule.valid_until ? formatDate(rule.valid_until) : 'без ограничения'}</div></td>
+                        <td className="px-3 py-3"><div className="flex justify-end gap-2"><button type="button" disabled={!rule.supported_by_stage6} onClick={() => openEditPricingRule(rule)} className="px-3 py-2 rounded-lg border border-gray-200 disabled:opacity-40">Изменить</button><button type="button" disabled={togglingPricingRuleId === rule.id || (!rule.supported_by_stage6 && !rule.is_active)} onClick={() => setPricingRuleActive(rule)} className="px-3 py-2 rounded-lg border border-gray-200 disabled:opacity-40">{rule.is_active ? 'Отключить' : 'Включить'}</button></div></td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+              <div className="mt-4 text-sm font-medium text-green-700">Цена на сайте не изменена.</div>
+            </section>
 
             {profileSupplier && (
               <section className="mt-6 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">

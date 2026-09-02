@@ -458,7 +458,10 @@ $csrfProtectedActions = [
     'supplier_import_preview',
     'supplier_import_stage',
     'supplier_import_row_set_match',
-    'supplier_import_job_publish_offers'
+    'supplier_import_job_publish_offers',
+    'pricing_rule_create',
+    'pricing_rule_update',
+    'pricing_rule_set_active'
 ];
 
 if (in_array($action, $csrfProtectedActions, true)) {
@@ -703,6 +706,178 @@ function requireOnlyPayloadKeys(array $data, array $allowedKeys): void
             ]);
         }
     }
+}
+
+function requirePricingRuleJsonRequest(bool $requestJsonIsValid): void
+{
+    $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
+    if (
+        !$requestJsonIsValid ||
+        !is_string($contentType) ||
+        preg_match('/\Aapplication\/json(?:\s*;|\z)/iD', $contentType) !== 1
+    ) {
+        sendManagerJson(400, [
+            'success' => false,
+            'message' => 'Тело запроса должно быть корректным JSON-объектом'
+        ]);
+    }
+}
+
+function pricingRuleStringLength(string $value): int
+{
+    if (function_exists('mb_strlen')) {
+        return mb_strlen($value, 'UTF-8');
+    }
+    $count = preg_match_all('/./us', $value, $matches);
+    return $count === false ? PHP_INT_MAX : $count;
+}
+
+function normalizePricingRuleDecimal(
+    mixed $value,
+    int $scale,
+    int $maxWholeDigits,
+    string $label
+): ?string {
+    if ($value === null || $value === '') {
+        return null;
+    }
+    if (!is_string($value) || preg_match('/\A(\d+)(?:\.(\d{1,' . $scale . '}))?\z/D', $value, $matches) !== 1) {
+        sendManagerJson(400, ['success' => false, 'message' => "Некорректное значение: $label"]);
+    }
+    $whole = ltrim($matches[1], '0');
+    $whole = $whole === '' ? '0' : $whole;
+    if (strlen($whole) > $maxWholeDigits) {
+        sendManagerJson(400, ['success' => false, 'message' => "Значение слишком велико: $label"]);
+    }
+    $fraction = str_pad($matches[2] ?? '', $scale, '0');
+    return $whole . '.' . $fraction;
+}
+
+function pricingRuleScaledInteger(string $value, int $scale): int
+{
+    [$whole, $fraction] = explode('.', $value, 2);
+    return ((int)$whole * (10 ** $scale)) + (int)$fraction;
+}
+
+function normalizePricingRuleDate(mixed $value, string $label): ?string
+{
+    if ($value === null || $value === '') {
+        return null;
+    }
+    if (!is_string($value) || preg_match('/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}\z/D', $value) !== 1) {
+        sendManagerJson(400, ['success' => false, 'message' => "Некорректная дата: $label"]);
+    }
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $value);
+    $errors = DateTimeImmutable::getLastErrors();
+    if (
+        $date === false ||
+        (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0)) ||
+        $date->format('Y-m-d\TH:i') !== $value
+    ) {
+        sendManagerJson(400, ['success' => false, 'message' => "Некорректная дата: $label"]);
+    }
+    return $date->format('Y-m-d H:i:00');
+}
+
+function validatePricingRuleInput(array $data): array
+{
+    $nameValue = $data['name'] ?? null;
+    if (!is_string($nameValue)) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Введите название правила']);
+    }
+    $name = trim($nameValue);
+    $nameControlMatch = preg_match('/[\x00-\x1F\x7F]/u', $name);
+    if ($name === '' || pricingRuleStringLength($name) > 255 || $nameControlMatch !== 0) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Название должно содержать от 1 до 255 символов без управляющих знаков']);
+    }
+
+    $priorityValue = $data['priority'] ?? null;
+    if (!is_int($priorityValue) || $priorityValue < 0 || $priorityValue > 100000) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Приоритет должен быть целым числом от 0 до 100000']);
+    }
+
+    $categoryValue = $data['category_scope'] ?? null;
+    if ($categoryValue !== null && !is_string($categoryValue)) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Некорректная категория']);
+    }
+    $category = $categoryValue === null ? null : trim($categoryValue);
+    $category = $category === '' ? null : $category;
+    $categoryControlMatch = $category === null ? 0 : preg_match('/[\x00-\x1F\x7F]/u', $category);
+    if ($category !== null && (pricingRuleStringLength($category) > 100 || $categoryControlMatch !== 0)) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Категория не должна превышать 100 символов или содержать управляющие знаки']);
+    }
+
+    $minimum = normalizePricingRuleDecimal($data['purchase_price_min'] ?? null, 2, 13, 'минимальная закупочная цена');
+    $maximum = normalizePricingRuleDecimal($data['purchase_price_max'] ?? null, 2, 13, 'максимальная закупочная цена');
+    if ($minimum !== null && $maximum !== null && pricingRuleScaledInteger($minimum, 2) > pricingRuleScaledInteger($maximum, 2)) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Минимальная закупочная цена не может превышать максимальную']);
+    }
+
+    $markup = normalizePricingRuleDecimal($data['markup_percent'] ?? null, 4, 5, 'наценка');
+    if ($markup !== null && pricingRuleScaledInteger($markup, 4) > 100000000) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Наценка не должна превышать 10000%']);
+    }
+    $margin = normalizePricingRuleDecimal($data['minimum_margin'] ?? null, 2, 13, 'минимальная маржа');
+
+    $validFrom = normalizePricingRuleDate($data['valid_from'] ?? null, 'действует с');
+    $validUntil = normalizePricingRuleDate($data['valid_until'] ?? null, 'действует до');
+    if ($validFrom !== null && $validUntil !== null && strcmp($validFrom, $validUntil) > 0) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Начало действия не может быть позже окончания']);
+    }
+    if (!array_key_exists('is_active', $data) || !is_bool($data['is_active'])) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Некорректный статус правила']);
+    }
+
+    return [
+        'name' => $name,
+        'priority' => $priorityValue,
+        'category_scope' => $category,
+        'purchase_price_min' => $minimum,
+        'purchase_price_max' => $maximum,
+        'markup_percent' => $markup,
+        'minimum_margin' => $margin,
+        'valid_from' => $validFrom,
+        'valid_until' => $validUntil,
+        'is_active' => $data['is_active'] ? 1 : 0
+    ];
+}
+
+function pricingRuleIsSupported(array $rule): bool
+{
+    $rounding = trim((string)($rule['rounding_strategy'] ?? ''));
+    return ($rounding === '' || $rounding === 'none') &&
+        ($rule['rounding_parameters'] ?? null) === null &&
+        ($rule['additional_scope'] ?? null) === null;
+}
+
+function preparePricingRuleForResponse(array $rule): array
+{
+    $supported = pricingRuleIsSupported($rule);
+    return [
+        'id' => (int)$rule['id'],
+        'name' => (string)$rule['name'],
+        'priority' => (int)$rule['priority'],
+        'category_scope' => $rule['category_scope'],
+        'purchase_price_min' => $rule['purchase_price_min'],
+        'purchase_price_max' => $rule['purchase_price_max'],
+        'markup_percent' => $rule['markup_percent'],
+        'minimum_margin' => $rule['minimum_margin'],
+        'rounding_strategy' => $rule['rounding_strategy'],
+        'valid_from' => $rule['valid_from'],
+        'valid_until' => $rule['valid_until'],
+        'is_active' => (bool)$rule['is_active'],
+        'created_at' => (string)$rule['created_at'],
+        'updated_at' => (string)$rule['updated_at'],
+        'supported_by_stage6' => $supported,
+        'warning' => $supported ? null : 'Правило содержит неподдерживаемое округление или дополнительный scope'
+    ];
+}
+
+function isPricingRuleNameDuplicate(Throwable $error): bool
+{
+    return $error instanceof PDOException &&
+        (string)$error->getCode() === '23000' &&
+        (int)($error->errorInfo[1] ?? 0) === 1062;
 }
 
 function requireSupplierImportProfileSupplierId(array $data): int
@@ -1966,6 +2141,209 @@ if ($action === 'supplier_offer_pricing_preview') {
     } catch (Throwable $error) {
         error_log('supplier offer pricing preview failed: ' . $error->getMessage());
         sendManagerJson(500, ['success' => false, 'message' => 'Не удалось рассчитать предварительные цены']);
+    }
+}
+
+if ($action === 'pricing_rules_list') {
+    requireManagerMethod('GET');
+    try {
+        $rulesStmt = $pdo->query("
+            SELECT id, name, priority, category_scope, purchase_price_min,
+                   purchase_price_max, markup_percent, minimum_margin,
+                   rounding_strategy, rounding_parameters, additional_scope,
+                   valid_from, valid_until, is_active, created_at, updated_at
+            FROM pricing_rules
+            ORDER BY priority ASC, id ASC
+            LIMIT 501
+        ");
+        $categoryStmt = $pdo->query("
+            SELECT DISTINCT category
+            FROM products
+            WHERE category IS NOT NULL AND category <> ''
+            ORDER BY category ASC
+            LIMIT 100
+        ");
+        $ruleRows = $rulesStmt->fetchAll();
+        $rulesTruncated = count($ruleRows) > 500;
+        if ($rulesTruncated) {
+            $ruleRows = array_slice($ruleRows, 0, 500);
+        }
+        sendManagerJson(200, [
+            'success' => true,
+            'rules' => array_map('preparePricingRuleForResponse', $ruleRows),
+            'categories' => array_values(array_map(
+                static fn(array $row): string => (string)$row['category'],
+                $categoryStmt->fetchAll()
+            )),
+            'limit' => 500,
+            'truncated' => $rulesTruncated
+        ]);
+    } catch (Throwable $error) {
+        error_log('pricing rules list failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось загрузить правила ценообразования']);
+    }
+}
+
+if ($action === 'pricing_rule_create') {
+    requireManagerMethod('POST');
+    requirePricingRuleJsonRequest($requestJsonIsValid);
+    requireOnlyPayloadKeys($data, [
+        'action', 'name', 'priority', 'category_scope', 'purchase_price_min',
+        'purchase_price_max', 'markup_percent', 'minimum_margin', 'valid_from',
+        'valid_until', 'is_active'
+    ]);
+    $input = validatePricingRuleInput($data);
+    try {
+        $pdo->beginTransaction();
+        $stmt = $pdo->prepare("
+            INSERT INTO pricing_rules
+                (name, priority, category_scope, purchase_price_min,
+                 purchase_price_max, markup_percent, minimum_margin,
+                 rounding_strategy, rounding_parameters, additional_scope,
+                 valid_from, valid_until, is_active)
+            VALUES
+                (:name, :priority, :category_scope, :purchase_price_min,
+                 :purchase_price_max, :markup_percent, :minimum_margin,
+                 'none', NULL, NULL, :valid_from, :valid_until, :is_active)
+        ");
+        $stmt->execute([
+            ':name' => $input['name'],
+            ':priority' => $input['priority'],
+            ':category_scope' => $input['category_scope'],
+            ':purchase_price_min' => $input['purchase_price_min'],
+            ':purchase_price_max' => $input['purchase_price_max'],
+            ':markup_percent' => $input['markup_percent'],
+            ':minimum_margin' => $input['minimum_margin'],
+            ':valid_from' => $input['valid_from'],
+            ':valid_until' => $input['valid_until'],
+            ':is_active' => $input['is_active']
+        ]);
+        $id = (int)$pdo->lastInsertId();
+        $pdo->commit();
+        sendManagerJson(201, ['success' => true, 'id' => $id, 'message' => 'Правило создано']);
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        if (isPricingRuleNameDuplicate($error)) {
+            sendManagerJson(409, ['success' => false, 'message' => 'Правило с таким названием уже существует']);
+        }
+        error_log('pricing rule create failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось создать правило']);
+    }
+}
+
+if ($action === 'pricing_rule_update') {
+    requireManagerMethod('POST');
+    requirePricingRuleJsonRequest($requestJsonIsValid);
+    requireOnlyPayloadKeys($data, [
+        'action', 'id', 'updated_at', 'name', 'priority', 'category_scope',
+        'purchase_price_min', 'purchase_price_max', 'markup_percent',
+        'minimum_margin', 'valid_from', 'valid_until', 'is_active'
+    ]);
+    $id = requirePositiveManagerId($data['id'] ?? null, 'правило');
+    $expectedUpdatedAt = $data['updated_at'] ?? null;
+    if (!is_string($expectedUpdatedAt) || $expectedUpdatedAt === '') {
+        sendManagerJson(400, ['success' => false, 'message' => 'Не указана версия правила']);
+    }
+    $input = validatePricingRuleInput($data);
+    try {
+        $pdo->beginTransaction();
+        $lockStmt = $pdo->prepare("
+            SELECT id, updated_at, rounding_strategy, rounding_parameters, additional_scope
+            FROM pricing_rules WHERE id = :id FOR UPDATE
+        ");
+        $lockStmt->execute([':id' => $id]);
+        $existing = $lockStmt->fetch();
+        if (!is_array($existing)) {
+            $pdo->rollBack();
+            sendManagerJson(404, ['success' => false, 'message' => 'Правило не найдено']);
+        }
+        if (!hash_equals((string)$existing['updated_at'], $expectedUpdatedAt)) {
+            $pdo->rollBack();
+            sendManagerJson(409, ['success' => false, 'message' => 'Правило уже изменено. Обновите список и повторите действие']);
+        }
+        if (!pricingRuleIsSupported($existing)) {
+            $pdo->rollBack();
+            sendManagerJson(409, ['success' => false, 'message' => 'Это правило содержит настройки, которые Stage 8 не редактирует']);
+        }
+        $stmt = $pdo->prepare("
+            UPDATE pricing_rules SET
+                name = :name, priority = :priority, category_scope = :category_scope,
+                purchase_price_min = :purchase_price_min,
+                purchase_price_max = :purchase_price_max,
+                markup_percent = :markup_percent, minimum_margin = :minimum_margin,
+                rounding_strategy = 'none', rounding_parameters = NULL,
+                additional_scope = NULL, valid_from = :valid_from,
+                valid_until = :valid_until, is_active = :is_active
+            WHERE id = :id
+        ");
+        $stmt->execute([
+            ':id' => $id,
+            ':name' => $input['name'],
+            ':priority' => $input['priority'],
+            ':category_scope' => $input['category_scope'],
+            ':purchase_price_min' => $input['purchase_price_min'],
+            ':purchase_price_max' => $input['purchase_price_max'],
+            ':markup_percent' => $input['markup_percent'],
+            ':minimum_margin' => $input['minimum_margin'],
+            ':valid_from' => $input['valid_from'],
+            ':valid_until' => $input['valid_until'],
+            ':is_active' => $input['is_active']
+        ]);
+        $pdo->commit();
+        sendManagerJson(200, ['success' => true, 'message' => 'Правило обновлено']);
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        if (isPricingRuleNameDuplicate($error)) {
+            sendManagerJson(409, ['success' => false, 'message' => 'Правило с таким названием уже существует']);
+        }
+        error_log('pricing rule update failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось обновить правило']);
+    }
+}
+
+if ($action === 'pricing_rule_set_active') {
+    requireManagerMethod('POST');
+    requirePricingRuleJsonRequest($requestJsonIsValid);
+    requireOnlyPayloadKeys($data, ['action', 'id', 'updated_at', 'is_active']);
+    $id = requirePositiveManagerId($data['id'] ?? null, 'правило');
+    $expectedUpdatedAt = $data['updated_at'] ?? null;
+    if (!is_string($expectedUpdatedAt) || $expectedUpdatedAt === '' || !is_bool($data['is_active'] ?? null)) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Некорректные данные статуса правила']);
+    }
+    try {
+        $pdo->beginTransaction();
+        $lockStmt = $pdo->prepare("
+            SELECT id, updated_at, rounding_strategy, rounding_parameters, additional_scope
+            FROM pricing_rules WHERE id = :id FOR UPDATE
+        ");
+        $lockStmt->execute([':id' => $id]);
+        $existing = $lockStmt->fetch();
+        if (!is_array($existing)) {
+            $pdo->rollBack();
+            sendManagerJson(404, ['success' => false, 'message' => 'Правило не найдено']);
+        }
+        if (!hash_equals((string)$existing['updated_at'], $expectedUpdatedAt)) {
+            $pdo->rollBack();
+            sendManagerJson(409, ['success' => false, 'message' => 'Правило уже изменено. Обновите список и повторите действие']);
+        }
+        if ($data['is_active'] && !pricingRuleIsSupported($existing)) {
+            $pdo->rollBack();
+            sendManagerJson(409, ['success' => false, 'message' => 'Неподдерживаемое правило нельзя активировать через Stage 8']);
+        }
+        $stmt = $pdo->prepare('UPDATE pricing_rules SET is_active = :is_active WHERE id = :id');
+        $stmt->execute([':id' => $id, ':is_active' => $data['is_active'] ? 1 : 0]);
+        $pdo->commit();
+        sendManagerJson(200, ['success' => true, 'message' => $data['is_active'] ? 'Правило активировано' : 'Правило деактивировано']);
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('pricing rule status update failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось изменить статус правила']);
     }
 }
 
