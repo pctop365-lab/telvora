@@ -461,7 +461,8 @@ $csrfProtectedActions = [
     'supplier_import_job_publish_offers',
     'pricing_rule_create',
     'pricing_rule_update',
-    'pricing_rule_set_active'
+    'pricing_rule_set_active',
+    'supplier_offer_price_publish'
 ];
 
 if (in_array($action, $csrfProtectedActions, true)) {
@@ -2097,30 +2098,7 @@ if ($action === 'supplier_offer_pricing_preview') {
         $activeRules = $rulesStmt->fetchAll();
         $offers = [];
         foreach ($offersStmt->fetchAll() as $offer) {
-            $offerMinor = supplierOfferMinorUnits($offer['purchase_price']);
-            $applicableRules = array_values(array_filter(
-                $activeRules,
-                static function (array $rule) use ($offer, $offerMinor): bool {
-                    if ($offerMinor === null) {
-                        return false;
-                    }
-                    if ($rule['category_scope'] !== null && $rule['category_scope'] !== $offer['category']) {
-                        return false;
-                    }
-                    $minimum = $rule['purchase_price_min'] === null
-                        ? null : supplierOfferMinorUnits((string)$rule['purchase_price_min'], true);
-                    $maximum = $rule['purchase_price_max'] === null
-                        ? null : supplierOfferMinorUnits((string)$rule['purchase_price_max'], true);
-                    if (
-                        ($rule['purchase_price_min'] !== null && $minimum === null) ||
-                        ($rule['purchase_price_max'] !== null && $maximum === null)
-                    ) {
-                        return false;
-                    }
-                    return ($minimum === null || $offerMinor >= $minimum) &&
-                        ($maximum === null || $offerMinor <= $maximum);
-                }
-            ));
+            $applicableRules = supplierPricingApplicableRules($offer, $activeRules);
             $calculation = supplierPricingCalculate($offer, $applicableRules);
             foreach (['id', 'supplier_id', 'product_variant_id', 'source_import_row_id', 'product_id'] as $key) {
                 $offer[$key] = (int)$offer[$key];
@@ -2141,6 +2119,75 @@ if ($action === 'supplier_offer_pricing_preview') {
     } catch (Throwable $error) {
         error_log('supplier offer pricing preview failed: ' . $error->getMessage());
         sendManagerJson(500, ['success' => false, 'message' => 'Не удалось рассчитать предварительные цены']);
+    }
+}
+
+if ($action === 'supplier_offer_price_publish_preview') {
+    requireManagerMethod('GET');
+    $offerId = requirePositiveManagerId($_GET['supplier_offer_id'] ?? null, 'supplier offer');
+    try {
+        require_once __DIR__ . '/price_publication_service.php';
+        $context = pricePublicationContext($pdo, $offerId, false);
+        sendManagerJson(200, ['success' => true, 'preview' => pricePublicationPublicResult($context)]);
+    } catch (PricePublicationException $error) {
+        sendManagerJson($error->httpStatus, ['success' => false, 'message' => $error->getMessage()]);
+    } catch (Throwable $error) {
+        error_log('price publication preview failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось подготовить проверку изменения цены']);
+    }
+}
+
+if ($action === 'supplier_offer_price_publish') {
+    requireManagerMethod('POST');
+    requirePricingRuleJsonRequest($requestJsonIsValid);
+    requireOnlyPayloadKeys($data, ['action', 'supplier_offer_id', 'snapshot_token', 'confirm', 'comment']);
+    $offerId = requirePositiveManagerId($data['supplier_offer_id'] ?? null, 'supplier offer');
+    $snapshotToken = $data['snapshot_token'] ?? null;
+    if (!is_string($snapshotToken) || preg_match('/\A[a-f0-9]{64}\z/D', $snapshotToken) !== 1) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Некорректный token проверки цены']);
+    }
+    if (($data['confirm'] ?? null) !== true) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Требуется явное подтверждение публикации цены']);
+    }
+    $commentValue = $data['comment'] ?? null;
+    if ($commentValue !== null && !is_string($commentValue)) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Некорректный комментарий']);
+    }
+    $comment = is_string($commentValue) ? trim($commentValue) : null;
+    $comment = $comment === '' ? null : $comment;
+    $commentControlMatch = $comment === null ? 0 : preg_match('/[\x00-\x1F\x7F]/u', $comment);
+    if ($comment !== null && (pricingRuleStringLength($comment) > 500 || $commentControlMatch !== 0)) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Комментарий не должен превышать 500 символов или содержать управляющие знаки']);
+    }
+    try {
+        require_once __DIR__ . '/price_publication_service.php';
+        $result = pricePublicationPublish($pdo, $offerId, $snapshotToken, $comment);
+        sendManagerJson(200, [
+            'success' => true,
+            'message' => $result['status'] === 'already_current'
+                ? 'Цена уже актуальна. Новая audit-запись не создана.'
+                : 'Цена опубликована и записана в историю.',
+            'result' => $result
+        ]);
+    } catch (PricePublicationException $error) {
+        sendManagerJson($error->httpStatus, ['success' => false, 'message' => $error->getMessage()]);
+    } catch (Throwable $error) {
+        error_log('price publication failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось опубликовать цену']);
+    }
+}
+
+if ($action === 'price_publication_history') {
+    requireManagerMethod('GET');
+    $page = requirePositiveManagerId($_GET['page'] ?? '1', 'страница');
+    try {
+        require_once __DIR__ . '/price_publication_service.php';
+        sendManagerJson(200, ['success' => true] + pricePublicationHistory($pdo, $page, 20));
+    } catch (PricePublicationException $error) {
+        sendManagerJson($error->httpStatus, ['success' => false, 'message' => $error->getMessage()]);
+    } catch (Throwable $error) {
+        error_log('price publication history failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось загрузить историю публикаций цен']);
     }
 }
 

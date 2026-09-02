@@ -271,6 +271,34 @@ function supplierPricingDecimalScaled(string $value, int $scale): ?int
     return ($whole * $factor) + (int)$fraction;
 }
 
+function supplierPricingApplicableRules(array $offer, array $rules): array
+{
+    $offerMinor = supplierOfferMinorUnits($offer['purchase_price'] ?? null);
+    if ($offerMinor === null) {
+        return [];
+    }
+    return array_values(array_filter(
+        $rules,
+        static function (array $rule) use ($offer, $offerMinor): bool {
+            if ($rule['category_scope'] !== null && $rule['category_scope'] !== ($offer['category'] ?? null)) {
+                return false;
+            }
+            $minimum = $rule['purchase_price_min'] === null
+                ? null : supplierOfferMinorUnits((string)$rule['purchase_price_min'], true);
+            $maximum = $rule['purchase_price_max'] === null
+                ? null : supplierOfferMinorUnits((string)$rule['purchase_price_max'], true);
+            if (
+                ($rule['purchase_price_min'] !== null && $minimum === null) ||
+                ($rule['purchase_price_max'] !== null && $maximum === null)
+            ) {
+                return false;
+            }
+            return ($minimum === null || $offerMinor >= $minimum) &&
+                ($maximum === null || $offerMinor <= $maximum);
+        }
+    ));
+}
+
 function supplierPricingCalculate(array $offer, array $rules): array
 {
     $warnings = [];

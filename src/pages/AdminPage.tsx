@@ -228,6 +228,51 @@ type SupplierOfferPricingPreview = {
   };
 };
 
+type PricePublicationPreview = {
+  can_publish: boolean;
+  blocking_reasons: string[];
+  warnings: string[];
+  snapshot_token: string;
+  offer: {
+    id: number;
+    supplier_id: number;
+    supplier_name: string;
+    supplier_sku: string | null;
+    purchase_price: string;
+    currency_code: string;
+    imported_at: string;
+    source_import_row_id: number | null;
+    source_import_job_id: number | null;
+  };
+  product: { id: number; name: string; base_price: string; base_old_price: string | null };
+  variant: {
+    id: number;
+    variant_key: string;
+    assembly_country: string | null;
+    display_name: string | null;
+    current_live_price: string | null;
+  };
+  pricing: SupplierOfferPricingPreview['pricing'];
+  delta_amount: string | null;
+  delta_percent: string | null;
+};
+
+type PricePublicationHistoryRow = {
+  id: number;
+  product_name: string;
+  assembly_country: string;
+  old_live_price: string;
+  new_live_price: string;
+  supplier_name: string;
+  supplier_sku: string | null;
+  purchase_price: string;
+  currency_code: string;
+  pricing_rule_name: string;
+  admin_actor: string;
+  admin_comment: string | null;
+  created_at: string;
+};
+
 type PricingRule = {
   id: number;
   name: string;
@@ -497,6 +542,16 @@ export default function AdminPage() {
   const [offerPricingPage, setOfferPricingPage] = useState(1);
   const [offerPricingPages, setOfferPricingPages] = useState(1);
   const [offerPricingLoading, setOfferPricingLoading] = useState(false);
+  const [pricePublicationPreview, setPricePublicationPreview] = useState<PricePublicationPreview | null>(null);
+  const [pricePublicationLoading, setPricePublicationLoading] = useState(false);
+  const [pricePublicationError, setPricePublicationError] = useState('');
+  const [pricePublicationSuccess, setPricePublicationSuccess] = useState('');
+  const [pricePublicationComment, setPricePublicationComment] = useState('');
+  const pricePublicationPendingRef = useRef(false);
+  const [pricePublicationHistory, setPricePublicationHistory] = useState<PricePublicationHistoryRow[]>([]);
+  const [pricePublicationHistoryPage, setPricePublicationHistoryPage] = useState(1);
+  const [pricePublicationHistoryPages, setPricePublicationHistoryPages] = useState(1);
+  const [pricePublicationHistoryLoading, setPricePublicationHistoryLoading] = useState(false);
 
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -1548,11 +1603,88 @@ const login = async (e: React.FormEvent) => {
     }
   };
 
+  const loadPricePublicationHistory = async (page = 1) => {
+    setPricePublicationHistoryLoading(true);
+    try {
+      const response = await fetch(`${MANAGER_API}?action=price_publication_history&page=${page}`, {
+        method: 'GET', credentials: 'include', headers: { Accept: 'application/json' },
+      });
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success) throw new Error(data.message || 'Не удалось загрузить историю публикаций');
+      setPricePublicationHistory(Array.isArray(data.history) ? data.history : []);
+      setPricePublicationHistoryPage(Number(data.page) || 1);
+      setPricePublicationHistoryPages(Number(data.pages) || 1);
+    } catch (err) {
+      setPricePublicationError(err instanceof Error ? err.message : 'Не удалось загрузить историю публикаций');
+    } finally {
+      setPricePublicationHistoryLoading(false);
+    }
+  };
+
+  const preparePricePublication = async (supplierOfferId: number) => {
+    setPricePublicationLoading(true);
+    setPricePublicationError('');
+    setPricePublicationSuccess('');
+    setPricePublicationPreview(null);
+    setPricePublicationComment('');
+    try {
+      const response = await fetch(
+        `${MANAGER_API}?action=supplier_offer_price_publish_preview&supplier_offer_id=${supplierOfferId}`,
+        { method: 'GET', credentials: 'include', headers: { Accept: 'application/json' } }
+      );
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success || !data.preview) {
+        throw new Error(data.message || 'Не удалось подготовить изменение цены');
+      }
+      setPricePublicationPreview(data.preview as PricePublicationPreview);
+    } catch (err) {
+      setPricePublicationError(err instanceof Error ? err.message : 'Не удалось подготовить изменение цены');
+    } finally {
+      setPricePublicationLoading(false);
+    }
+  };
+
+  const publishCandidatePrice = async () => {
+    if (!pricePublicationPreview || !pricePublicationPreview.can_publish || pricePublicationPendingRef.current) return;
+    if (!window.confirm('Цена будет изменена на сайте. Опубликовать рассчитанный сервером Candidate?')) return;
+    pricePublicationPendingRef.current = true;
+    setPricePublicationLoading(true);
+    setPricePublicationError('');
+    setPricePublicationSuccess('');
+    try {
+      const response = await fetch(MANAGER_API, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-Token': csrfToken || '' },
+        body: JSON.stringify({
+          action: 'supplier_offer_price_publish',
+          supplier_offer_id: pricePublicationPreview.offer.id,
+          snapshot_token: pricePublicationPreview.snapshot_token,
+          confirm: true,
+          comment: pricePublicationComment.trim() || null,
+        }),
+      });
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success) throw new Error(data.message || 'Не удалось опубликовать цену');
+      setPricePublicationSuccess(data.message || 'Цена опубликована');
+      await preparePricePublication(pricePublicationPreview.offer.id);
+      setPricePublicationSuccess(data.message || 'Цена опубликована');
+      await loadPricePublicationHistory(1);
+    } catch (err) {
+      setPricePublicationError(err instanceof Error ? err.message : 'Не удалось опубликовать цену');
+    } finally {
+      pricePublicationPendingRef.current = false;
+      setPricePublicationLoading(false);
+    }
+  };
+
   const openSupplierImportJob = async (job: SupplierImportJob) => {
     setOfferPublishSummary(null);
     setOfferPricingRows([]);
+    setPricePublicationPreview(null);
+    setPricePublicationError('');
+    setPricePublicationSuccess('');
     await loadSupplierImportJobRows(job, 1, 'all');
-    await Promise.all([loadSupplierOfferSummary(job), loadSupplierOfferPricing(job, 1)]);
+    await Promise.all([loadSupplierOfferSummary(job), loadSupplierOfferPricing(job, 1), loadPricePublicationHistory(1)]);
   };
 
   const publishSupplierOffers = async () => {
@@ -4163,16 +4295,53 @@ const toggleProductStatus = async (product: AdminProduct) => {
                     <div className="mt-8 border-t border-gray-200 pt-5">
                       <div><h5 className="font-semibold text-graphite-900">Расчёт цен</h5><p className="text-sm text-gray-500 mt-1">Только серверный preview. Цена на сайте не изменена.</p></div>
                       {offerPricingLoading ? <div className="py-6 text-center text-gray-500">Расчёт цен...</div> : offerPricingRows.length === 0 ? <div className="mt-4 rounded-xl border border-dashed border-gray-300 p-5 text-center text-gray-500">Предложения из этого import job ещё не опубликованы.</div> : (
-                        <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200"><table className="w-full min-w-[1100px] text-sm"><thead className="bg-gray-50"><tr>
-                          <th className="px-3 py-3 text-left">Поставщик / вариант</th><th className="px-3 py-3 text-left">Закупка</th><th className="px-3 py-3 text-left">Наличие</th><th className="px-3 py-3 text-left">Правило</th><th className="px-3 py-3 text-left">До округления</th><th className="px-3 py-3 text-left">Candidate</th><th className="px-3 py-3 text-left">Маржа</th><th className="px-3 py-3 text-left">Предупреждения</th>
+                        <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200"><table className="w-full min-w-[1250px] text-sm"><thead className="bg-gray-50"><tr>
+                          <th className="px-3 py-3 text-left">Поставщик / вариант</th><th className="px-3 py-3 text-left">Закупка</th><th className="px-3 py-3 text-left">Наличие</th><th className="px-3 py-3 text-left">Правило</th><th className="px-3 py-3 text-left">До округления</th><th className="px-3 py-3 text-left">Candidate</th><th className="px-3 py-3 text-left">Маржа</th><th className="px-3 py-3 text-left">Предупреждения</th><th className="px-3 py-3 text-right">Публикация</th>
                         </tr></thead><tbody>{offerPricingRows.map((offer) => <tr key={offer.id} className="border-t border-gray-100 align-top">
                           <td className="px-3 py-3"><div>{offer.supplier_name}</div><div className="font-medium">{offer.product_name}</div><div className="text-xs text-gray-500">{offer.variant_name || offer.variant_key} · row #{offer.source_import_row_id}</div></td>
                           <td className="px-3 py-3">{offer.purchase_price} {offer.currency_code}</td><td className="px-3 py-3"><div>{offer.availability_status}</div><div className="text-xs text-gray-500">{offer.delivery_info || '—'}</div></td>
                           <td className="px-3 py-3"><div>{offer.pricing.rule?.name || '—'}</div>{offer.pricing.rule?.markup_percent !== null && offer.pricing.rule?.markup_percent !== undefined && <div className="text-xs text-gray-500">Наценка: {offer.pricing.rule.markup_percent}%</div>}</td><td className="px-3 py-3">{offer.pricing.price_before_rounding || '—'}</td><td className="px-3 py-3 font-semibold">{offer.pricing.candidate_retail_price || '—'}</td>
                           <td className="px-3 py-3">{offer.pricing.expected_margin ? `${offer.pricing.expected_margin} ₽ · ${offer.pricing.expected_margin_percent}%` : '—'}</td><td className="px-3 py-3">{offer.pricing.warnings.map((warning) => <div key={warning} className="text-xs text-amber-700">{warning}</div>)}</td>
+                          <td className="px-3 py-3 text-right"><button type="button" disabled={!offer.pricing.calculable || pricePublicationLoading} onClick={() => preparePricePublication(offer.id)} className="px-3 py-2 rounded-lg border border-red-200 text-red-700 disabled:opacity-40">Подготовить изменение цены</button></td>
                         </tr>)}</tbody></table></div>
                       )}
                       {offerPricingRows.length > 0 && <div className="mt-4 flex items-center justify-center gap-3"><button type="button" disabled={offerPricingPage <= 1 || offerPricingLoading} onClick={() => loadSupplierOfferPricing(selectedImportJob, offerPricingPage - 1)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Назад</button><span className="text-sm text-gray-500">{offerPricingPage} / {offerPricingPages}</span><button type="button" disabled={offerPricingPage >= offerPricingPages || offerPricingLoading} onClick={() => loadSupplierOfferPricing(selectedImportJob, offerPricingPage + 1)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Далее</button></div>}
+
+                      {(pricePublicationLoading || pricePublicationError || pricePublicationPreview) && (
+                        <div className="mt-6 rounded-2xl border-2 border-red-200 bg-red-50/40 p-5">
+                          <div className="flex items-start justify-between gap-4"><div><h5 className="text-lg font-semibold text-red-900">Подтверждение публикации цены</h5><p className="mt-1 text-sm font-medium text-red-700">Цена будет изменена на сайте.</p></div>{pricePublicationPreview && <button type="button" onClick={() => setPricePublicationPreview(null)} aria-label="Закрыть"><X className="w-5 h-5" /></button>}</div>
+                          {pricePublicationLoading && !pricePublicationPreview && <div className="py-6 text-center text-gray-500">Повторная серверная проверка...</div>}
+                          {pricePublicationError && <div className="mt-4 rounded-xl border border-red-200 bg-white px-4 py-3 text-sm text-red-700">{pricePublicationError}</div>}
+                          {pricePublicationSuccess && <div className="mt-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{pricePublicationSuccess}</div>}
+                          {pricePublicationPreview && (
+                            <div className="mt-5">
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+                                <div className="rounded-xl bg-white border p-3"><div className="text-xs text-gray-500">Товар / вариант</div><div className="font-semibold">{pricePublicationPreview.product.name}</div><div>{pricePublicationPreview.variant.display_name || pricePublicationPreview.variant.assembly_country || pricePublicationPreview.variant.variant_key}</div></div>
+                                <div className="rounded-xl bg-white border p-3"><div className="text-xs text-gray-500">Поставщик / SKU</div><div className="font-semibold">{pricePublicationPreview.offer.supplier_name}</div><div>{pricePublicationPreview.offer.supplier_sku || '—'}</div></div>
+                                <div className="rounded-xl bg-white border-2 border-gray-300 p-3"><div className="text-xs font-semibold text-gray-500">ТЕКУЩАЯ ЦЕНА</div><div className="text-xl font-bold">{pricePublicationPreview.variant.current_live_price || '—'} ₽</div></div>
+                                <div className="rounded-xl bg-red-100 border-2 border-red-300 p-3"><div className="text-xs font-semibold text-red-700">НОВАЯ ЦЕНА</div><div className="text-xl font-bold text-red-900">{pricePublicationPreview.pricing.candidate_retail_price || '—'} ₽</div></div>
+                                <div className="rounded-xl bg-white border p-3"><div className="text-xs text-gray-500">Закупка</div><div className="font-semibold">{pricePublicationPreview.offer.purchase_price} {pricePublicationPreview.offer.currency_code}</div></div>
+                                <div className="rounded-xl bg-white border p-3"><div className="text-xs text-gray-500">Pricing rule</div><div className="font-semibold">{pricePublicationPreview.pricing.rule?.name || '—'}</div></div>
+                                <div className="rounded-xl bg-white border p-3"><div className="text-xs text-gray-500">Изменение</div><div className="font-semibold">{pricePublicationPreview.delta_amount || '—'} ₽ · {pricePublicationPreview.delta_percent || '—'}%</div></div>
+                                <div className="rounded-xl bg-white border p-3"><div className="text-xs text-gray-500">Расчётная маржа</div><div className="font-semibold">{pricePublicationPreview.pricing.expected_margin || '—'} ₽ · {pricePublicationPreview.pricing.expected_margin_percent || '—'}%</div></div>
+                                <div className="rounded-xl bg-white border p-3 md:col-span-2"><div className="text-xs text-gray-500">Источник</div><div>import job #{pricePublicationPreview.offer.source_import_job_id ?? '—'} · row #{pricePublicationPreview.offer.source_import_row_id ?? '—'}</div><div>Offer импортирован: {formatDate(pricePublicationPreview.offer.imported_at)}</div></div>
+                                <div className="rounded-xl bg-white border p-3 md:col-span-2"><div className="text-xs text-gray-500">Base product fields (не изменяются)</div><div>products.price: {pricePublicationPreview.product.base_price} ₽ · products.old_price: {pricePublicationPreview.product.base_old_price ?? 'NULL'}</div></div>
+                              </div>
+                              {pricePublicationPreview.warnings.map((warning) => <div key={warning} className="mt-3 text-sm text-amber-800">⚠ {warning}</div>)}
+                              {pricePublicationPreview.blocking_reasons.map((reason) => <div key={reason} className="mt-2 text-sm font-medium text-red-700">Блокировка: {reason}</div>)}
+                              <label className="block mt-4 text-sm text-gray-600">Комментарий к изменению (необязательно)<textarea maxLength={500} value={pricePublicationComment} onChange={(event) => setPricePublicationComment(event.target.value)} className="admin-input mt-2 min-h-20" /></label>
+                              <div className="mt-5 flex justify-end"><button type="button" onClick={publishCandidatePrice} disabled={!pricePublicationPreview.can_publish || pricePublicationLoading} className="px-5 py-3 rounded-xl bg-red-600 text-white font-semibold disabled:opacity-40">{pricePublicationLoading ? 'Повторная проверка...' : 'Опубликовать цену'}</button></div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="mt-8 border-t border-gray-200 pt-5">
+                        <h5 className="font-semibold text-graphite-900">История публикаций цен</h5>
+                        <p className="text-xs text-gray-500 mt-1">Только чтение; автоматический откат не реализован.</p>
+                        {pricePublicationHistoryLoading ? <div className="py-5 text-center text-gray-500">Загрузка истории...</div> : pricePublicationHistory.length === 0 ? <div className="mt-3 text-sm text-gray-500">История пока пуста.</div> : <div className="mt-3 overflow-x-auto"><table className="w-full min-w-[900px] text-sm"><thead><tr className="bg-gray-50"><th className="p-3 text-left">Дата</th><th className="p-3 text-left">Товар / вариант</th><th className="p-3 text-left">Цена</th><th className="p-3 text-left">Поставщик</th><th className="p-3 text-left">Закупка / правило</th><th className="p-3 text-left">Комментарий</th></tr></thead><tbody>{pricePublicationHistory.map((row) => <tr key={row.id} className="border-t"><td className="p-3">{formatDate(row.created_at)}</td><td className="p-3"><div>{row.product_name}</div><div className="text-xs text-gray-500">{row.assembly_country}</div></td><td className="p-3">{row.old_live_price} → <span className="font-semibold">{row.new_live_price} ₽</span></td><td className="p-3">{row.supplier_name}<div className="text-xs">{row.supplier_sku || '—'}</div></td><td className="p-3">{row.purchase_price} {row.currency_code}<div className="text-xs">{row.pricing_rule_name}</div></td><td className="p-3">{row.admin_comment || '—'}</td></tr>)}</tbody></table></div>}
+                        {pricePublicationHistory.length > 0 && <div className="mt-3 flex justify-center gap-3"><button type="button" disabled={pricePublicationHistoryPage <= 1 || pricePublicationHistoryLoading} onClick={() => loadPricePublicationHistory(pricePublicationHistoryPage - 1)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Назад</button><span className="py-2 text-sm">{pricePublicationHistoryPage} / {pricePublicationHistoryPages}</span><button type="button" disabled={pricePublicationHistoryPage >= pricePublicationHistoryPages || pricePublicationHistoryLoading} onClick={() => loadPricePublicationHistory(pricePublicationHistoryPage + 1)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Далее</button></div>}
+                      </div>
                     </div>
                   </div>
                 )}
