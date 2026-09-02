@@ -187,6 +187,47 @@ type SupplierImportProductResult = {
   }>;
 };
 
+type SupplierOfferPublishSummary = {
+  total_rows: number;
+  eligible_rows: number;
+  offers_to_create: number;
+  offers_to_update: number;
+  skipped_errors: number;
+  skipped_unmatched: number;
+  skipped_no_variant: number;
+  skipped_invalid_price: number;
+  skipped_invalid_currency: number;
+  skipped_missing_sku: number;
+  skipped_duplicate_sku: number;
+  skipped_missing_name: number;
+  skipped_offer_conflict: number;
+  skipped_stale_source: number;
+  skipped_unknown_source: number;
+};
+
+type SupplierOfferPricingPreview = {
+  id: number;
+  supplier_name: string;
+  product_name: string;
+  variant_name: string | null;
+  variant_key: string;
+  supplier_sku: string | null;
+  purchase_price: string;
+  currency_code: string;
+  availability_status: string;
+  delivery_info: string | null;
+  source_import_row_id: number;
+  pricing: {
+    calculable: boolean;
+    rule: { id: number; name: string; markup_percent: string | null } | null;
+    price_before_rounding?: string;
+    candidate_retail_price?: string;
+    expected_margin?: string;
+    expected_margin_percent?: string;
+    warnings: string[];
+  };
+};
+
 const MANAGER_API = '/manager.php';
 const PRODUCTS_API = '/products.php';
 
@@ -402,6 +443,13 @@ export default function AdminPage() {
   const [manualProductQuery, setManualProductQuery] = useState('');
   const [manualProductResults, setManualProductResults] = useState<SupplierImportProductResult[]>([]);
   const [manualMatchLoading, setManualMatchLoading] = useState(false);
+  const [offerPublishSummary, setOfferPublishSummary] = useState<SupplierOfferPublishSummary | null>(null);
+  const [offerPublishLoading, setOfferPublishLoading] = useState(false);
+  const offerPublishPendingRef = useRef(false);
+  const [offerPricingRows, setOfferPricingRows] = useState<SupplierOfferPricingPreview[]>([]);
+  const [offerPricingPage, setOfferPricingPage] = useState(1);
+  const [offerPricingPages, setOfferPricingPages] = useState(1);
+  const [offerPricingLoading, setOfferPricingLoading] = useState(false);
 
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -897,6 +945,8 @@ const login = async (e: React.FormEvent) => {
     setSelectedImportJob(null);
     setStagedRows([]);
     setManualMatchRow(null);
+    setOfferPublishSummary(null);
+    setOfferPricingRows([]);
     setPreviewFileInputKey((current) => current + 1);
     loadSupplierImportProfiles(supplier);
     loadSupplierImportJobs(supplier);
@@ -919,6 +969,8 @@ const login = async (e: React.FormEvent) => {
     setSelectedImportJob(null);
     setStagedRows([]);
     setManualMatchRow(null);
+    setOfferPublishSummary(null);
+    setOfferPricingRows([]);
     setPreviewFileInputKey((current) => current + 1);
   };
 
@@ -1263,6 +1315,85 @@ const login = async (e: React.FormEvent) => {
     }
   };
 
+  const loadSupplierOfferSummary = async (job: SupplierImportJob) => {
+    try {
+      const response = await fetch(
+        `${MANAGER_API}?action=supplier_import_job_offer_summary&job_id=${job.id}`,
+        { method: 'GET', credentials: 'include', headers: { Accept: 'application/json' } }
+      );
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success || !data.summary) {
+        throw new Error(data.message || 'Не удалось проверить готовность предложений');
+      }
+      setOfferPublishSummary(data.summary as SupplierOfferPublishSummary);
+    } catch (err) {
+      setOfferPublishSummary(null);
+      setSupplierImportProfilesError(
+        err instanceof Error ? err.message : 'Не удалось проверить готовность предложений'
+      );
+    }
+  };
+
+  const loadSupplierOfferPricing = async (job: SupplierImportJob, page = 1) => {
+    setOfferPricingLoading(true);
+    try {
+      const response = await fetch(
+        `${MANAGER_API}?action=supplier_offer_pricing_preview&job_id=${job.id}&page=${page}`,
+        { method: 'GET', credentials: 'include', headers: { Accept: 'application/json' } }
+      );
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Не удалось рассчитать цены');
+      }
+      setOfferPricingRows(Array.isArray(data.offers) ? data.offers : []);
+      setOfferPricingPage(Number(data.page) || 1);
+      setOfferPricingPages(Number(data.pages) || 1);
+    } catch (err) {
+      setSupplierImportProfilesError(err instanceof Error ? err.message : 'Не удалось рассчитать цены');
+    } finally {
+      setOfferPricingLoading(false);
+    }
+  };
+
+  const openSupplierImportJob = async (job: SupplierImportJob) => {
+    setOfferPublishSummary(null);
+    setOfferPricingRows([]);
+    await loadSupplierImportJobRows(job, 1, 'all');
+    await Promise.all([loadSupplierOfferSummary(job), loadSupplierOfferPricing(job, 1)]);
+  };
+
+  const publishSupplierOffers = async () => {
+    if (!selectedImportJob || !offerPublishSummary || offerPublishPendingRef.current) return;
+    if (!window.confirm('Будут обновлены предложения поставщика. Цены товаров на сайте не изменятся. Продолжить?')) return;
+    offerPublishPendingRef.current = true;
+    setOfferPublishLoading(true);
+    setSupplierImportProfilesError('');
+    try {
+      const response = await fetch(MANAGER_API, {
+        method: 'POST', credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json', Accept: 'application/json',
+          'X-CSRF-Token': csrfToken || '',
+        },
+        body: JSON.stringify({ action: 'supplier_import_job_publish_offers', job_id: selectedImportJob.id }),
+      });
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Не удалось обновить предложения поставщика');
+      }
+      setSupplierImportProfilesSuccess(data.message || 'Предложения поставщика обновлены');
+      setOfferPublishSummary(data.summary as SupplierOfferPublishSummary);
+      await loadSupplierOfferPricing(selectedImportJob, 1);
+    } catch (err) {
+      setSupplierImportProfilesError(
+        err instanceof Error ? err.message : 'Не удалось обновить предложения поставщика'
+      );
+    } finally {
+      offerPublishPendingRef.current = false;
+      setOfferPublishLoading(false);
+    }
+  };
+
   const createSupplierStagingImport = async () => {
     if (
       !profileSupplier || !previewProfile || !previewFile || !supplierImportPreview ||
@@ -1307,7 +1438,7 @@ const login = async (e: React.FormEvent) => {
         rows_errors: Number(data.counters?.errors || 0),
         created_at: new Date().toISOString(), finished_at: new Date().toISOString(),
       };
-      await loadSupplierImportJobRows(createdJob, 1, 'all');
+      await openSupplierImportJob(createdJob);
     } catch (err) {
       setSupplierImportPreviewError(
         err instanceof Error ? err.message : 'Не удалось создать staging-импорт'
@@ -1369,6 +1500,7 @@ const login = async (e: React.FormEvent) => {
       setManualProductQuery('');
       setSupplierImportProfilesSuccess(data.message || 'Сопоставление сохранено');
       await loadSupplierImportJobRows(selectedImportJob, stagedRowsPage, stagedRowsFilter);
+      await loadSupplierOfferSummary(selectedImportJob);
       if (profileSupplier) await loadSupplierImportJobs(profileSupplier);
     } catch (err) {
       setSupplierImportProfilesError(
@@ -3677,7 +3809,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                           <th className="px-3 py-3 text-left">Ошибки</th>
                         </tr></thead>
                         <tbody>{supplierImportJobs.map((job) => (
-                          <tr key={job.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50 cursor-pointer" onClick={() => loadSupplierImportJobRows(job, 1, 'all')}>
+                          <tr key={job.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50 cursor-pointer" onClick={() => openSupplierImportJob(job)}>
                             <td className="px-3 py-3"><div className="font-semibold">#{job.id}</div><div className="text-xs text-gray-500 break-all">{job.original_filename}</div></td>
                             <td className="px-3 py-3"><div>{job.profile_name || 'Профиль удалён'}</div><div className="text-xs text-gray-500">{formatDate(job.created_at)}</div></td>
                             <td className="px-3 py-3">{job.status}</td><td className="px-3 py-3">{job.rows_total}</td>
@@ -3702,6 +3834,29 @@ const toggleProductStatus = async (product: AdminProduct) => {
                         ))}
                       </div>
                     </div>
+                    {offerPublishSummary && (
+                      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 text-sm">
+                          <div><div className="text-xs text-gray-500">Готово</div><div className="font-semibold text-emerald-700">{offerPublishSummary.eligible_rows}</div></div>
+                          <div><div className="text-xs text-gray-500">Будет создано</div><div className="font-semibold">{offerPublishSummary.offers_to_create}</div></div>
+                          <div><div className="text-xs text-gray-500">Будет обновлено</div><div className="font-semibold">{offerPublishSummary.offers_to_update}</div></div>
+                          <div><div className="text-xs text-gray-500">Ошибки</div><div className="font-semibold text-red-600">{offerPublishSummary.skipped_errors + offerPublishSummary.skipped_invalid_price + offerPublishSummary.skipped_invalid_currency}</div></div>
+                          <div><div className="text-xs text-gray-500">Без match</div><div className="font-semibold text-amber-700">{offerPublishSummary.skipped_unmatched}</div></div>
+                          <div><div className="text-xs text-gray-500">Без variant</div><div className="font-semibold text-amber-700">{offerPublishSummary.skipped_no_variant}</div></div>
+                        </div>
+                        {(offerPublishSummary.skipped_missing_sku > 0 || offerPublishSummary.skipped_duplicate_sku > 0 || offerPublishSummary.skipped_missing_name > 0 || offerPublishSummary.skipped_offer_conflict > 0 || offerPublishSummary.skipped_stale_source > 0 || offerPublishSummary.skipped_unknown_source > 0) && (
+                          <p className="mt-3 text-xs text-amber-800">
+                            Дополнительно пропущено: уже есть более новое предложение поставщика — {offerPublishSummary.skipped_stale_source}, источник существующего предложения неизвестен — {offerPublishSummary.skipped_unknown_source}, конфликт варианта — {offerPublishSummary.skipped_offer_conflict}, без SKU — {offerPublishSummary.skipped_missing_sku}, повторяющийся SKU — {offerPublishSummary.skipped_duplicate_sku}, без названия — {offerPublishSummary.skipped_missing_name}.
+                          </p>
+                        )}
+                        <div className="mt-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                          <p className="text-sm font-medium text-amber-900">Будут обновлены предложения поставщика. Цены товаров на сайте не изменятся.</p>
+                          <button type="button" onClick={publishSupplierOffers} disabled={offerPublishLoading || offerPublishSummary.eligible_rows === 0} className="shrink-0 px-4 py-2.5 rounded-xl bg-amber-600 text-white font-semibold disabled:opacity-50">
+                            {offerPublishLoading ? 'Обновление...' : 'Обновить предложения поставщика'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {stagedRowsLoading ? <div className="py-8 text-center text-gray-500">Загрузка строк...</div> : (
                       <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200">
                         <table className="w-full min-w-[1200px] text-sm"><thead className="bg-gray-50"><tr>
@@ -3720,6 +3875,21 @@ const toggleProductStatus = async (product: AdminProduct) => {
                       </div>
                     )}
                     <div className="mt-4 flex items-center justify-center gap-3"><button type="button" disabled={stagedRowsPage <= 1 || stagedRowsLoading} onClick={() => loadSupplierImportJobRows(selectedImportJob, stagedRowsPage - 1, stagedRowsFilter)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Назад</button><span className="text-sm text-gray-500">{stagedRowsPage} / {stagedRowsPages}</span><button type="button" disabled={stagedRowsPage >= stagedRowsPages || stagedRowsLoading} onClick={() => loadSupplierImportJobRows(selectedImportJob, stagedRowsPage + 1, stagedRowsFilter)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Далее</button></div>
+
+                    <div className="mt-8 border-t border-gray-200 pt-5">
+                      <div><h5 className="font-semibold text-graphite-900">Расчёт цен</h5><p className="text-sm text-gray-500 mt-1">Только серверный preview. Цена на сайте не изменена.</p></div>
+                      {offerPricingLoading ? <div className="py-6 text-center text-gray-500">Расчёт цен...</div> : offerPricingRows.length === 0 ? <div className="mt-4 rounded-xl border border-dashed border-gray-300 p-5 text-center text-gray-500">Предложения из этого import job ещё не опубликованы.</div> : (
+                        <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200"><table className="w-full min-w-[1100px] text-sm"><thead className="bg-gray-50"><tr>
+                          <th className="px-3 py-3 text-left">Поставщик / вариант</th><th className="px-3 py-3 text-left">Закупка</th><th className="px-3 py-3 text-left">Наличие</th><th className="px-3 py-3 text-left">Правило</th><th className="px-3 py-3 text-left">До округления</th><th className="px-3 py-3 text-left">Candidate</th><th className="px-3 py-3 text-left">Маржа</th><th className="px-3 py-3 text-left">Предупреждения</th>
+                        </tr></thead><tbody>{offerPricingRows.map((offer) => <tr key={offer.id} className="border-t border-gray-100 align-top">
+                          <td className="px-3 py-3"><div>{offer.supplier_name}</div><div className="font-medium">{offer.product_name}</div><div className="text-xs text-gray-500">{offer.variant_name || offer.variant_key} · row #{offer.source_import_row_id}</div></td>
+                          <td className="px-3 py-3">{offer.purchase_price} {offer.currency_code}</td><td className="px-3 py-3"><div>{offer.availability_status}</div><div className="text-xs text-gray-500">{offer.delivery_info || '—'}</div></td>
+                          <td className="px-3 py-3"><div>{offer.pricing.rule?.name || '—'}</div>{offer.pricing.rule?.markup_percent !== null && offer.pricing.rule?.markup_percent !== undefined && <div className="text-xs text-gray-500">Наценка: {offer.pricing.rule.markup_percent}%</div>}</td><td className="px-3 py-3">{offer.pricing.price_before_rounding || '—'}</td><td className="px-3 py-3 font-semibold">{offer.pricing.candidate_retail_price || '—'}</td>
+                          <td className="px-3 py-3">{offer.pricing.expected_margin ? `${offer.pricing.expected_margin} ₽ · ${offer.pricing.expected_margin_percent}%` : '—'}</td><td className="px-3 py-3">{offer.pricing.warnings.map((warning) => <div key={warning} className="text-xs text-amber-700">{warning}</div>)}</td>
+                        </tr>)}</tbody></table></div>
+                      )}
+                      {offerPricingRows.length > 0 && <div className="mt-4 flex items-center justify-center gap-3"><button type="button" disabled={offerPricingPage <= 1 || offerPricingLoading} onClick={() => loadSupplierOfferPricing(selectedImportJob, offerPricingPage - 1)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Назад</button><span className="text-sm text-gray-500">{offerPricingPage} / {offerPricingPages}</span><button type="button" disabled={offerPricingPage >= offerPricingPages || offerPricingLoading} onClick={() => loadSupplierOfferPricing(selectedImportJob, offerPricingPage + 1)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Далее</button></div>}
+                    </div>
                   </div>
                 )}
 

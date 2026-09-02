@@ -457,7 +457,8 @@ $csrfProtectedActions = [
     'supplier_import_profile_set_active',
     'supplier_import_preview',
     'supplier_import_stage',
-    'supplier_import_row_set_match'
+    'supplier_import_row_set_match',
+    'supplier_import_job_publish_offers'
 ];
 
 if (in_array($action, $csrfProtectedActions, true)) {
@@ -1797,6 +1798,174 @@ if ($action === 'supplier_import_row_set_match') {
         }
         error_log('supplier import manual match failed: ' . $error->getMessage());
         sendManagerJson(500, ['success' => false, 'message' => 'Не удалось сохранить сопоставление']);
+    }
+}
+
+if ($action === 'supplier_import_job_offer_summary') {
+    requireManagerMethod('GET');
+    $jobId = requirePositiveManagerId($_GET['job_id'] ?? null, 'import job');
+    try {
+        require_once __DIR__ . '/supplier_offer_service.php';
+        $analysis = supplierOfferPublishAnalysis($pdo, $jobId, false);
+        if (!$analysis['found']) {
+            sendManagerJson(404, ['success' => false, 'message' => 'Импорт не найден']);
+        }
+        if ($analysis['job_status'] !== 'ready_for_review') {
+            sendManagerJson(409, ['success' => false, 'message' => 'Импорт ещё не готов к публикации предложений']);
+        }
+        sendManagerJson(200, ['success' => true] + $analysis);
+    } catch (Throwable $error) {
+        error_log('supplier offer publish summary failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось проверить предложения поставщика']);
+    }
+}
+
+if ($action === 'supplier_import_job_publish_offers') {
+    requireManagerMethod('POST');
+    if (!$requestJsonIsValid) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Некорректный JSON запроса']);
+    }
+    requireOnlyPayloadKeys($data, ['action', 'job_id']);
+    $jobId = requirePositiveManagerId($data['job_id'] ?? null, 'import job');
+    try {
+        require_once __DIR__ . '/supplier_offer_service.php';
+        $pdo->beginTransaction();
+        $analysis = supplierOfferPublishAnalysis($pdo, $jobId, true);
+        if (!$analysis['found']) {
+            $pdo->rollBack();
+            sendManagerJson(404, ['success' => false, 'message' => 'Импорт не найден']);
+        }
+        if ($analysis['job_status'] !== 'ready_for_review') {
+            $pdo->rollBack();
+            sendManagerJson(409, ['success' => false, 'message' => 'Импорт ещё не готов к публикации предложений']);
+        }
+        if ((int)$analysis['summary']['eligible_rows'] === 0) {
+            $pdo->rollBack();
+            sendManagerJson(409, ['success' => false, 'message' => 'В импорте нет строк, готовых к публикации предложений']);
+        }
+        $pdo->commit();
+        sendManagerJson(200, [
+            'success' => true,
+            'message' => 'Предложения поставщика обновлены. Цены товаров на сайте не изменены.',
+            'job_id' => $jobId,
+            'summary' => $analysis['summary']
+        ]);
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('supplier offer publish failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось обновить предложения поставщика']);
+    }
+}
+
+if ($action === 'supplier_offer_pricing_preview') {
+    requireManagerMethod('GET');
+    $jobId = requirePositiveManagerId($_GET['job_id'] ?? null, 'import job');
+    $page = requirePositiveManagerId($_GET['page'] ?? '1', 'страница');
+    $pageSize = 50;
+    $offset = ($page - 1) * $pageSize;
+    if ($offset > 5000000) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Некорректная страница']);
+    }
+    try {
+        require_once __DIR__ . '/supplier_offer_service.php';
+        $jobStmt = $pdo->prepare("
+            SELECT j.id, j.supplier_id, s.name AS supplier_name
+            FROM supplier_import_jobs j
+            INNER JOIN suppliers s ON s.id = j.supplier_id
+            WHERE j.id = :id LIMIT 1
+        ");
+        $jobStmt->execute([':id' => $jobId]);
+        $job = $jobStmt->fetch();
+        if (!is_array($job)) {
+            sendManagerJson(404, ['success' => false, 'message' => 'Импорт не найден']);
+        }
+        $countStmt = $pdo->prepare("
+            SELECT COUNT(*)
+            FROM supplier_offers o
+            INNER JOIN supplier_import_rows r ON r.id = o.source_import_row_id
+            WHERE r.import_job_id = :job_id
+        ");
+        $countStmt->execute([':job_id' => $jobId]);
+        $total = (int)$countStmt->fetchColumn();
+        $offersStmt = $pdo->prepare("
+            SELECT o.id, o.supplier_id, o.product_variant_id, o.supplier_sku,
+                   o.supplier_product_name, o.purchase_price, o.currency_code,
+                   o.availability_status, o.stock_quantity, o.delivery_info,
+                   o.source_import_row_id, o.imported_at, o.is_active,
+                   s.name AS supplier_name, p.id AS product_id,
+                   p.name AS product_name, p.category,
+                   pv.variant_key, pv.display_name AS variant_name
+            FROM supplier_offers o
+            INNER JOIN suppliers s ON s.id = o.supplier_id
+            INNER JOIN product_variants pv ON pv.id = o.product_variant_id
+            INNER JOIN products p ON p.id = pv.product_id
+            INNER JOIN supplier_import_rows r ON r.id = o.source_import_row_id
+            WHERE r.import_job_id = :job_id
+            ORDER BY o.id ASC LIMIT $pageSize OFFSET $offset
+        ");
+        $offersStmt->execute([':job_id' => $jobId]);
+        $rulesStmt = $pdo->prepare("
+            SELECT id, name, priority, category_scope, purchase_price_min,
+                   purchase_price_max, markup_percent, minimum_margin,
+                   rounding_strategy, rounding_parameters
+            FROM pricing_rules
+            WHERE is_active = 1
+              AND (valid_from IS NULL OR valid_from <= CURRENT_TIMESTAMP)
+              AND (valid_until IS NULL OR valid_until >= CURRENT_TIMESTAMP)
+              AND additional_scope IS NULL
+            ORDER BY priority ASC, (category_scope IS NOT NULL) DESC, id ASC
+            LIMIT 200
+        ");
+        $rulesStmt->execute();
+        $activeRules = $rulesStmt->fetchAll();
+        $offers = [];
+        foreach ($offersStmt->fetchAll() as $offer) {
+            $offerMinor = supplierOfferMinorUnits($offer['purchase_price']);
+            $applicableRules = array_values(array_filter(
+                $activeRules,
+                static function (array $rule) use ($offer, $offerMinor): bool {
+                    if ($offerMinor === null) {
+                        return false;
+                    }
+                    if ($rule['category_scope'] !== null && $rule['category_scope'] !== $offer['category']) {
+                        return false;
+                    }
+                    $minimum = $rule['purchase_price_min'] === null
+                        ? null : supplierOfferMinorUnits((string)$rule['purchase_price_min'], true);
+                    $maximum = $rule['purchase_price_max'] === null
+                        ? null : supplierOfferMinorUnits((string)$rule['purchase_price_max'], true);
+                    if (
+                        ($rule['purchase_price_min'] !== null && $minimum === null) ||
+                        ($rule['purchase_price_max'] !== null && $maximum === null)
+                    ) {
+                        return false;
+                    }
+                    return ($minimum === null || $offerMinor >= $minimum) &&
+                        ($maximum === null || $offerMinor <= $maximum);
+                }
+            ));
+            $calculation = supplierPricingCalculate($offer, $applicableRules);
+            foreach (['id', 'supplier_id', 'product_variant_id', 'source_import_row_id', 'product_id'] as $key) {
+                $offer[$key] = (int)$offer[$key];
+            }
+            $offer['is_active'] = (bool)$offer['is_active'];
+            $offer['pricing'] = $calculation;
+            $offers[] = $offer;
+        }
+        sendManagerJson(200, [
+            'success' => true,
+            'job_id' => $jobId,
+            'page' => $page,
+            'page_size' => $pageSize,
+            'pages' => max(1, (int)ceil($total / $pageSize)),
+            'total' => $total,
+            'offers' => $offers
+        ]);
+    } catch (Throwable $error) {
+        error_log('supplier offer pricing preview failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось рассчитать предварительные цены']);
     }
 }
 
