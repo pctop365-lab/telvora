@@ -7,6 +7,7 @@ import { useUI } from '@/store/ui';
 import { getCategorySlugForProduct } from '@/services/productService';
 import { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
+import AvailabilityStatus from './AvailabilityStatus';
 
 type ProductDetailProps = {
   product: Product;
@@ -33,6 +34,7 @@ export default function ProductDetail({ product }: ProductDetailProps) {
 const currentOldPrice = selectedVariant?.oldPrice
   ? Number(selectedVariant.oldPrice)
   : undefined;
+  const currentAvailability = selectedVariant?.availability;
   const { addToCart } = useCart();
   const { openCart } = useUI();
   const discount =
@@ -53,12 +55,14 @@ const productUrl =
   `https://telvora.ru/catalog/${categorySlug}/${product.slug}`;
 
   const handleAdd = () => {
+  if (!selectedVariant || !currentAvailability?.orderable) return;
   addToCart(product, 1, selectedVariant);
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);
   };
 
   const handleBuyNow = () => {
+  if (!selectedVariant || !currentAvailability?.orderable) return;
   addToCart(product, 1, selectedVariant);
     openCart();
   };
@@ -241,10 +245,12 @@ const productUrl =
                   </span>
                 )}
               </div>
+              {currentAvailability && <div className="mt-4"><AvailabilityStatus availability={currentAvailability} /></div>}
 
               <div className="flex flex-col sm:flex-row gap-3 mt-6">
                 <button
                   onClick={handleAdd}
+                  disabled={!currentAvailability?.orderable}
                   className={`flex-1 flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-semibold transition-all ${
                     added
                       ? 'bg-green-500 text-white'
@@ -265,6 +271,7 @@ const productUrl =
                 </button>
                 <button
                   onClick={handleBuyNow}
+                  disabled={!currentAvailability?.orderable}
                   className="flex-1 flex items-center justify-center gap-2 px-6 py-3.5 bg-accent-500 hover:bg-accent-600 text-white font-semibold rounded-xl transition-all shadow-lg shadow-accent-500/30"
                 >
                   Купить сейчас

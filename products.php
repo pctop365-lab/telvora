@@ -10,6 +10,9 @@ session_set_cookie_params([
 
 session_start();
 
+require_once __DIR__ . '/product_variant_identity_service.php';
+require_once __DIR__ . '/storefront_availability_service.php';
+
 header('Content-Type: application/json; charset=utf-8');
 
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
@@ -172,6 +175,50 @@ function prepareProduct(array $product): array
     return $product;
 }
 
+function attachStorefrontVariants(PDO $pdo, array $products): array
+{
+    $productIds = array_values(array_map(static fn(array $product): int => (int)$product['id'], $products));
+    if ($productIds === []) return $products;
+    $placeholders = implode(',', array_fill(0, count($productIds), '?'));
+    $stmt = $pdo->prepare("SELECT id, product_id, variant_key, assembly_country, display_name, is_active
+                           FROM product_variants
+                           WHERE product_id IN ($placeholders) AND is_active = 1
+                           ORDER BY product_id ASC, id ASC");
+    $stmt->execute($productIds);
+    $byProduct = []; $variantIds = [];
+    foreach ($stmt->fetchAll() as $variant) {
+        $variant['id'] = (int)$variant['id'];
+        $variant['product_id'] = (int)$variant['product_id'];
+        $byProduct[$variant['product_id']][] = $variant;
+        $variantIds[] = $variant['id'];
+    }
+    $offersByVariant = storefrontAvailabilityLoadOffers($pdo, $variantIds);
+    foreach ($products as &$product) {
+        $publicVariants = [];
+        foreach ($byProduct[(int)$product['id']] ?? [] as $variant) {
+            try {
+                $identity = productVariantIdentityResolve($pdo, $product, $variant);
+            } catch (ProductVariantIdentityException) {
+                continue;
+            }
+            $legacy = $identity['variants'][$identity['target_index']];
+            $availability = storefrontAvailabilityResolve($offersByVariant[$variant['id']] ?? [], 1);
+            $publicVariants[] = [
+                'product_variant_id' => $variant['id'],
+                'country' => $identity['target']['country'],
+                'display_name' => $variant['display_name'],
+                'price' => $legacy['price'],
+                'old_price' => $legacy['old_price'],
+                'is_active' => $identity['target']['is_active'],
+                'availability' => storefrontAvailabilityPublic($availability, $variant['id'])
+            ];
+        }
+        $product['storefront_variants'] = $publicVariants;
+    }
+    unset($product);
+    return $products;
+}
+
 
 /*
 |--------------------------------------------------------------------------
@@ -215,7 +262,7 @@ if ($action === '' || $action === 'list') {
             ORDER BY id DESC
         ");
 
-        $products = $stmt->fetchAll();
+        $products = attachStorefrontVariants($pdo, $stmt->fetchAll());
 
         foreach ($products as &$product) {
             $product = prepareProduct($product);

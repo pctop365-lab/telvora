@@ -2,6 +2,8 @@
 
 header('Content-Type: application/json; charset=utf-8');
 
+require_once __DIR__ . '/storefront_cart_service.php';
+
 function telvoraApiSecretsFile(): string
 {
     return dirname(__DIR__, 2) .
@@ -54,6 +56,11 @@ function requireTelvoraApiSecret(string $key): string
 
 class OrderValidationException extends RuntimeException
 {
+}
+
+class AvailabilityChangedException extends RuntimeException
+{
+    public function __construct(public readonly array $publicResult) { parent::__construct('Availability changed'); }
 }
 
 const TELVORA_FREE_DELIVERY_THRESHOLD = 50000.0;
@@ -257,6 +264,26 @@ if (!is_array($data)) {
     exit;
 }
 
+$action = trim((string)($_GET['action'] ?? $data['action'] ?? 'create_order'));
+if ($action === 'validate_cart') {
+    try {
+        $resolved = storefrontCartResolve($pdo, is_array($data['items'] ?? null) ? $data['items'] : []);
+        echo json_encode(['success' => true] + storefrontCartPublic($resolved), JSON_UNESCAPED_UNICODE);
+    } catch (StorefrontCartException) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Некорректная корзина'], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => 'Не удалось проверить наличие'], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+if ($action !== 'create_order') {
+    http_response_code(404);
+    echo json_encode(['success' => false, 'message' => 'Неизвестное действие'], JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 $customerName = trim($data['customer_name'] ?? '');
 $phone = trim($data['phone'] ?? '');
 $deliveryMethod = trim($data['delivery_method'] ?? '');
@@ -308,111 +335,17 @@ try {
         throw new OrderValidationException();
     }
 
-    $productStmt = $pdo->prepare("
-        SELECT
-            name,
-            price,
-            variants
-        FROM products
-        WHERE slug = :slug
-          AND is_active = 1
-        LIMIT 1
-    ");
-
-    $serverItems = [];
+    try { $cartResolution = storefrontCartResolve($pdo, $items); }
+    catch (StorefrontCartException) { throw new OrderValidationException(); }
+    if (!$cartResolution['all_orderable']) throw new AvailabilityChangedException(storefrontCartPublic($cartResolution));
+    $serverItems = $cartResolution['items'];
     $subtotal = 0.0;
-
-    foreach ($items as $item) {
-        if (!is_array($item)) {
-            throw new OrderValidationException();
-        }
-
-        $slug = trim((string)($item['slug'] ?? ''));
-        $quantityValue = $item['quantity'] ?? null;
-        $assemblyCountry = trim(
-            (string)($item['assembly_country'] ?? '')
-        );
-
-        if (
-            $slug === '' ||
-            strlen($slug) > 255 ||
-            !is_int($quantityValue) ||
-            $quantityValue < 1 ||
-            $quantityValue > TELVORA_MAX_ITEM_QUANTITY
-        ) {
-            throw new OrderValidationException();
-        }
-
-        $productStmt->execute([':slug' => $slug]);
-        $product = $productStmt->fetch();
-
-        if (!is_array($product)) {
-            throw new OrderValidationException();
-        }
-
-        $productName = trim((string)($product['name'] ?? ''));
-        $price = (float)($product['price'] ?? 0);
-
-        if ($productName === '' || !is_finite($price) || $price <= 0) {
-            throw new OrderValidationException();
-        }
-
-        if ($assemblyCountry !== '') {
-            $variants = json_decode(
-                (string)($product['variants'] ?? ''),
-                true
-            );
-            $matchedVariant = null;
-
-            if (is_array($variants)) {
-                foreach ($variants as $variant) {
-                    if (!is_array($variant)) {
-                        continue;
-                    }
-
-                    $variantCountry = trim(
-                        (string)($variant['country'] ?? '')
-                    );
-                    $variantIsActive =
-                        !array_key_exists('is_active', $variant) ||
-                        in_array(
-                            $variant['is_active'],
-                            [true, 1, '1'],
-                            true
-                        );
-
-                    if (
-                        $variantCountry === $assemblyCountry &&
-                        $variantIsActive
-                    ) {
-                        $matchedVariant = $variant;
-                        break;
-                    }
-                }
-            }
-
-            if (!is_array($matchedVariant)) {
-                throw new OrderValidationException();
-            }
-
-            $price = (float)($matchedVariant['price'] ?? 0);
-
-            if (!is_finite($price) || $price <= 0) {
-                throw new OrderValidationException();
-            }
-
-            $productName .= ' — страна сборки: ' .
-                trim((string)$matchedVariant['country']);
-        }
-
-        $serverItems[] = [
-            'name' => $productName,
-            'quantity' => $quantityValue,
-            'price' => $price,
-        ];
-
-        $subtotal += $price * $quantityValue;
+    foreach ($serverItems as &$serverItem) {
+        $serverItem['name'] .= ' — страна сборки: ' . $serverItem['assembly_country'];
+        $serverItem['price'] = (float)$serverItem['price'];
+        $subtotal += $serverItem['price'] * $serverItem['quantity'];
     }
+    unset($serverItem);
 
     $subtotal = round($subtotal, 2);
     $delivery =
@@ -443,6 +376,20 @@ try {
     }
 
     $pdo->beginTransaction();
+
+    $lockedResolution = storefrontCartResolve($pdo, $items, true);
+    if (!$lockedResolution['all_orderable']) throw new AvailabilityChangedException(storefrontCartPublic($lockedResolution));
+    $serverItems = $lockedResolution['items'];
+    foreach ($serverItems as &$serverItem) {
+        $serverItem['name'] .= ' — страна сборки: ' . $serverItem['assembly_country'];
+        $serverItem['price'] = (float)$serverItem['price'];
+    }
+    unset($serverItem);
+    $subtotal = round(array_reduce($serverItems, static fn(float $sum, array $item): float =>
+        $sum + ($item['price'] * $item['quantity']), 0.0), 2);
+    $delivery = $deliveryMethod === 'pickup' || $subtotal >= TELVORA_FREE_DELIVERY_THRESHOLD
+        ? 0.0 : TELVORA_DELIVERY_FEE;
+    $total = round($subtotal + $delivery, 2);
 
 
     $stmt = $pdo->prepare("
@@ -529,12 +476,22 @@ $updateOrderNumber->execute([
 $itemStmt = $pdo->prepare("
         INSERT INTO order_items (
             order_id,
+            product_id,
+            product_variant_id,
+            supplier_offer_id_at_order,
+            availability_status_at_order,
+            expected_arrival_at_order,
             product_name,
             quantity,
             price
         )
         VALUES (
             :order_id,
+            :product_id,
+            :product_variant_id,
+            :supplier_offer_id_at_order,
+            :availability_status_at_order,
+            :expected_arrival_at_order,
             :product_name,
             :quantity,
             :price
@@ -549,6 +506,11 @@ $itemStmt = $pdo->prepare("
 
         $itemStmt->execute([
             ':order_id' => $orderId,
+            ':product_id' => $item['product_id'],
+            ':product_variant_id' => $item['product_variant_id'],
+            ':supplier_offer_id_at_order' => $item['_qualifying_offer_id'],
+            ':availability_status_at_order' => $item['status'],
+            ':expected_arrival_at_order' => $item['expected_arrival_at'],
             ':product_name' => $productName,
             ':quantity' => $quantity,
             ':price' => $price
@@ -593,9 +555,27 @@ echo json_encode([
     'success' => true,
     'order_id' => $orderId,
     'order_number' => $orderNumber,
+    'subtotal' => $subtotal,
+    'delivery' => $delivery,
+    'total' => $total,
+    'items' => array_map(static fn(array $item): array => [
+        'product_id' => $item['product_id'],
+        'product_variant_id' => $item['product_variant_id'],
+        'slug' => $item['slug'],
+        'assembly_country' => $item['assembly_country'],
+        'name' => $item['name'],
+        'quantity' => $item['quantity'],
+        'price' => $item['price']
+    ], $serverItems),
     'message' => 'Заказ успешно сохранён'
 ], JSON_UNESCAPED_UNICODE);
 
+} catch (AvailabilityChangedException $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    http_response_code(409);
+    echo json_encode(['success' => false, 'code' => 'AVAILABILITY_CHANGED',
+        'message' => 'Наличие некоторых товаров изменилось. Проверьте корзину.',
+        'validation' => $e->publicResult], JSON_UNESCAPED_UNICODE);
 } catch (OrderValidationException $e) {
 
     if ($pdo->inTransaction()) {

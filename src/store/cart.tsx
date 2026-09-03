@@ -1,5 +1,5 @@
 import { createContext, useContext, useReducer, useCallback, useMemo, useEffect, type ReactNode } from 'react';
-import type { CartItem, Product } from '@/types';
+import type { CartItem, Product, ProductVariant } from '@/types';
 import { siteContent } from '@/data/siteContent';
 
 const CART_STORAGE_KEY = 'telvora_cart';
@@ -7,7 +7,13 @@ const CART_STORAGE_KEY = 'telvora_cart';
 function loadCartFromStorage(): CartItem[] {
   try {
     const raw = localStorage.getItem(CART_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as CartItem[]) : [];
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as CartItem[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item) => ({
+      ...item,
+      productId: item.productId || String(item.id).split('__')[0],
+    }));
   } catch {
     return [];
   }
@@ -16,10 +22,11 @@ function loadCartFromStorage(): CartItem[] {
 // ---------- Actions ----------
 
 type CartAction =
-  | { type: 'ADD'; product: Product; quantity?: number; variant?: { country: string; price: number; oldPrice?: number } }
+  | { type: 'ADD'; product: Product; quantity?: number; variant?: ProductVariant }
   | { type: 'REMOVE'; id: string }
   | { type: 'UPDATE_QTY'; id: string; delta: number }
   | { type: 'SET_QTY'; id: string; quantity: number }
+  | { type: 'REVALIDATE'; items: CartItem[] }
   | { type: 'CLEAR' };
 
 // ---------- Reducer ----------
@@ -31,7 +38,7 @@ function cartReducer(state: CartItem[], action: CartAction): CartItem[] {
       const variant = action.variant;
 
       const cartId = variant
-        ? `${action.product.id}__${variant.country.toLowerCase().trim()}`
+        ? `${action.product.id}__variant_${variant.productVariantId}`
         : action.product.id;
 
       const price = variant?.price ?? action.product.price;
@@ -50,6 +57,7 @@ function cartReducer(state: CartItem[], action: CartAction): CartItem[] {
         ...state,
         {
           id: cartId,
+          productId: action.product.id,
           slug: action.product.slug,
           name: action.product.name,
           price,
@@ -58,6 +66,8 @@ function cartReducer(state: CartItem[], action: CartAction): CartItem[] {
           category: action.product.category,
           quantity: qty,
           assemblyCountry: variant?.country,
+          productVariantId: variant?.productVariantId,
+          availability: variant?.availability,
         },
       ];
     }
@@ -76,6 +86,8 @@ function cartReducer(state: CartItem[], action: CartAction): CartItem[] {
       return state.map((item) =>
         item.id === action.id ? { ...item, quantity: action.quantity } : item
       );
+    case 'REVALIDATE':
+      return action.items;
     case 'CLEAR':
       return [];
     default:
@@ -91,11 +103,12 @@ type CartContextValue = {
   subtotal: number;
   delivery: number;
   total: number;
-  addToCart: (product: Product, quantity?: number, variant?: { country: string; price: number; oldPrice?: number }) => void;
+  addToCart: (product: Product, quantity?: number, variant?: ProductVariant) => void;
   removeFromCart: (id: string) => void;
   updateQuantity: (id: string, delta: number) => void;
   setQuantity: (id: string, quantity: number) => void;
   clearCart: () => void;
+  replaceAfterValidation: (items: CartItem[]) => void;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -117,7 +130,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     (
       product: Product,
       quantity?: number,
-      variant?: { country: string; price: number; oldPrice?: number }
+      variant?: ProductVariant
     ) => {
       dispatch({ type: 'ADD', product, quantity, variant });
     },
@@ -140,6 +153,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'CLEAR' });
   }, []);
 
+  const replaceAfterValidation = useCallback((items: CartItem[]) => {
+    dispatch({ type: 'REVALIDATE', items });
+  }, []);
+
   const value = useMemo<CartContextValue>(() => {
     const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const count = items.reduce((sum, item) => sum + item.quantity, 0);
@@ -158,8 +175,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       updateQuantity,
       setQuantity,
       clearCart,
+      replaceAfterValidation,
     };
-  }, [items, addToCart, removeFromCart, updateQuantity, setQuantity, clearCart]);
+  }, [items, addToCart, removeFromCart, updateQuantity, setQuantity, clearCart, replaceAfterValidation]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

@@ -26,5 +26,16 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": [
+    "src/**/*.backup.tsx",
+    "src/**/*BACKUP*.tsx",
+    "src/**/*.before-*.tsx",
+    "src/**/*.BEFORE-*.tsx",
+    "src/**/*.BROKEN-*.tsx",
+    "src/**/*.damaged.tsx",
+    "src/**/*.current-before-rollback.tsx",
+    "src/**/*.WORKING-*.tsx",
+    "src/pages/AdminPage.94kb-before-restore.tsx"
+  ]
 }

@@ -35,6 +35,20 @@ type ApiProduct = {
     old_price?: number | string | null;
     is_active?: boolean | number;
   }>;
+  storefront_variants?: Array<{
+    product_variant_id: number;
+    country: string;
+    display_name?: string | null;
+    price: number | string;
+    old_price?: number | string | null;
+    is_active?: boolean | number;
+    availability: {
+      product_variant_id: number;
+      status: 'in_stock' | 'out_of_stock' | 'expected' | 'unknown';
+      orderable: boolean;
+      expected_arrival_at?: string | null;
+    };
+  }>;
 };
 
 type ProductsResponse = {
@@ -75,9 +89,11 @@ function normalizeProduct(product: ApiProduct): Product {
     highlights: Array.isArray(product.highlights)
       ? product.highlights.map((item) => String(item))
       : [],
-    variants: Array.isArray(product.variants)
-      ? product.variants.map((variant) => ({
+    variants: Array.isArray(product.storefront_variants)
+      ? product.storefront_variants.map((variant) => ({
+          productVariantId: Number(variant.product_variant_id),
           country: String(variant.country || ''),
+          displayName: variant.display_name ? String(variant.display_name) : undefined,
           price: Number(variant.price || 0),
           oldPrice:
             variant.old_price !== null &&
@@ -88,6 +104,12 @@ function normalizeProduct(product: ApiProduct): Product {
             variant.is_active === undefined
               ? true
               : Boolean(variant.is_active),
+          availability: {
+            productVariantId: Number(variant.availability.product_variant_id),
+            status: variant.availability.status,
+            orderable: Boolean(variant.availability.orderable),
+            expectedArrivalAt: variant.availability.expected_arrival_at ?? null,
+          },
         }))
       : [],
   };

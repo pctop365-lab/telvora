@@ -5,11 +5,23 @@ export type Spec = {
   value: string;
 };
 
+export type AvailabilityStatus = 'in_stock' | 'out_of_stock' | 'expected' | 'unknown';
+
+export type PublicVariantAvailability = {
+  productVariantId: number;
+  status: AvailabilityStatus;
+  orderable: boolean;
+  expectedArrivalAt?: string | null;
+};
+
 export type ProductVariant = {
+  productVariantId: number;
   country: string;
+  displayName?: string;
   price: number;
   oldPrice?: number;
   isActive?: boolean;
+  availability: PublicVariantAvailability;
 };
 
 export type Product = {
@@ -48,6 +60,10 @@ export type CartItem = {
   category: ProductCategory;
   quantity: number;
   assemblyCountry?: string;
+  productId: string;
+  productVariantId?: number;
+  availability?: PublicVariantAvailability;
+  validationError?: string;
 };
 
 export type SortKey = 'default' | 'price-asc' | 'price-desc' | 'rating';
@@ -64,6 +80,7 @@ export type OrderItem = {
   category: ProductCategory;
   quantity: number;
   assemblyCountry?: string;
+  productVariantId?: number;
 };
 
 export type CheckoutFormData = {

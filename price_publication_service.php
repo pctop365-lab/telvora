@@ -8,6 +8,7 @@ if (!defined('TELVORA_MANAGER_REQUEST')) {
 }
 
 require_once __DIR__ . '/supplier_offer_service.php';
+require_once __DIR__ . '/product_variant_identity_service.php';
 
 final class PricePublicationException extends RuntimeException
 {
@@ -91,52 +92,12 @@ function pricePublicationCountry(PDOStatement $weightStatement, array $variant, 
 
 function pricePublicationResolveLegacyVariant(PDO $pdo, array $product, array $relationalVariant): array
 {
-    $raw = $product['variants'] ?? null;
-    if (!is_string($raw)) {
-        throw new PricePublicationException(422, 'Legacy-варианты товара недоступны');
-    }
     try {
-        $variants = json_decode($raw, true, 512, JSON_THROW_ON_ERROR);
-    } catch (JsonException $error) {
-        throw new PricePublicationException(422, 'Legacy-варианты товара содержат некорректный JSON');
+        return productVariantIdentityResolve($pdo, $product, $relationalVariant);
+    } catch (ProductVariantIdentityException $error) {
+        throw new PricePublicationException(422, $error->getMessage());
     }
-    if (!is_array($variants) || !array_is_list($variants) || count($variants) > 200) {
-        throw new PricePublicationException(422, 'Структура legacy-вариантов товара не поддерживается');
-    }
-    $weightStatement = $pdo->prepare(
-        'SELECT HEX(WEIGHT_STRING(CAST(:value AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci))'
-    );
-    $seenWeights = [];
-    $targetIndexes = [];
-    $details = [];
-    foreach ($variants as $index => $variant) {
-        if (!is_array($variant)) {
-            throw new PricePublicationException(422, 'Legacy-вариант товара не является объектом');
-        }
-        $detail = pricePublicationCountry($weightStatement, $variant, (int)$product['id']);
-        if (isset($seenWeights[$detail['weight']])) {
-            throw new PricePublicationException(422, 'У товара есть дублирующиеся страны сборки');
-        }
-        $seenWeights[$detail['weight']] = true;
-        $details[$index] = $detail;
-        $expectedKey = 'legacy-country-sha256-' . hash('sha256', $detail['country']);
-        if (
-            $detail['country'] === $relationalVariant['assembly_country'] &&
-            $expectedKey === $relationalVariant['variant_key']
-        ) {
-            $targetIndexes[] = $index;
-        }
-    }
-    if (count($targetIndexes) !== 1) {
-        throw new PricePublicationException(422, 'Не найдено однозначное соответствие relational и legacy-варианта');
-    }
-    $targetIndex = $targetIndexes[0];
-    return [
-        'variants' => $variants,
-        'target_index' => $targetIndex,
-        'target' => $details[$targetIndex],
-        'raw_hash' => hash('sha256', $raw)
-    ];
+
 }
 
 function pricePublicationRules(PDO $pdo, bool $lock): array

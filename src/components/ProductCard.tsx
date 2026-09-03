@@ -5,6 +5,7 @@ import { formatPrice } from '@/lib/format';
 import { useCart } from '@/store/cart';
 import { getCategorySlugForProduct } from '@/services/productService';
 import { useState } from 'react';
+import AvailabilityStatus from './AvailabilityStatus';
 
 type ProductCardProps = {
   product: Product;
@@ -48,6 +49,8 @@ const minVariantOldPrice =
     : undefined;
 
   const hasVariants = activeVariants.length > 0;
+  const singleVariant = activeVariants.length === 1 ? activeVariants[0] : undefined;
+  const cardAvailability = singleVariant?.availability;
 
   const discount =
     minVariantOldPrice &&
@@ -63,13 +66,8 @@ const minVariantOldPrice =
     e.preventDefault();
     e.stopPropagation();
 
-    const cheapestVariant = activeVariants
-      .slice()
-      .sort(
-        (a, b) => Number(a.price) - Number(b.price)
-      )[0];
-
-    addToCart(product, 1, cheapestVariant);
+    if (!singleVariant?.availability.orderable) return;
+    addToCart(product, 1, singleVariant);
 
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);
@@ -170,10 +168,13 @@ const minVariantOldPrice =
 
           <button
             onClick={handleAdd}
+            disabled={!cardAvailability?.orderable}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all shrink-0 ${
               added
                 ? 'bg-green-500 text-white'
-                : 'bg-accent-500 hover:bg-accent-600 text-white shadow-lg shadow-accent-500/20 hover:shadow-accent-500/30'
+                : cardAvailability?.orderable
+                  ? 'bg-accent-500 hover:bg-accent-600 text-white shadow-lg shadow-accent-500/20 hover:shadow-accent-500/30'
+                  : 'bg-graphite-300 dark:bg-white/10 text-graphite-500 cursor-not-allowed'
             }`}
           >
             {added ? (
@@ -188,6 +189,9 @@ const minVariantOldPrice =
               </>
             )}
           </button>
+        </div>
+        <div className="mt-3">
+          {cardAvailability ? <AvailabilityStatus availability={cardAvailability} compact /> : <span className="text-sm text-graphite-500">Выберите вариант, чтобы проверить наличие</span>}
         </div>
       </div>
     </Link>

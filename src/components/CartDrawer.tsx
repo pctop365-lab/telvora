@@ -11,6 +11,7 @@ import { useCart } from '@/store/cart';
 import { useUI } from '@/store/ui';
 import { formatPrice } from '@/lib/format';
 import { siteContent } from '@/data/siteContent';
+import AvailabilityStatus from './AvailabilityStatus';
 
 export default function CartDrawer() {
   const { cartOpen, closeCart } = useUI();
@@ -112,6 +113,8 @@ export default function CartDrawer() {
                     <p className="text-xs text-graphite-600 dark:text-graphite-400 mt-0.5">
                       {item.screenSize} · {item.category}
                     </p>
+                    {item.availability && <div className="mt-1"><AvailabilityStatus availability={item.availability} compact /></div>}
+                    {item.validationError && <p className="mt-1 text-xs text-red-500">{item.validationError}</p>}
 
                     <div className="flex items-center justify-between mt-3">
                       <div className="flex items-center gap-2 bg-white dark:bg-graphite-800 rounded-lg p-1 border border-graphite-200 dark:border-transparent">

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -15,7 +15,7 @@ import {
 import { useCart } from '@/store/cart';
 import { formatPrice } from '@/lib/format';
 import { siteContent } from '@/data/siteContent';
-import { createOrder } from '@/services/orderService';
+import { createOrder, validateCart } from '@/services/orderService';
 import type { CheckoutFormData, DeliveryMethod } from '@/types';
 
 const deliveryOptions: {
@@ -68,11 +68,13 @@ const paymentOptions = [
 ];
 
 export default function CheckoutPage() {
-  const { items, subtotal, clearCart } = useCart();
+  const { items, subtotal, clearCart, replaceAfterValidation } = useCart();
   const navigate = useNavigate();
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [validatingCart, setValidatingCart] = useState(true);
+  const [cartOrderable, setCartOrderable] = useState(false);
   const [personalDataConsent, setPersonalDataConsent] = useState(false);
   const [consentError, setConsentError] = useState(false);
 
@@ -90,6 +92,42 @@ comment: '',
   });
 
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    let cancelled = false;
+    setValidatingCart(true);
+    validateCart(items).then((result) => {
+      if (cancelled) return;
+      const updated = items.map((item, index) => {
+        const validation = result.items[index];
+        if (!validation) return { ...item, validationError: 'Не удалось подтвердить вариант' };
+        return {
+          ...item,
+          id: validation.product_id && validation.product_variant_id ? `${validation.product_id}__variant_${validation.product_variant_id}` : item.id,
+          productId: validation.product_id ? String(validation.product_id) : item.productId,
+          productVariantId: validation.product_variant_id ?? undefined,
+          slug: validation.slug ?? item.slug,
+          assemblyCountry: validation.assembly_country ?? item.assemblyCountry,
+          price: validation.price ?? item.price,
+          availability: validation.product_variant_id ? {
+            productVariantId: validation.product_variant_id,
+            status: validation.status,
+            orderable: validation.orderable,
+            expectedArrivalAt: validation.expected_arrival_at,
+          } : undefined,
+          validationError: validation.message ?? undefined,
+        };
+      });
+      replaceAfterValidation(updated);
+      setCartOrderable(result.allOrderable);
+      setValidatingCart(false);
+    }).catch((err) => {
+      if (!cancelled) { setCartOrderable(false); setValidatingCart(false); setError(err instanceof Error ? err.message : 'Не удалось проверить наличие'); }
+    });
+    return () => { cancelled = true; };
+  // Revalidate when checkout opens; final submission is checked again by the server.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const deliveryCost =
     form.deliveryMethod === 'pickup' ||
@@ -154,7 +192,7 @@ comment: '',
       setConsentError(true);
     }
 
-    if (!isValid || items.length === 0 || !personalDataConsent) {
+    if (!isValid || items.length === 0 || !personalDataConsent || validatingCart || !cartOrderable) {
       return;
     }
 
@@ -180,6 +218,32 @@ comment: '',
         },
       });
     } catch (err) {
+      try {
+        const latest = await validateCart(items);
+        replaceAfterValidation(items.map((item, index) => {
+          const validation = latest.items[index];
+          if (!validation) return { ...item, validationError: 'Не удалось подтвердить вариант' };
+          return {
+            ...item,
+            id: validation.product_id && validation.product_variant_id ? `${validation.product_id}__variant_${validation.product_variant_id}` : item.id,
+            productId: validation.product_id ? String(validation.product_id) : item.productId,
+            productVariantId: validation.product_variant_id ?? undefined,
+            slug: validation.slug ?? item.slug,
+            assemblyCountry: validation.assembly_country ?? item.assemblyCountry,
+            price: validation.price ?? item.price,
+            availability: validation.product_variant_id ? {
+              productVariantId: validation.product_variant_id,
+              status: validation.status,
+              orderable: validation.orderable,
+              expectedArrivalAt: validation.expected_arrival_at,
+            } : undefined,
+            validationError: validation.message ?? undefined,
+          };
+        }));
+        setCartOrderable(latest.allOrderable);
+      } catch {
+        setCartOrderable(false);
+      }
       console.error('Ошибка оформления заказа:', err);
 
       setError(
@@ -549,6 +613,7 @@ comment: '',
                       <div className="text-xs text-graphite-600 dark:text-graphite-400">
                         {item.screenSize} · {item.quantity} шт
                       </div>
+                      {item.validationError && <div className="text-xs text-red-500 mt-1">{item.validationError}</div>}
 
                     </div>
 
@@ -671,7 +736,7 @@ comment: '',
 
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={submitting || validatingCart || !cartOrderable}
                 className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-accent-500 hover:bg-accent-600 text-white font-semibold rounded-xl transition-all shadow-lg shadow-accent-500/30 mt-5 disabled:opacity-60 disabled:cursor-not-allowed"
               >
 
