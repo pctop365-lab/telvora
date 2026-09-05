@@ -509,14 +509,6 @@ if ($action === 'add') {
 
     $resolution = trim($data['resolution'] ?? '');
 
-    $price = (float)($data['price'] ?? 0);
-
-    $oldPrice =
-        isset($data['old_price']) &&
-        $data['old_price'] !== ''
-            ? (float)$data['old_price']
-            : null;
-
     $image = trim($data['image'] ?? '');
 
     $badge = trim($data['badge'] ?? '');
@@ -539,30 +531,84 @@ if ($action === 'add') {
         ? $data['variants']
         : [];
 
-    $isActive = isset($data['is_active'])
-        ? (int)(bool)$data['is_active']
-        : 1;
-
-
     if (
         $name === '' ||
         $slug === '' ||
-        $category === '' ||
-        $price <= 0
+        $category === ''
     ) {
 
         http_response_code(400);
 
         echo json_encode([
             'success' => false,
-            'message' => 'Заполните название, slug, категорию и цену'
+            'message' => 'Заполните название, slug и категорию'
         ], JSON_UNESCAPED_UNICODE);
 
         exit;
     }
 
 
+    if (!array_is_list($variants) || count($variants) < 1 || count($variants) > 200) {
+        http_response_code(400);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Добавьте от 1 до 200 стран сборки'
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
     try {
+        $weightStatement = $pdo->prepare(
+            'SELECT HEX(WEIGHT_STRING(CAST(:value AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci))'
+        );
+        $canonicalVariants = [];
+        $seenCountryWeights = [];
+
+        foreach ($variants as $variant) {
+            if (!is_array($variant) || !isset($variant['country']) || !is_string($variant['country'])) {
+                throw new InvalidArgumentException('Страна сборки варианта некорректна');
+            }
+
+            $variantCountry = $variant['country'];
+            if (!mb_check_encoding($variantCountry, 'UTF-8')) {
+                throw new InvalidArgumentException('Страна сборки варианта некорректна');
+            }
+            $variantCountry = preg_replace('/\A\s+|\s+\z/u', '', $variantCountry);
+            $controls = is_string($variantCountry) ? preg_match('/\p{Cc}/u', $variantCountry) : false;
+            if (!is_string($variantCountry) || $variantCountry === '' || mb_strlen($variantCountry, 'UTF-8') > 100 || $controls !== 0) {
+                throw new InvalidArgumentException('Страна сборки варианта некорректна');
+            }
+
+            $weightStatement->execute([':value' => $variantCountry]);
+            $countryWeight = $weightStatement->fetchColumn();
+            if (!is_string($countryWeight) || $countryWeight === '') {
+                throw new RuntimeException('Не удалось проверить страну сборки');
+            }
+            if (isset($seenCountryWeights[$countryWeight])) {
+                throw new InvalidArgumentException('Страны сборки не должны повторяться');
+            }
+            $seenCountryWeights[$countryWeight] = true;
+            $canonicalVariants[] = [
+                'country' => $variantCountry,
+                'price' => 0,
+                'old_price' => null,
+                'is_active' => true
+            ];
+        }
+    } catch (InvalidArgumentException $e) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+        exit;
+    } catch (Throwable $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => 'Не удалось проверить варианты товара'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $transactionPhase = 'product';
+
+    try {
+        $pdo->beginTransaction();
 
         $stmt = $pdo->prepare("
             INSERT INTO products (
@@ -593,8 +639,8 @@ if ($action === 'add') {
                 :category,
                 :screen_size,
                 :resolution,
-                :price,
-                :old_price,
+                0,
+                NULL,
                 :image,
                 :badge,
                 :rating,
@@ -603,7 +649,7 @@ if ($action === 'add') {
                 :specs,
                 :highlights,
                 :variants,
-                :is_active
+                0
             )
         ");
 
@@ -625,10 +671,6 @@ if ($action === 'add') {
             ':screen_size' => $screenSize,
 
             ':resolution' => $resolution,
-
-            ':price' => $price,
-
-            ':old_price' => $oldPrice,
 
             ':image' => $image,
 
@@ -653,36 +695,65 @@ if ($action === 'add') {
             ),
 
             ':variants' => json_encode(
-                $variants,
-                JSON_UNESCAPED_UNICODE
-            ),
-
-            ':is_active' => $isActive
+                $canonicalVariants,
+                JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR
+            )
         ]);
 
+        $productId = (int)$pdo->lastInsertId();
+        $transactionPhase = 'variant';
+        $variantStmt = $pdo->prepare("
+            INSERT INTO product_variants (
+                product_id, variant_key, assembly_country, market_region_id,
+                certification_supply_type_id, manufacturer_part_number,
+                display_name, classification_status, classification_evidence, is_active
+            ) VALUES (
+                :product_id, :variant_key, :assembly_country, NULL,
+                NULL, NULL, :display_name, 'requires_classification', NULL, 1
+            )
+        ");
+        $productVariantIds = [];
+        foreach ($canonicalVariants as $variant) {
+            $variantStmt->execute([
+                ':product_id' => $productId,
+                ':variant_key' => 'legacy-country-sha256-' . hash('sha256', $variant['country']),
+                ':assembly_country' => $variant['country'],
+                ':display_name' => $variant['country']
+            ]);
+            $productVariantIds[] = (int)$pdo->lastInsertId();
+        }
+
+        $pdo->commit();
 
         echo json_encode([
 
             'success' => true,
 
-            'id' => (int)$pdo->lastInsertId(),
+            'id' => $productId,
 
-            'message' => 'Товар добавлен'
+            'message' => 'Черновик товара добавлен',
+
+            'product_variant_ids' => $productVariantIds
 
         ], JSON_UNESCAPED_UNICODE);
 
-    } catch (PDOException $e) {
+    } catch (Throwable $e) {
 
-        http_response_code(400);
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+
+        $isDuplicateSlug = $transactionPhase === 'product' && $e instanceof PDOException && $e->getCode() === '23000';
+        http_response_code($isDuplicateSlug ? 409 : 400);
 
         echo json_encode([
 
             'success' => false,
 
             'message' =>
-                $e->getCode() === '23000'
+                $isDuplicateSlug
                     ? 'Товар с таким slug уже существует'
-                    : 'Не удалось добавить товар'
+                    : 'Не удалось создать черновик товара'
 
         ], JSON_UNESCAPED_UNICODE);
     }
@@ -806,28 +877,6 @@ if ($action === 'update') {
         $params[':highlights'] =
             json_encode(
                 $highlights,
-                JSON_UNESCAPED_UNICODE
-            );
-    }
-
-
-    /*
-     * VARIANTS
-     */
-
-    if (array_key_exists('variants', $data)) {
-
-        $fields[] =
-            "variants = :variants";
-
-        $variants =
-            is_array($data['variants'])
-                ? $data['variants']
-                : [];
-
-        $params[':variants'] =
-            json_encode(
-                $variants,
                 JSON_UNESCAPED_UNICODE
             );
     }

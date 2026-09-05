@@ -424,7 +424,7 @@ const emptyProductForm = {
   rating: '0',
   reviews: '0',
   description: '',
-  is_active: true,
+  is_active: false,
 };
 
 const emptySupplierForm = {
@@ -2271,47 +2271,17 @@ const resetProductForm = () => {
       return;
     }
 
-    const normalizedVariants = variants
-      .map((variant) => ({
-        country: String(variant.country || '').trim(),
-        price: Number(variant.price || 0),
-        old_price: variant.old_price
-          ? Number(variant.old_price)
-          : null,
-        is_active:
-          variant.is_active === undefined
-            ? true
-            : Boolean(variant.is_active),
-      }))
-      .filter((variant) => variant.country || variant.price > 0);
+    const normalizedVariants = variants.map((variant) => ({
+      country: String(variant.country || '').trim(),
+      price: 0,
+      old_price: null,
+      is_active: true,
+    }));
 
-    if (normalizedVariants.length === 0) {
-      setError('Добавьте хотя бы одну сборку и укажите её цену');
+    if (!editingProductId && (normalizedVariants.length === 0 || normalizedVariants.some((variant) => !variant.country))) {
+      setError('Добавьте хотя бы одну страну сборки');
       return;
     }
-
-    if (
-      normalizedVariants.some(
-        (variant) =>
-          !variant.country ||
-          !variant.price ||
-          variant.price <= 0
-      )
-    ) {
-      setError('Для каждой сборки укажите страну и корректную цену');
-      return;
-    }
-
-    const cheapestVariant = [...normalizedVariants]
-      .sort((a, b) => a.price - b.price)[0];
-
-    const basePrice = cheapestVariant.price;
-
-    const baseOldPrice =
-      cheapestVariant.old_price &&
-      cheapestVariant.old_price > basePrice
-        ? cheapestVariant.old_price
-        : null;
 
     setSavingProduct(true);
     setError('');
@@ -2327,11 +2297,6 @@ const resetProductForm = () => {
         category: productForm.category,
         screen_size: productForm.screen_size.trim(),
         resolution: productForm.resolution.trim(),
-        price: Number(productForm.price),
-        old_price:
-          productForm.old_price.trim() !== ''
-            ? Number(productForm.old_price)
-            : null,
         image: productForm.image.trim(),
         badge: productForm.badge.trim(),
         rating: Number(productForm.rating || 0),
@@ -2339,22 +2304,16 @@ const resetProductForm = () => {
         description: productForm.description.trim(),
         specs,
         highlights,
-        variants: variants.map((variant) => ({
-          country: String(variant.country || '').trim(),
-          price: Number(variant.price || 0),
-          old_price: variant.old_price
-            ? Number(variant.old_price)
-            : null,
-          is_active:
-            variant.is_active === undefined
-              ? true
-              : Boolean(variant.is_active),
-        })),
         is_active: productForm.is_active,
       };
 
       if (editingProductId) {
         payload.id = editingProductId;
+      } else {
+        payload.price = 0;
+        payload.old_price = null;
+        payload.variants = normalizedVariants;
+        payload.is_active = false;
       }
 
       const response = await fetch(PRODUCTS_API, {
@@ -3331,11 +3290,10 @@ const toggleProductStatus = async (product: AdminProduct) => {
                               <div className="flex items-center justify-end gap-2">
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    startVariantsEdit(product)
-                                  }
-                                  className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition"
-                                  title="Варианты"
+                                  onClick={() => setError('Изменение идентичности вариантов временно недоступно после перехода на supplier variant architecture.')}
+                                  className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 transition"
+                                  title="Изменение идентичности вариантов временно недоступно после перехода на supplier variant architecture."
+                                  aria-label="Изменение вариантов временно недоступно"
                                 >
                                   <Package className="w-4 h-4" />
                                 </button>
@@ -4661,7 +4619,9 @@ const toggleProductStatus = async (product: AdminProduct) => {
                   </div>
 
                   <div className="text-sm text-gray-500 mt-1">
-                    Заполните основные данные и сохраните товар.
+                    {editingProductId
+                      ? 'Измените данные карточки и сохраните товар.'
+                      : 'Новый товар будет создан как черновик. Цена и наличие будут настроены после сопоставления с поставщиком.'}
                   </div>
                 </div>
 
@@ -4914,10 +4874,11 @@ const toggleProductStatus = async (product: AdminProduct) => {
                       />
                     </div>
 
-                    <label className="flex items-center gap-3 rounded-xl border border-gray-200 px-4 py-3 cursor-pointer">
+                    <label className={`flex items-center gap-3 rounded-xl border border-gray-200 px-4 py-3 ${editingProductId ? 'cursor-pointer' : 'cursor-not-allowed bg-gray-50'}`}>
                       <input
                         type="checkbox"
                         checked={productForm.is_active}
+                        disabled={!editingProductId}
                         onChange={(e) =>
                           setProductForm((current) => ({
                             ...current,
@@ -5073,6 +5034,11 @@ const toggleProductStatus = async (product: AdminProduct) => {
                   </div>
                 </section>
 
+                {editingProductId ? (
+                  <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                    Изменение идентичности вариантов временно недоступно после перехода на supplier variant architecture.
+                  </section>
+                ) : (
                 <section>
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                     <div>
@@ -5081,7 +5047,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                       </div>
 
                       <div className="text-xs text-gray-500 mt-1">
-                        Разные страны и цены одного товара.
+                        Укажите страны сборки. Цена и наличие будут настроены после сопоставления с поставщиком.
                       </div>
                     </div>
 
@@ -5104,11 +5070,11 @@ const toggleProductStatus = async (product: AdminProduct) => {
                       {variants.map((variant, index) => (
                         <div
                           key={index}
-                          className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-3 items-end rounded-xl border border-gray-200 bg-gray-50 p-4"
+                          className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end rounded-xl border border-gray-200 bg-gray-50 p-4"
                         >
                           <div>
                             <label className="block text-sm text-gray-600 mb-2">
-                              Страна
+                              Страна сборки
                             </label>
 
                             <input
@@ -5126,46 +5092,6 @@ const toggleProductStatus = async (product: AdminProduct) => {
 />
                           </div>
 
-                          <div>
-                            <label className="block text-sm text-gray-600 mb-2">
-                              Цена
-                            </label>
-
-                            <input
-                              type="number"
-                              value={variant.price}
-                              onChange={(e) =>
-                                updateFormVariant(
-                                  index,
-                                  'price',
-                                  e.target.value
-                                )
-                              }
-                              className="admin-input"
-                              placeholder="189990"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="block text-sm text-gray-600 mb-2">
-                              Старая цена
-                            </label>
-
-                            <input
-                              type="number"
-                              value={variant.old_price}
-                              onChange={(e) =>
-                                updateFormVariant(
-                                  index,
-                                  'old_price',
-                                  e.target.value
-                                )
-                              }
-                              className="admin-input"
-                              placeholder="219990"
-                            />
-                          </div>
-
                           <button
                             type="button"
                             onClick={() =>
@@ -5180,6 +5106,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                     </div>
                   )}
                 </section>
+                )}
               </div>
 
               <div className="flex flex-wrap justify-end gap-3 px-6 py-5 border-t border-gray-200 bg-gray-50">
