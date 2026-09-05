@@ -648,6 +648,8 @@ export default function AdminPage() {
     useState('Все категории');
   const [productCountryFilter, setProductCountryFilter] =
     useState('Все страны');
+  const [productBrandFilter, setProductBrandFilter] =
+    useState('Все бренды');
 
   const [showProductForm, setShowProductForm] = useState(false);
   const [editingProductId, setEditingProductId] = useState<number | null>(
@@ -2012,6 +2014,34 @@ const login = async (e: React.FormEvent) => {
     return orders.filter((order) => order.status === filter);
   }, [orders, filter]);
 
+  const productBrands = useMemo(() => {
+    const brands = new Map<string, { name: string; count: number }>();
+    let unbrandedCount = 0;
+
+    products.forEach((product) => {
+      const brand = (product.brand || '').trim();
+      if (!brand) {
+        unbrandedCount += 1;
+        return;
+      }
+
+      const key = brand.toLocaleLowerCase('ru-RU');
+      const existing = brands.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        brands.set(key, { name: brand, count: 1 });
+      }
+    });
+
+    return {
+      items: Array.from(brands, ([key, value]) => ({ key, ...value })).sort(
+        (left, right) => left.name.localeCompare(right.name, 'ru-RU', { sensitivity: 'base' })
+      ),
+      unbrandedCount,
+    };
+  }, [products]);
+
   const filteredProducts = useMemo(() => {
     const query = productSearch.trim().toLowerCase();
 
@@ -2022,7 +2052,8 @@ const login = async (e: React.FormEvent) => {
         product.series.toLowerCase().includes(query) ||
         product.category.toLowerCase().includes(query) ||
         product.screen_size.toLowerCase().includes(query) ||
-        (product.country || '').toLowerCase().includes(query);
+        (product.country || '').toLowerCase().includes(query) ||
+        (product.brand || '').trim().toLowerCase().includes(query);
 
       const matchesCategory =
         productCategoryFilter === 'Все категории' ||
@@ -2032,13 +2063,21 @@ const login = async (e: React.FormEvent) => {
         productCountryFilter === 'Все страны' ||
         product.country === productCountryFilter;
 
-      return matchesSearch && matchesCategory && matchesCountry;
+      const normalizedBrand = (product.brand || '').trim().toLocaleLowerCase('ru-RU');
+      const matchesBrand =
+        productBrandFilter === 'Все бренды' ||
+        (productBrandFilter === 'Без бренда'
+          ? normalizedBrand === ''
+          : normalizedBrand === productBrandFilter);
+
+      return matchesSearch && matchesCategory && matchesCountry && matchesBrand;
     });
   }, [
     products,
     productSearch,
     productCategoryFilter,
     productCountryFilter,
+    productBrandFilter,
   ]);
 
   const totalSum = orders
@@ -3092,6 +3131,75 @@ const toggleProductStatus = async (product: AdminProduct) => {
                 </button>
               </div>
 
+              <div className="overflow-x-auto pb-1">
+                <div className="flex w-max min-w-full items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setProductBrandFilter('Все бренды')}
+                    className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
+                      productBrandFilter === 'Все бренды'
+                        ? 'border-accent-500 bg-accent-500 text-white shadow-sm'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-accent-300 hover:text-accent-600'
+                    }`}
+                  >
+                    Все
+                    <span className={`rounded-full px-2 py-0.5 text-xs ${
+                      productBrandFilter === 'Все бренды'
+                        ? 'bg-white/20 text-white'
+                        : 'bg-gray-100 text-gray-500'
+                    }`}>
+                      {products.length}
+                    </span>
+                  </button>
+
+                  {productBrands.items.map((brand) => {
+                    const isActive = productBrandFilter === brand.key;
+                    return (
+                      <button
+                        key={brand.key}
+                        type="button"
+                        onClick={() => setProductBrandFilter(brand.key)}
+                        className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
+                          isActive
+                            ? 'border-accent-500 bg-accent-500 text-white shadow-sm'
+                            : 'border-gray-200 bg-white text-gray-600 hover:border-accent-300 hover:text-accent-600'
+                        }`}
+                      >
+                        {brand.name}
+                        <span className={`rounded-full px-2 py-0.5 text-xs ${
+                          isActive
+                            ? 'bg-white/20 text-white'
+                            : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          {brand.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+
+                  {productBrands.unbrandedCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setProductBrandFilter('Без бренда')}
+                      className={`inline-flex shrink-0 items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition ${
+                        productBrandFilter === 'Без бренда'
+                          ? 'border-accent-500 bg-accent-500 text-white shadow-sm'
+                          : 'border-gray-200 bg-white text-gray-600 hover:border-accent-300 hover:text-accent-600'
+                      }`}
+                    >
+                      Без бренда
+                      <span className={`rounded-full px-2 py-0.5 text-xs ${
+                        productBrandFilter === 'Без бренда'
+                          ? 'bg-white/20 text-white'
+                          : 'bg-gray-100 text-gray-500'
+                      }`}>
+                        {productBrands.unbrandedCount}
+                      </span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_180px] gap-3">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -3233,6 +3341,10 @@ const toggleProductStatus = async (product: AdminProduct) => {
                                 <div>
                                   <div className="text-sm font-semibold text-graphite-900">
                                     {product.name}
+                                  </div>
+
+                                  <div className="mt-1 inline-flex rounded-full bg-accent-50 px-2 py-0.5 text-xs font-medium text-accent-700">
+                                    {(product.brand || '').trim() || 'Без бренда'}
                                   </div>
 
                                   <div className="text-xs text-gray-500 mt-1">
