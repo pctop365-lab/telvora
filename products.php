@@ -239,6 +239,7 @@ if ($action === '' || $action === 'list') {
                 id,
                 slug,
                 name,
+                brand,
                 series,
                 country,
                 category,
@@ -437,6 +438,7 @@ if ($action === 'admin_list') {
                 id,
                 slug,
                 name,
+                brand,
                 series,
                 country,
                 category,
@@ -496,6 +498,24 @@ if ($action === 'admin_list') {
 if ($action === 'add') {
 
     $name = trim($data['name'] ?? '');
+
+    $brandValue = $data['brand'] ?? null;
+    if (!is_string($brandValue)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Некорректный бренд товара'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $brand = trim($brandValue);
+    if ($brand === '') {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Укажите бренд товара'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    if (!mb_check_encoding($brand, 'UTF-8') || mb_strlen($brand, 'UTF-8') > 100 || preg_match('/\p{Cc}/u', $brand) !== 0) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Некорректный бренд товара'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 
     $slug = trim($data['slug'] ?? '');
 
@@ -614,6 +634,7 @@ if ($action === 'add') {
             INSERT INTO products (
                 slug,
                 name,
+                brand,
                 series,
                 country,
                 category,
@@ -634,6 +655,7 @@ if ($action === 'add') {
             VALUES (
                 :slug,
                 :name,
+                :brand,
                 :series,
                 :country,
                 :category,
@@ -659,6 +681,8 @@ if ($action === 'add') {
             ':slug' => $slug,
 
             ':name' => $name,
+
+            ':brand' => $brand,
 
             ':series' => $series,
 
@@ -791,6 +815,26 @@ if ($action === 'update') {
     $params = [
         ':id' => $id
     ];
+
+    if (array_key_exists('brand', $data)) {
+        if (!is_string($data['brand'])) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'Некорректный бренд товара'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $brand = trim($data['brand']);
+        if ($brand !== '' && (
+            !mb_check_encoding($brand, 'UTF-8') ||
+            mb_strlen($brand, 'UTF-8') > 100 ||
+            preg_match('/\p{Cc}/u', $brand) !== 0
+        )) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'Некорректный бренд товара'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $fields[] = 'brand = :brand';
+        $params[':brand'] = $brand === '' ? null : $brand;
+    }
 
 
     $map = [

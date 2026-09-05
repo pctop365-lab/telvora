@@ -70,6 +70,7 @@ type AdminProduct = {
   id: number;
   slug: string;
   name: string;
+  brand: string | null;
   series: string;
   country: string | null;
   category: string;
@@ -427,6 +428,7 @@ function getStatusIcon(status: string) {
 const emptyProductForm = {
   name: '',
   slug: '',
+  brand: '',
   series: '',
   country: '',
   category: 'OLED',
@@ -2123,6 +2125,7 @@ if (!response.ok || !data.success || !data.image) {
     setProductForm({
       name: product.name || '',
       slug: product.slug || '',
+      brand: product.brand || '',
       series: product.series || '',
       country: product.country || '',
       category: product.category || 'OLED',
@@ -2269,6 +2272,11 @@ if (!response.ok || !data.success || !data.image) {
       return;
     }
 
+    if (!editingProductId && !productForm.brand.trim()) {
+      setError('Укажите бренд товара');
+      return;
+    }
+
     const normalizedVariants = variants.map((variant) => ({
       country: String(variant.country || '').trim(),
       price: 0,
@@ -2290,6 +2298,7 @@ if (!response.ok || !data.success || !data.image) {
         action: editingProductId ? 'update' : 'add',
         name: productForm.name.trim(),
         slug: productForm.slug.trim(),
+        brand: productForm.brand.trim(),
         series: productForm.series.trim(),
         country: productForm.country.trim(),
         category: productForm.category,
@@ -4643,6 +4652,34 @@ const toggleProductStatus = async (product: AdminProduct) => {
                       {!editingProductId && (
                         <p className="mt-2 text-xs text-graphite-500">
                           Формируется из названия автоматически, пока вы не измените slug вручную.
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-2">
+                        Бренд / Производитель{!editingProductId && ' *'}
+                      </label>
+                      <input
+                        list="product-brand-suggestions"
+                        value={productForm.brand}
+                        onChange={(event) =>
+                          setProductForm((current) => ({
+                            ...current,
+                            brand: event.target.value,
+                          }))
+                        }
+                        className="admin-input"
+                        placeholder="Например: Samsung"
+                      />
+                      <datalist id="product-brand-suggestions">
+                        {['Samsung', 'LG', 'Sony', 'TCL', 'Hisense', 'Xiaomi', 'Philips', 'Haier', 'Panasonic', 'Sharp'].map((brand) => (
+                          <option key={brand} value={brand} />
+                        ))}
+                      </datalist>
+                      {editingProductId && !productForm.brand.trim() && (
+                        <p className="mt-2 text-xs text-graphite-500">
+                          Для старых товаров бренд можно заполнить позже.
                         </p>
                       )}
                     </div>
