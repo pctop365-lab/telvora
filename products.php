@@ -809,6 +809,74 @@ if ($action === 'update') {
         exit;
     }
 
+    $requestedIsActive = null;
+    if (array_key_exists('is_active', $data)) {
+        $isActiveValue = $data['is_active'];
+        if (is_bool($isActiveValue)) {
+            $requestedIsActive = $isActiveValue;
+        } elseif (is_int($isActiveValue) && ($isActiveValue === 0 || $isActiveValue === 1)) {
+            $requestedIsActive = $isActiveValue === 1;
+        } elseif (is_string($isActiveValue) && ($isActiveValue === '0' || $isActiveValue === '1')) {
+            $requestedIsActive = $isActiveValue === '1';
+        } else {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'Некорректный статус товара'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        $data['is_active'] = $requestedIsActive ? 1 : 0;
+    }
+
+    if ($requestedIsActive === true) {
+        $currentProductStmt = $pdo->prepare('
+            SELECT id, is_active, variants
+            FROM products
+            WHERE id = :id
+            LIMIT 1
+        ');
+        $currentProductStmt->execute([':id' => $id]);
+        $currentProduct = $currentProductStmt->fetch();
+
+        if (!$currentProduct) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'message' => 'Товар не найден'], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        if ((int)$currentProduct['is_active'] === 0) {
+            $variantStmt = $pdo->prepare('
+                SELECT id, product_id, variant_key, assembly_country, display_name, is_active
+                FROM product_variants
+                WHERE product_id = :product_id AND is_active = 1
+                ORDER BY id ASC
+            ');
+            $variantStmt->execute([':product_id' => $id]);
+
+            $hasReadyVariant = false;
+            foreach ($variantStmt->fetchAll() as $relationalVariant) {
+                try {
+                    $identity = productVariantIdentityResolve($pdo, $currentProduct, $relationalVariant);
+                } catch (ProductVariantIdentityException) {
+                    continue;
+                }
+
+                if ($identity['target']['is_active'] === true && $identity['target']['price_minor'] > 0) {
+                    $hasReadyVariant = true;
+                    break;
+                }
+            }
+
+            if (!$hasReadyVariant) {
+                http_response_code(409);
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Товар нельзя активировать: сначала настройте вариант и опубликуйте положительную розничную цену.'
+                ], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+        }
+    }
+
 
     $fields = [];
 
