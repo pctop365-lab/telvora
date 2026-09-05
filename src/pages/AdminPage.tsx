@@ -182,6 +182,9 @@ type SupplierImportStagedRow = {
   supplier_sku: string | null;
   raw_product_name: string | null;
   normalized_model: string | null;
+  detected_assembly_country: string | null;
+  detected_market_region: string | null;
+  detected_certification_supply_type: string | null;
   purchase_price: string | null;
   currency_code: string | null;
   raw_availability: string | null;
@@ -583,6 +586,9 @@ export default function AdminPage() {
   const [manualProductQuery, setManualProductQuery] = useState('');
   const [manualProductResults, setManualProductResults] = useState<SupplierImportProductResult[]>([]);
   const [manualMatchLoading, setManualMatchLoading] = useState(false);
+  const [draftProductRow, setDraftProductRow] = useState<SupplierImportStagedRow | null>(null);
+  const [draftProductCategory, setDraftProductCategory] = useState<'OLED' | 'QLED' | 'LED' | '8K'>('LED');
+  const [draftProductLoading, setDraftProductLoading] = useState(false);
   const [offerPublishSummary, setOfferPublishSummary] = useState<SupplierOfferPublishSummary | null>(null);
   const [offerPublishLoading, setOfferPublishLoading] = useState(false);
   const offerPublishPendingRef = useRef(false);
@@ -1209,7 +1215,12 @@ const login = async (e: React.FormEvent) => {
         throw new Error(data.message || 'Не удалось загрузить историю импортов');
       }
       if (profileSupplierIdRef.current === supplier.id) {
-        setSupplierImportJobs(Array.isArray(data.jobs) ? data.jobs : []);
+        const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+        setSupplierImportJobs(jobs);
+        setSelectedImportJob((current) => {
+          if (!current) return current;
+          return jobs.find((job: SupplierImportJob) => job.id === current.id) || current;
+        });
       }
     } catch (err) {
       if (profileSupplierIdRef.current === supplier.id) {
@@ -1959,6 +1970,48 @@ const login = async (e: React.FormEvent) => {
       );
     } finally {
       setManualMatchLoading(false);
+    }
+  };
+
+  const suggestDraftProductCategory = (row: SupplierImportStagedRow): 'OLED' | 'QLED' | 'LED' | '8K' => {
+    const source = `${row.raw_product_name || ''} ${row.normalized_model || ''}`.toUpperCase();
+    if (source.includes('OLED')) return 'OLED';
+    if (source.includes('QLED')) return 'QLED';
+    if (source.includes('8K')) return '8K';
+    return 'LED';
+  };
+
+  const createDraftProductFromImportRow = async () => {
+    if (!draftProductRow || !selectedImportJob || draftProductLoading) return;
+    if (!window.confirm('Будет создан неактивный черновик товара. Он не появится на сайте до ручной активации.')) return;
+    setDraftProductLoading(true);
+    setSupplierImportProfilesError('');
+    try {
+      const response = await fetch(MANAGER_API, {
+        method: 'POST', credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json', Accept: 'application/json',
+          'X-CSRF-Token': csrfToken || '',
+        },
+        body: JSON.stringify({
+          action: 'supplier_import_row_create_product',
+          row_id: draftProductRow.id,
+          category: draftProductCategory,
+        }),
+      });
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success) throw new Error(data.message || 'Не удалось создать черновик товара');
+      setDraftProductRow(null);
+      setSupplierImportProfilesSuccess(data.message || 'Черновик товара создан');
+      await Promise.all([
+        loadSupplierImportJobRows(selectedImportJob, stagedRowsPage, stagedRowsFilter),
+        loadSupplierOfferSummary(selectedImportJob),
+        profileSupplier ? loadSupplierImportJobs(profileSupplier) : Promise.resolve(),
+      ]);
+    } catch (err) {
+      setSupplierImportProfilesError(err instanceof Error ? err.message : 'Не удалось создать черновик товара');
+    } finally {
+      setDraftProductLoading(false);
     }
   };
 
@@ -4473,7 +4526,14 @@ const toggleProductStatus = async (product: AdminProduct) => {
                               {row.availability_normalization.warnings.map((warning) => <div key={warning.code} className="text-xs text-amber-700">{warning.message}</div>)}
                             </td>
                             <td className="px-3 py-3"><div className="font-medium">{row.status}</div>{row.errors.map((message) => <div key={message} className="text-xs text-red-600">{message}</div>)}{row.warnings.map((message) => <div key={message} className="text-xs text-amber-700">{message}</div>)}</td>
-                            <td className="px-3 py-3"><div>{row.matched_product_name || 'Не сопоставлено'}</div><div className="text-xs text-gray-500">{row.matched_variant_name || row.matched_variant_key || ''}</div>{row.status !== 'validation_error' && <button type="button" onClick={() => { setManualMatchRow(row); setManualProductQuery(row.normalized_model || row.raw_product_name || ''); setManualProductResults([]); }} className="mt-2 px-3 py-1.5 rounded-lg border border-accent-200 text-accent-700 text-xs">Сопоставить</button>}</td>
+                            <td className="px-3 py-3">
+                              <div>{row.matched_product_name || 'Не сопоставлено'}</div>
+                              <div className="text-xs text-gray-500">{row.matched_variant_name || row.matched_variant_key || ''}</div>
+                              {row.status !== 'validation_error' && <button type="button" onClick={() => { setManualMatchRow(row); setManualProductQuery(row.normalized_model || row.raw_product_name || ''); setManualProductResults([]); }} className="mt-2 mr-2 px-3 py-1.5 rounded-lg border border-accent-200 text-accent-700 text-xs">Сопоставить</button>}
+                              {row.status !== 'validation_error' && row.matched_product_id === null && (
+                                <button type="button" onClick={() => { setDraftProductRow(row); setDraftProductCategory(suggestDraftProductCategory(row)); }} className="mt-2 px-3 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 text-xs">Создать карточку</button>
+                              )}
+                            </td>
                           </tr>
                         ))}</tbody></table>
                       </div>
@@ -4548,6 +4608,45 @@ const toggleProductStatus = async (product: AdminProduct) => {
           </>
         )}
       </div>
+
+      {draftProductRow !== null && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-lg rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl sm:p-6">
+            <button
+              type="button"
+              onClick={() => setDraftProductRow(null)}
+              disabled={draftProductLoading}
+              aria-label="Закрыть"
+              className="absolute right-4 top-4 rounded-lg p-1.5 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="pr-10">
+              <h3 className="text-xl font-semibold text-graphite-900">Создание карточки товара</h3>
+              <p className="mt-1 text-sm text-gray-500">Будет создан неактивный черновик</p>
+            </div>
+
+            <div className="mt-5 space-y-2 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm">
+              <div><span className="text-gray-500">Название:</span> <span className="font-medium text-graphite-900">{draftProductRow.raw_product_name || draftProductRow.normalized_model || '—'}</span></div>
+              <div><span className="text-gray-500">Модель:</span> <span className="font-medium text-graphite-900">{draftProductRow.normalized_model || '—'}</span></div>
+              <div><span className="text-gray-500">SKU:</span> <span className="font-medium text-graphite-900">{draftProductRow.supplier_sku || '—'}</span></div>
+            </div>
+
+            <label className="mt-5 block text-sm text-gray-700">
+              Категория
+              <select value={draftProductCategory} onChange={(event) => setDraftProductCategory(event.target.value as 'OLED' | 'QLED' | 'LED' | '8K')} className="admin-input mt-2">
+                {(['OLED', 'QLED', 'LED', '8K'] as const).map((category) => <option key={category} value={category}>{category}</option>)}
+              </select>
+            </label>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button type="button" disabled={draftProductLoading} onClick={() => setDraftProductRow(null)} className="px-4 py-2.5 rounded-xl border border-gray-300 text-gray-700 disabled:cursor-not-allowed disabled:opacity-50">Отмена</button>
+              <button type="button" disabled={draftProductLoading} onClick={createDraftProductFromImportRow} className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white font-semibold disabled:cursor-not-allowed disabled:opacity-50">{draftProductLoading ? 'Создание...' : 'Создать черновик'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showProductForm && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-4">

@@ -461,6 +461,7 @@ $csrfProtectedActions = [
     'supplier_import_preview',
     'supplier_import_stage',
     'supplier_import_row_set_match',
+    'supplier_import_row_create_product',
     'supplier_import_job_publish_offers',
     'pricing_rule_create',
     'pricing_rule_update',
@@ -2025,6 +2026,185 @@ if ($action === 'supplier_import_row_set_match') {
         }
         error_log('supplier import manual match failed: ' . $error->getMessage());
         sendManagerJson(500, ['success' => false, 'message' => 'Не удалось сохранить сопоставление']);
+    }
+}
+
+if ($action === 'supplier_import_row_create_product') {
+    requireManagerMethod('POST');
+    requirePricingRuleJsonRequest($requestJsonIsValid);
+    requireOnlyPayloadKeys($data, ['action', 'row_id', 'category']);
+    $rowId = requirePositiveManagerId($data['row_id'] ?? null, 'строка импорта');
+    $category = $data['category'] ?? null;
+    if (!is_string($category) || !in_array($category, ['OLED', 'QLED', 'LED', '8K'], true)) {
+        sendManagerJson(400, ['success' => false, 'message' => 'Некорректная категория товара']);
+    }
+    try {
+        $pdo->beginTransaction();
+        $rowStmt = $pdo->prepare("
+            SELECT r.id, r.import_job_id, r.supplier_sku, r.raw_product_name,
+                   r.normalized_model, r.detected_assembly_country,
+                   r.matched_product_id, r.matched_product_variant_id, r.match_id,
+                   r.status, j.supplier_id
+            FROM supplier_import_rows r
+            INNER JOIN supplier_import_jobs j ON j.id = r.import_job_id
+            WHERE r.id = :id FOR UPDATE
+        ");
+        $rowStmt->execute([':id' => $rowId]);
+        $row = $rowStmt->fetch();
+        if (!is_array($row)) {
+            $pdo->rollBack();
+            sendManagerJson(404, ['success' => false, 'message' => 'Строка импорта не найдена']);
+        }
+        if ($row['status'] === 'validation_error') {
+            $pdo->rollBack();
+            sendManagerJson(409, ['success' => false, 'message' => 'Сначала исправьте ошибки данных строки']);
+        }
+        if (!in_array($row['status'], ['unmatched', 'needs_review'], true) ||
+            $row['matched_product_id'] !== null || $row['matched_product_variant_id'] !== null || $row['match_id'] !== null) {
+            $pdo->rollBack();
+            sendManagerJson(409, ['success' => false, 'message' => 'Строка уже сопоставлена или недоступна для создания карточки']);
+        }
+        $supplierSku = $row['supplier_sku'];
+        if (!is_string($supplierSku) || trim($supplierSku) === '') {
+            $pdo->rollBack();
+            sendManagerJson(409, ['success' => false, 'message' => 'Для создания карточки требуется артикул поставщика']);
+        }
+        $rawName = is_string($row['raw_product_name']) ? trim($row['raw_product_name']) : '';
+        $normalizedModel = is_string($row['normalized_model']) ? trim($row['normalized_model']) : '';
+        $productName = $rawName !== '' ? $rawName : $normalizedModel;
+        if ($productName === '') {
+            $pdo->rollBack();
+            sendManagerJson(409, ['success' => false, 'message' => 'В строке отсутствует название товара']);
+        }
+        $productName = mb_substr($productName, 0, 255, 'UTF-8');
+        $series = mb_substr($normalizedModel, 0, 100, 'UTF-8');
+        $assemblyCountry = is_string($row['detected_assembly_country'])
+            ? trim($row['detected_assembly_country']) : '';
+        $assemblyCountry = $assemblyCountry === '' ? null : mb_substr($assemblyCountry, 0, 100, 'UTF-8');
+        $supplierId = (int)$row['supplier_id'];
+        $jobId = (int)$row['import_job_id'];
+        $slug = "draft-s{$supplierId}-r{$rowId}";
+
+        $existingMatchStmt = $pdo->prepare("
+            SELECT id FROM supplier_product_matches
+            WHERE supplier_id = :supplier_id
+              AND BINARY supplier_sku = BINARY :supplier_sku
+            LIMIT 1 FOR UPDATE
+        ");
+        $existingMatchStmt->execute([':supplier_id' => $supplierId, ':supplier_sku' => $supplierSku]);
+        if ($existingMatchStmt->fetchColumn() !== false) {
+            $pdo->rollBack();
+            sendManagerJson(409, ['success' => false, 'message' => 'Артикул поставщика уже имеет связь']);
+        }
+        $slugStmt = $pdo->prepare('SELECT id FROM products WHERE BINARY slug = BINARY :slug LIMIT 1 FOR UPDATE');
+        $slugStmt->execute([':slug' => $slug]);
+        if ($slugStmt->fetchColumn() !== false) {
+            $pdo->rollBack();
+            sendManagerJson(409, ['success' => false, 'message' => 'Черновик для этой строки уже существует']);
+        }
+
+        $productStmt = $pdo->prepare("
+            INSERT INTO products (
+                slug, name, series, country, category, screen_size, resolution,
+                price, old_price, image, badge, rating, reviews, description,
+                specs, highlights, variants, is_active
+            ) VALUES (
+                :slug, :name, :series, :country, :category, '', '',
+                0, NULL, '', NULL, 0, 0, '', :specs, :highlights, :variants, 0
+            )
+        ");
+        $emptyJson = json_encode([], JSON_UNESCAPED_UNICODE);
+        $productStmt->execute([
+            ':slug' => $slug, ':name' => $productName, ':series' => $series,
+            ':country' => $assemblyCountry, ':category' => $category,
+            ':specs' => $emptyJson, ':highlights' => $emptyJson, ':variants' => $emptyJson
+        ]);
+        $productId = (int)$pdo->lastInsertId();
+
+        $evidence = json_encode([
+            'source' => 'supplier_import', 'import_row_id' => $rowId, 'supplier_id' => $supplierId
+        ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+        $variantStmt = $pdo->prepare("
+            INSERT INTO product_variants (
+                product_id, variant_key, assembly_country, market_region_id,
+                certification_supply_type_id, manufacturer_part_number,
+                display_name, classification_status, classification_evidence, is_active
+            ) VALUES (
+                :product_id, 'default', :assembly_country, NULL, NULL,
+                :manufacturer_part_number, :display_name,
+                'requires_classification', :classification_evidence, 0
+            )
+        ");
+        $variantStmt->execute([
+            ':product_id' => $productId, ':assembly_country' => $assemblyCountry,
+            ':manufacturer_part_number' => $normalizedModel === '' ? null : mb_substr($normalizedModel, 0, 191, 'UTF-8'),
+            ':display_name' => $assemblyCountry ?? 'Основной вариант',
+            ':classification_evidence' => $evidence
+        ]);
+        $variantId = (int)$pdo->lastInsertId();
+
+        $matchStmt = $pdo->prepare("
+            INSERT INTO supplier_product_matches (
+                supplier_id, supplier_sku, normalized_model, product_id,
+                product_variant_id, match_method, confidence, status,
+                variant_confirmation_source, reviewed_by, reviewed_at, is_active
+            ) VALUES (
+                :supplier_id, :supplier_sku, :normalized_model, :product_id,
+                :variant_id, 'manual', 1.0000, 'confirmed',
+                'manual_admin', 'admin_session', CURRENT_TIMESTAMP, 1
+            )
+        ");
+        $matchStmt->execute([
+            ':supplier_id' => $supplierId, ':supplier_sku' => $supplierSku,
+            ':normalized_model' => $normalizedModel === '' ? null : $normalizedModel,
+            ':product_id' => $productId, ':variant_id' => $variantId
+        ]);
+        $matchId = (int)$pdo->lastInsertId();
+
+        $updateRow = $pdo->prepare("
+            UPDATE supplier_import_rows
+            SET matched_product_id = :product_id,
+                matched_product_variant_id = :variant_id,
+                match_id = :match_id, status = 'matched', review_reason = NULL
+            WHERE id = :id
+        ");
+        $updateRow->execute([
+            ':product_id' => $productId, ':variant_id' => $variantId,
+            ':match_id' => $matchId, ':id' => $rowId
+        ]);
+
+        $counterStmt = $pdo->prepare("
+            SELECT COUNT(*) AS rows_total,
+                   SUM(status = 'matched') AS rows_matched,
+                   SUM(status IN ('unmatched', 'needs_review')) AS rows_unmatched,
+                   SUM(status = 'validation_error') AS rows_errors
+            FROM supplier_import_rows WHERE import_job_id = :job_id
+        ");
+        $counterStmt->execute([':job_id' => $jobId]);
+        $counts = $counterStmt->fetch();
+        $updateJob = $pdo->prepare("
+            UPDATE supplier_import_jobs
+            SET rows_total = :rows_total, rows_matched = :rows_matched,
+                rows_unmatched = :rows_unmatched, rows_errors = :rows_errors
+            WHERE id = :id
+        ");
+        $updateJob->execute([
+            ':rows_total' => (int)$counts['rows_total'], ':rows_matched' => (int)$counts['rows_matched'],
+            ':rows_unmatched' => (int)$counts['rows_unmatched'], ':rows_errors' => (int)$counts['rows_errors'],
+            ':id' => $jobId
+        ]);
+        $pdo->commit();
+        sendManagerJson(200, [
+            'success' => true, 'message' => 'Черновик товара создан',
+            'product_id' => $productId, 'product_variant_id' => $variantId, 'job_id' => $jobId
+        ]);
+    } catch (Throwable $error) {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+        if ($error instanceof PDOException && (int)($error->errorInfo[1] ?? 0) === 1062) {
+            sendManagerJson(409, ['success' => false, 'message' => 'Черновик или связь для этой строки уже существует']);
+        }
+        error_log('supplier import create draft product failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось создать черновик товара']);
     }
 }
 
