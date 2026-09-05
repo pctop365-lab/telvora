@@ -93,7 +93,7 @@ function pricePublicationCountry(PDOStatement $weightStatement, array $variant, 
 function pricePublicationResolveLegacyVariant(PDO $pdo, array $product, array $relationalVariant): array
 {
     try {
-        return productVariantIdentityResolve($pdo, $product, $relationalVariant);
+        return productVariantIdentityResolve($pdo, $product, $relationalVariant, true);
     } catch (ProductVariantIdentityException $error) {
         throw new PricePublicationException(422, $error->getMessage());
     }
@@ -145,7 +145,6 @@ function pricePublicationContext(PDO $pdo, int $offerId, bool $lock): array
     if (!(bool)$offer['is_active']) $blocking[] = 'Предложение поставщика неактивно';
     if (!(bool)$supplier['is_active']) $blocking[] = 'Поставщик неактивен';
     if (!(bool)$variant['is_active']) $blocking[] = 'Relational-вариант неактивен';
-    if (!(bool)$product['is_active']) $blocking[] = 'Товар неактивен';
     if ($offer['currency_code'] !== 'RUB') $blocking[] = 'Публикация поддерживается только для RUB';
     $purchaseMinor = supplierOfferMinorUnits($offer['purchase_price']);
     if ($purchaseMinor === null) $blocking[] = 'Закупочная цена предложения некорректна';
@@ -240,6 +239,9 @@ function pricePublicationContext(PDO $pdo, int $offerId, bool $lock): array
     $deltaPercent = $deltaMinor !== null && $currentMinor > 0
         ? intdiv($deltaMinor * 10000, $currentMinor) : null;
     $warnings = array_values(array_unique(array_map('strval', $calculation['warnings'] ?? [])));
+    if (!(bool)$product['is_active']) {
+        $warnings[] = 'Товар неактивен: цена будет записана в черновик, товар останется скрытым';
+    }
     if ($deltaPercent !== null && abs($deltaPercent) >= 5000) {
         $warnings[] = 'Изменение составляет 50% или более; требуется особенно внимательная проверка';
     }
@@ -254,6 +256,7 @@ function pricePublicationContext(PDO $pdo, int $offerId, bool $lock): array
         'product_id' => $product['id'],
         'product_price' => $product['price'],
         'product_old_price' => $product['old_price'],
+        'product_is_active' => (bool)$product['is_active'],
         'product_updated_at' => $product['updated_at'],
         'legacy_hash' => is_array($legacy) ? $legacy['raw_hash'] : null,
         'source_row' => $sourceRow,

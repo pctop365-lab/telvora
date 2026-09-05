@@ -6,18 +6,18 @@ final class ProductVariantIdentityException extends RuntimeException
 {
 }
 
-function productVariantIdentityMinor(mixed $value, bool $allowNull = false): ?int
+function productVariantIdentityMinor(mixed $value, bool $allowNull = false, bool $allowZero = false): ?int
 {
     if ($allowNull && $value === null) return null;
-    if (is_int($value)) return $value > 0 ? $value * 100 : null;
-    if (!is_float($value) || !is_finite($value) || $value <= 0) return null;
+    if (is_int($value)) return ($value > 0 || ($allowZero && $value === 0)) ? $value * 100 : null;
+    if (!is_float($value) || !is_finite($value) || $value < 0 || (!$allowZero && $value === 0.0)) return null;
     $scaled = $value * 100;
     $rounded = round($scaled);
     if (!is_finite($scaled) || abs($scaled - $rounded) > 0.000001 || $rounded > 999999999999) return null;
     return (int)$rounded;
 }
 
-function productVariantIdentityCountry(PDOStatement $weightStatement, array $variant, int $productId): array
+function productVariantIdentityCountry(PDOStatement $weightStatement, array $variant, int $productId, bool $allowZeroPrice = false): array
 {
     if (array_is_list($variant)) throw new ProductVariantIdentityException('Структура вариантов товара не поддерживает безопасную публикацию');
     $keys = array_keys($variant);
@@ -34,7 +34,7 @@ function productVariantIdentityCountry(PDOStatement $weightStatement, array $var
         throw new ProductVariantIdentityException('Страна сборки варианта некорректна');
     }
     if (!is_bool($variant['is_active'])) throw new ProductVariantIdentityException('Статус legacy-варианта некорректен');
-    $priceMinor = productVariantIdentityMinor($variant['price']);
+    $priceMinor = productVariantIdentityMinor($variant['price'], false, $allowZeroPrice);
     $oldPriceMinor = productVariantIdentityMinor($variant['old_price'], true);
     if ($priceMinor === null || $priceMinor > 999999999999) {
         throw new ProductVariantIdentityException('Цена legacy-варианта некорректна');
@@ -49,7 +49,7 @@ function productVariantIdentityCountry(PDOStatement $weightStatement, array $var
         'old_price_minor' => $oldPriceMinor, 'is_active' => $variant['is_active']];
 }
 
-function productVariantIdentityResolve(PDO $pdo, array $product, array $relationalVariant): array
+function productVariantIdentityResolve(PDO $pdo, array $product, array $relationalVariant, bool $allowZeroPrice = false): array
 {
     $raw = $product['variants'] ?? null;
     if (!is_string($raw)) throw new ProductVariantIdentityException('Legacy-варианты товара недоступны');
@@ -62,7 +62,7 @@ function productVariantIdentityResolve(PDO $pdo, array $product, array $relation
     $seen = []; $targets = []; $details = [];
     foreach ($variants as $index => $variant) {
         if (!is_array($variant)) throw new ProductVariantIdentityException('Legacy-вариант товара не является объектом');
-        $detail = productVariantIdentityCountry($weightStatement, $variant, (int)$product['id']);
+        $detail = productVariantIdentityCountry($weightStatement, $variant, (int)$product['id'], $allowZeroPrice);
         if (isset($seen[$detail['weight']])) throw new ProductVariantIdentityException('У товара есть дублирующиеся страны сборки');
         $seen[$detail['weight']] = true;
         $details[$index] = $detail;
