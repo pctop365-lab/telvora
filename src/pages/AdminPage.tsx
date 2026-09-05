@@ -23,6 +23,21 @@ type Spec = {
   value: string;
 };
 
+const defaultProductSpecs: Spec[] = [
+  { label: 'Тип экрана', value: '' },
+  { label: 'Разрешение', value: '' },
+  { label: 'Частота обновления', value: '' },
+  { label: 'HDR', value: '' },
+  { label: 'Smart TV', value: '' },
+  { label: 'Операционная система', value: '' },
+  { label: 'Процессор', value: '' },
+  { label: 'Мощность звука', value: '' },
+  { label: 'HDMI', value: '' },
+  { label: 'USB', value: '' },
+  { label: 'Wi-Fi', value: '' },
+  { label: 'Bluetooth', value: '' },
+];
+
 type OrderItem = {
   product_name: string;
   quantity: number;
@@ -427,6 +442,22 @@ const emptyProductForm = {
   is_active: false,
 };
 
+const productSlugTransliteration: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y',
+  к: 'k', л: 'l', м: 'm', н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f',
+  х: 'h', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'sch', ъ: '', ы: 'y', ь: '', э: 'e', ю: 'yu', я: 'ya',
+};
+
+const createProductSlug = (name: string) =>
+  name
+    .trim()
+    .toLowerCase()
+    .split('')
+    .map((character) => productSlugTransliteration[character] ?? character)
+    .join('')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
 const emptySupplierForm = {
   name: '',
   internal_code: '',
@@ -621,6 +652,7 @@ export default function AdminPage() {
     null
   );
   const [productForm, setProductForm] = useState(emptyProductForm);
+  const [productSlugManuallyEdited, setProductSlugManuallyEdited] = useState(false);
 
   const [specs, setSpecs] = useState<Spec[]>([]);
   const [highlights, setHighlights] = useState<string[]>([]);
@@ -2068,8 +2100,9 @@ if (!response.ok || !data.success || !data.image) {
       setImageUploading(false);
     }
   };
-const resetProductForm = () => {
+  const resetProductForm = () => {
     setProductForm(emptyProductForm);
+    setProductSlugManuallyEdited(false);
     setSpecs([]);
     setHighlights([]);
     setVariants([]);
@@ -2081,10 +2114,12 @@ const resetProductForm = () => {
 
   const openAddProduct = () => {
     resetProductForm();
+    setSpecs(defaultProductSpecs.map((spec) => ({ ...spec })));
     setShowProductForm(true);
   };
 
   const openEditProduct = (product: AdminProduct) => {
+    setProductSlugManuallyEdited(true);
     setProductForm({
       name: product.name || '',
       slug: product.slug || '',
@@ -2155,6 +2190,14 @@ const resetProductForm = () => {
   const removeSpec = (index: number) => {
     setSpecs((current) =>
       current.filter((_, itemIndex) => itemIndex !== index)
+    );
+  };
+
+  const updateSpec = (index: number, field: keyof Spec, value: string) => {
+    setSpecs((current) =>
+      current.map((spec, itemIndex) =>
+        itemIndex === index ? { ...spec, [field]: value } : spec
+      )
     );
   };
 
@@ -4520,18 +4563,18 @@ const toggleProductStatus = async (product: AdminProduct) => {
       </div>
 
       {showProductForm && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm overflow-y-auto p-4">
-          <div className="min-h-full flex items-start justify-center py-8">
-            <div className="w-full max-w-5xl bg-white rounded-3xl shadow-2xl border border-gray-200 overflow-hidden">
-              <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 p-3 backdrop-blur-md sm:p-6">
+          <div className="flex min-h-full items-start justify-center py-3 sm:py-8">
+            <div className="flex max-h-[calc(100vh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/10 bg-graphite-900 text-white shadow-2xl shadow-black/60 sm:max-h-[calc(100vh-4rem)]">
+              <div className="flex shrink-0 items-start justify-between gap-6 border-b border-white/10 bg-graphite-950 px-5 py-5 sm:px-7">
                 <div>
-                  <div className="text-xl font-display font-semibold text-graphite-900">
+                  <div className="text-xl font-display font-semibold text-white sm:text-2xl">
                     {editingProductId
                       ? 'Редактирование товара'
                       : 'Добавление товара'}
                   </div>
 
-                  <div className="text-sm text-gray-500 mt-1">
+                  <div className="mt-1.5 max-w-2xl text-sm leading-6 text-graphite-300">
                     {editingProductId
                       ? 'Измените данные карточки и сохраните товар.'
                       : 'Новый товар будет создан как черновик. Цена и наличие будут настроены после сопоставления с поставщиком.'}
@@ -4544,19 +4587,20 @@ const toggleProductStatus = async (product: AdminProduct) => {
                     setShowProductForm(false);
                     resetProductForm();
                   }}
-                  className="p-2 rounded-xl hover:bg-gray-100 text-gray-500"
+                  aria-label="Закрыть форму товара"
+                  className="rounded-xl border border-white/10 p-2 text-graphite-300 transition hover:border-accent-500/50 hover:bg-white/5 hover:text-white"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="p-6 space-y-8">
-                <section>
-                  <div className="text-sm font-semibold text-graphite-900 mb-4">
+              <div className="min-h-0 flex-1 space-y-5 overflow-y-auto bg-graphite-900 p-4 sm:p-7 [&_label]:text-graphite-300 [&_.admin-input]:border-white/10 [&_.admin-input]:bg-graphite-950 [&_.admin-input]:text-white [&_.admin-input]:placeholder:text-graphite-500 [&_.admin-input]:focus:border-accent-500 [&_.admin-input]:focus:ring-2 [&_.admin-input]:focus:ring-accent-500/20 [&_option]:bg-graphite-900 [&_option]:text-white">
+                <section className="rounded-2xl border border-white/10 bg-graphite-800/70 p-5 sm:p-6">
+                  <div className="mb-5 text-sm font-semibold uppercase tracking-[0.14em] text-accent-400">
                     Основная информация
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                     <div>
                       <label className="block text-sm text-gray-600 mb-2">
                         Название *
@@ -4564,12 +4608,16 @@ const toggleProductStatus = async (product: AdminProduct) => {
 
                       <input
                         value={productForm.name}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          const name = e.target.value;
                           setProductForm((current) => ({
                             ...current,
-                            name: e.target.value,
-                          }))
-                        }
+                            name,
+                            slug: !editingProductId && !productSlugManuallyEdited
+                              ? createProductSlug(name)
+                              : current.slug,
+                          }));
+                        }}
                         className="admin-input"
                         placeholder="Телевизор TELVORA OLED"
                       />
@@ -4582,15 +4630,21 @@ const toggleProductStatus = async (product: AdminProduct) => {
 
                       <input
                         value={productForm.slug}
-                        onChange={(e) =>
+                        onChange={(e) => {
+                          if (!editingProductId) setProductSlugManuallyEdited(true);
                           setProductForm((current) => ({
                             ...current,
                             slug: e.target.value,
-                          }))
-                        }
+                          }));
+                        }}
                         className="admin-input"
                         placeholder="telvora-oled-65"
                       />
+                      {!editingProductId && (
+                        <p className="mt-2 text-xs text-graphite-500">
+                          Формируется из названия автоматически, пока вы не измените slug вручную.
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -4701,14 +4755,15 @@ const toggleProductStatus = async (product: AdminProduct) => {
                       />
                     </div>
 
-                    <div>
-  <label className="block text-sm text-gray-600 mb-2">
-    Изображение
-  </label>
+                    <div className="rounded-2xl border border-white/10 bg-graphite-950/70 p-4 md:col-span-2 sm:p-5">
+  <div className="mb-4">
+    <div className="text-sm font-semibold text-white">Изображение</div>
+    <p className="mt-1 text-xs text-graphite-400">Загрузите файл или укажите URL изображения товара.</p>
+  </div>
 
   <div className="space-y-3">
     {productForm.image && (
-      <div className="w-full h-48 rounded-2xl border border-gray-200 bg-gray-50 overflow-hidden flex items-center justify-center">
+      <div className="flex h-56 w-full items-center justify-center overflow-hidden rounded-2xl border border-white/10 bg-black/30">
         <img
           src={productForm.image}
           alt="Предпросмотр"
@@ -4737,20 +4792,20 @@ const toggleProductStatus = async (product: AdminProduct) => {
         setImageFile(file);
         setImageUploadError('');
       }}
-      className="block w-full text-sm text-gray-600"
+      className="block w-full rounded-xl border border-dashed border-white/15 bg-white/5 p-3 text-sm text-graphite-300 file:mr-4 file:rounded-lg file:border-0 file:bg-accent-500 file:px-3 file:py-2 file:font-semibold file:text-white hover:file:bg-accent-600"
     />
 
     <button
       type="button"
       onClick={uploadProductImage}
       disabled={!imageFile || imageUploading}
-      className="px-4 py-2 rounded-xl bg-accent-500 text-white font-semibold disabled:opacity-50"
+      className="px-4 py-2.5 rounded-xl bg-accent-500 text-white font-semibold transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-40"
     >
       {imageUploading ? 'Загрузка...' : 'Загрузить изображение'}
     </button>
 
     {imageFile && (
-      <p className="text-sm text-gray-500">
+      <p className="text-sm text-graphite-400">
         Выбран файл: {imageFile.name}
       </p>
     )}
@@ -4765,10 +4820,11 @@ const toggleProductStatus = async (product: AdminProduct) => {
                   </div>
                 </section>
 
-                <section>
-                  <div className="text-sm font-semibold text-graphite-900 mb-4">
-                    Цена и рейтинг
-                  </div>                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                <section className="rounded-2xl border border-white/10 bg-graphite-800/70 p-5 sm:p-6">
+                  <div className="mb-5 text-sm font-semibold uppercase tracking-[0.14em] text-accent-400">
+                    Статус и оформление
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div>
                       <label className="block text-sm text-gray-600 mb-2">
                         Бейдж
@@ -4787,28 +4843,32 @@ const toggleProductStatus = async (product: AdminProduct) => {
                       />
                     </div>
 
-                    <label className={`flex items-center gap-3 rounded-xl border border-gray-200 px-4 py-3 ${editingProductId ? 'cursor-pointer' : 'cursor-not-allowed bg-gray-50'}`}>
-                      <input
-                        type="checkbox"
-                        checked={productForm.is_active}
-                        disabled={!editingProductId}
-                        onChange={(e) =>
-                          setProductForm((current) => ({
-                            ...current,
-                            is_active: e.target.checked,
-                          }))
-                        }
-                      />
-
-                      <span className="text-sm text-gray-700">
-                        Товар активен
-                      </span>
-                    </label>
+                    {editingProductId ? (
+                      <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 bg-graphite-950/60 px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={productForm.is_active}
+                          onChange={(e) =>
+                            setProductForm((current) => ({
+                              ...current,
+                              is_active: e.target.checked,
+                            }))
+                          }
+                          className="h-4 w-4 accent-orange-500"
+                        />
+                        <span className="text-sm text-white">Товар активен</span>
+                      </label>
+                    ) : (
+                      <div className="rounded-xl border border-accent-500/30 bg-accent-500/10 px-4 py-3">
+                        <div className="text-sm font-semibold text-accent-300">Черновик · неактивен</div>
+                        <p className="mt-1 text-xs leading-5 text-graphite-300">Товар останется скрытым до ручной активации после настройки поставщика, цены и наличия.</p>
+                      </div>
+                    )}
                   </div>
                 </section>
 
-                <section>
-                  <div className="text-sm font-semibold text-graphite-900 mb-4">
+                <section className="rounded-2xl border border-white/10 bg-graphite-800/70 p-5 sm:p-6">
+                  <div className="mb-4 text-sm font-semibold uppercase tracking-[0.14em] text-accent-400">
                     Описание
                   </div>
 
@@ -4820,20 +4880,20 @@ const toggleProductStatus = async (product: AdminProduct) => {
                         description: e.target.value,
                       }))
                     }
-                    rows={5}
-                    className="admin-input resize-y"
-                    placeholder="Описание товара..."
+                    rows={7}
+                    className="admin-input min-h-44 resize-y"
+                    placeholder="Расскажите о ключевых особенностях, технологиях и сценариях использования товара..."
                   />
                 </section>
 
-                <section>
+                <section className="rounded-2xl border border-white/10 bg-graphite-800/70 p-5 sm:p-6">
                   <div className="flex items-center justify-between gap-4 mb-4">
                     <div>
-                      <div className="text-sm font-semibold text-graphite-900">
+                      <div className="text-sm font-semibold uppercase tracking-[0.14em] text-accent-400">
                         Характеристики
                       </div>
 
-                      <div className="text-xs text-gray-500 mt-1">
+                      <div className="mt-1 text-xs text-graphite-400">
                         Добавьте характеристики товара.
                       </div>
                     </div>
@@ -4861,7 +4921,8 @@ const toggleProductStatus = async (product: AdminProduct) => {
                     <button
                       type="button"
                       onClick={addSpec}
-                      className="px-4 py-3 rounded-xl bg-gray-900 text-white hover:bg-gray-800 transition"
+                      aria-label="Добавить характеристику"
+                      className="rounded-xl bg-accent-500 px-4 py-3 text-white transition hover:bg-accent-600"
                     >
                       <Plus className="w-4 h-4" />
                     </button>
@@ -4870,23 +4931,27 @@ const toggleProductStatus = async (product: AdminProduct) => {
                   <div className="space-y-2 mt-4">
                     {specs.map((spec, index) => (
                       <div
-                        key={`${spec.label}-${index}`}
-                        className="flex items-center justify-between gap-4 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3"
+                        key={index}
+                        className="grid grid-cols-1 items-center gap-3 rounded-xl border border-white/10 bg-graphite-950/60 p-3 md:grid-cols-[1fr_1fr_auto]"
                       >
-                        <div>
-                          <div className="text-sm font-medium text-graphite-900">
-                            {spec.label}
-                          </div>
-
-                          <div className="text-sm text-gray-500 mt-1">
-                            {spec.value}
-                          </div>
-                        </div>
+                        <input
+                          value={spec.label}
+                          onChange={(event) => updateSpec(index, 'label', event.target.value)}
+                          className="admin-input"
+                          placeholder="Название характеристики"
+                        />
+                        <input
+                          value={spec.value}
+                          onChange={(event) => updateSpec(index, 'value', event.target.value)}
+                          className="admin-input"
+                          placeholder="Значение"
+                        />
 
                         <button
                           type="button"
                           onClick={() => removeSpec(index)}
-                          className="p-2 rounded-lg text-red-500 hover:bg-red-50"
+                            aria-label="Удалить характеристику"
+                            className="rounded-lg p-2 text-red-400 transition hover:bg-red-500/10 hover:text-red-300"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -4895,8 +4960,8 @@ const toggleProductStatus = async (product: AdminProduct) => {
                   </div>
                 </section>
 
-                <section>
-                  <div className="text-sm font-semibold text-graphite-900 mb-4">
+                <section className="rounded-2xl border border-white/10 bg-graphite-800/70 p-5 sm:p-6">
+                  <div className="mb-4 text-sm font-semibold uppercase tracking-[0.14em] text-accent-400">
                     Основные преимущества
                   </div>
 
@@ -4919,7 +4984,8 @@ const toggleProductStatus = async (product: AdminProduct) => {
                     <button
                       type="button"
                       onClick={addHighlight}
-                      className="px-4 py-3 rounded-xl bg-gray-900 text-white hover:bg-gray-800 transition"
+                      aria-label="Добавить преимущество"
+                      className="rounded-xl bg-accent-500 px-4 py-3 text-white transition hover:bg-accent-600"
                     >
                       <Plus className="w-4 h-4" />
                     </button>
@@ -4929,7 +4995,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                     {highlights.map((highlight, index) => (
                       <div
                         key={`${highlight}-${index}`}
-                        className="inline-flex items-center gap-2 rounded-xl bg-accent-50 border border-accent-200 text-accent-700 px-3 py-2 text-sm"
+                        className="inline-flex items-center gap-2 rounded-xl border border-accent-500/30 bg-accent-500/10 px-3 py-2 text-sm text-accent-300"
                       >
                         <span>{highlight}</span>
 
@@ -4938,7 +5004,8 @@ const toggleProductStatus = async (product: AdminProduct) => {
                           onClick={() =>
                             removeHighlight(index)
                           }
-                          className="text-accent-500 hover:text-accent-700"
+                            aria-label="Удалить преимущество"
+                            className="text-accent-400 transition hover:text-white"
                         >
                           <X className="w-4 h-4" />
                         </button>
@@ -4948,18 +5015,18 @@ const toggleProductStatus = async (product: AdminProduct) => {
                 </section>
 
                 {editingProductId ? (
-                  <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                  <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm leading-6 text-amber-200">
                     Изменение идентичности вариантов временно недоступно после перехода на supplier variant architecture.
                   </section>
                 ) : (
-                <section>
+                <section className="rounded-2xl border border-white/10 bg-graphite-800/70 p-5 sm:p-6">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                     <div>
-                      <div className="text-sm font-semibold text-graphite-900">
+                      <div className="text-sm font-semibold uppercase tracking-[0.14em] text-accent-400">
                         Варианты товара
                       </div>
 
-                      <div className="text-xs text-gray-500 mt-1">
+                      <div className="mt-1 max-w-2xl text-xs leading-5 text-graphite-400">
                         Укажите страны сборки. Цена и наличие будут настроены после сопоставления с поставщиком.
                       </div>
                     </div>
@@ -4967,7 +5034,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                     <button
                       type="button"
                       onClick={addVariantToForm}
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent-500 text-white hover:bg-accent-600 transition"
+                      className="inline-flex items-center gap-2 rounded-xl bg-accent-500 px-4 py-2.5 font-semibold text-white transition hover:bg-accent-600"
                     >
                       <Plus className="w-4 h-4" />
                       Добавить вариант
@@ -4975,7 +5042,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                   </div>
 
                   {variants.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-gray-300 p-5 text-center text-sm text-gray-500">
+                    <div className="rounded-xl border border-dashed border-white/15 bg-graphite-950/40 p-6 text-center text-sm text-graphite-400">
                       Вариантов пока нет.
                     </div>
                   ) : (
@@ -4983,7 +5050,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                       {variants.map((variant, index) => (
                         <div
                           key={index}
-                          className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end rounded-xl border border-gray-200 bg-gray-50 p-4"
+                          className="grid grid-cols-1 items-end gap-3 rounded-xl border border-white/10 bg-graphite-950/60 p-4 md:grid-cols-[1fr_auto]"
                         >
                           <div>
                             <label className="block text-sm text-gray-600 mb-2">
@@ -5010,7 +5077,8 @@ const toggleProductStatus = async (product: AdminProduct) => {
                             onClick={() =>
                               removeFormVariant(index)
                             }
-                            className="px-4 py-3 rounded-xl border border-red-200 text-red-500 hover:bg-red-50 transition"
+                            aria-label="Удалить вариант"
+                            className="rounded-xl border border-red-500/30 px-4 py-3 text-red-400 transition hover:bg-red-500/10 hover:text-red-300"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -5022,14 +5090,14 @@ const toggleProductStatus = async (product: AdminProduct) => {
                 )}
               </div>
 
-              <div className="flex flex-wrap justify-end gap-3 px-6 py-5 border-t border-gray-200 bg-gray-50">
+              <div className="sticky bottom-0 flex shrink-0 flex-wrap justify-end gap-3 border-t border-white/10 bg-graphite-950/95 px-5 py-4 backdrop-blur sm:px-7">
                 <button
                   type="button"
                   onClick={() => {
                     setShowProductForm(false);
                     resetProductForm();
                   }}
-                  className="px-5 py-3 rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition"
+                  className="rounded-xl border border-white/15 bg-transparent px-5 py-3 text-graphite-200 transition hover:bg-white/5 hover:text-white"
                 >
                   Отмена
                 </button>
@@ -5038,7 +5106,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                   type="button"
                   onClick={saveProduct}
                   disabled={savingProduct}
-                  className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-accent-500 text-white font-semibold hover:bg-accent-600 transition disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-xl bg-accent-500 px-5 py-3 font-semibold text-white shadow-lg shadow-accent-900/30 transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Save className="w-4 h-4" />
 
