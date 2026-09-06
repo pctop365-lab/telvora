@@ -2101,10 +2101,90 @@ const login = async (e: React.FormEvent) => {
     setImageUploadError('');
 
     try {
+      let uploadFile = imageFile;
+      const isAvif =
+        imageFile.type.toLowerCase() === 'image/avif' ||
+        /\.avif$/i.test(imageFile.name);
+
+      if (isAvif) {
+        let imageBitmap: ImageBitmap;
+
+        try {
+          imageBitmap = await createImageBitmap(imageFile);
+        } catch {
+          setImageUploadError(
+            'Браузер не смог преобразовать AVIF. Попробуйте другое изображение или формат WebP/JPG.'
+          );
+          return;
+        }
+
+        try {
+          const { width, height } = imageBitmap;
+          const maxDimension = 10000;
+          const maxPixels = 40_000_000;
+
+          if (
+            width <= 0 ||
+            height <= 0 ||
+            width > maxDimension ||
+            height > maxDimension ||
+            width * height > maxPixels
+          ) {
+            setImageUploadError(
+              'Размеры AVIF слишком велики для безопасного преобразования.'
+            );
+            return;
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+
+          const context = canvas.getContext('2d');
+          if (!context) {
+            setImageUploadError('Не удалось подготовить AVIF к преобразованию.');
+            return;
+          }
+
+          context.drawImage(imageBitmap, 0, 0);
+
+          const webpBlob = await new Promise<Blob | null>((resolve) => {
+            canvas.toBlob(resolve, 'image/webp', 0.9);
+          });
+
+          if (!webpBlob || webpBlob.size <= 0) {
+            setImageUploadError('Не удалось преобразовать AVIF в WebP.');
+            return;
+          }
+
+          if (webpBlob.type.toLowerCase() !== 'image/webp') {
+            setImageUploadError(
+              'Браузер не смог создать WebP. Попробуйте другой браузер или изображение WebP/JPG.'
+            );
+            return;
+          }
+
+          if (webpBlob.size > 8 * 1024 * 1024) {
+            setImageUploadError('После преобразования изображение превышает 8 МБ.');
+            return;
+          }
+
+          const webpName = `${imageFile.name.replace(/\.avif$/i, '')}.webp`;
+          uploadFile = new File([webpBlob], webpName, {
+            type: 'image/webp',
+            lastModified: imageFile.lastModified || Date.now(),
+          });
+        } catch {
+          setImageUploadError('Не удалось преобразовать AVIF в WebP.');
+          return;
+        } finally {
+          imageBitmap.close();
+        }
+      }
+
       const formData = new FormData();
       formData.append('action', 'upload_image');
-      formData.append('image', imageFile);
-console.log('UPLOAD IMAGE:', imageFile.name, imageFile.size, imageFile.type);
+      formData.append('image', uploadFile);
 
 const response = await fetch(PRODUCTS_API, {
   method: 'POST',
@@ -2117,9 +2197,6 @@ const response = await fetch(PRODUCTS_API, {
 
 const data = await response.json();
 
-console.log('UPLOAD RESPONSE:', response.status, response.ok);
-console.log('UPLOAD SUCCESS:', data.success);
-console.log('UPLOAD IMAGE URL:', data.image);
 if (!response.ok || !data.success || !data.image) {
         setImageUploadError(
           data.message || 'Не удалось загрузить изображение'
@@ -4935,7 +5012,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
 
     <input
       type="file"
-      accept="image/jpeg,image/png,image/webp"
+      accept="image/jpeg,image/png,image/webp,image/avif,.avif"
       onChange={(e) => {
         const file = e.target.files?.[0] || null;
         setImageFile(file);
