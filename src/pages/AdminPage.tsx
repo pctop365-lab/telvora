@@ -4487,7 +4487,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                     {availabilityMappingError && <div className="mt-3 text-sm text-red-700">{availabilityMappingError}</div>}
                     <form onSubmit={saveAvailabilityMapping} className="mt-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
                       <label className="text-sm text-gray-600 md:col-span-2">Точное значение поставщика
-                        <input required maxLength={191} value={availabilityMappingForm.raw_value} onChange={(event) => setAvailabilityMappingForm((current) => ({ ...current, raw_value: event.target.value }))} className="admin-input mt-1" />
+                        <input maxLength={191} value={availabilityMappingForm.raw_value} onChange={(event) => setAvailabilityMappingForm((current) => ({ ...current, raw_value: event.target.value }))} className="admin-input mt-1" placeholder="Оставьте пустым для пустой ячейки поставщика" />
                       </label>
                       <label className="text-sm text-gray-600">Canonical status
                         <select value={availabilityMappingForm.normalized_status} onChange={(event) => setAvailabilityMappingForm((current) => ({ ...current, normalized_status: event.target.value as Exclude<SupplierAvailabilityStatus, 'unknown'> }))} className="admin-input mt-1">
@@ -4500,7 +4500,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                     {availabilityMappingsLoading ? <div className="py-5 text-center text-gray-500">Загрузка...</div> : (
                       <div className="mt-4 space-y-2">{availabilityMappings.map((mapping) => (
                         <div key={mapping.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white p-3 text-sm">
-                          <div><span className="font-medium">{mapping.raw_value}</span> → {mapping.normalized_status} · {mapping.is_active ? 'активно' : 'отключено'}</div>
+                          <div><span className="font-medium">{mapping.raw_value === '' ? 'Пустая ячейка' : mapping.raw_value}</span> → {mapping.normalized_status} · {mapping.is_active ? 'активно' : 'отключено'}</div>
                           <div className="flex gap-2"><button type="button" onClick={() => setAvailabilityMappingForm({ id: mapping.id, updated_at: mapping.updated_at, raw_value: mapping.raw_value, normalized_status: mapping.normalized_status, is_active: mapping.is_active })} className="px-3 py-1.5 border rounded-lg">Изменить</button><button type="button" onClick={() => toggleAvailabilityMapping(mapping)} className="px-3 py-1.5 border rounded-lg">{mapping.is_active ? 'Отключить' : 'Включить'}</button></div>
                         </div>
                       ))}{availabilityMappings.length === 0 && <div className="text-sm text-gray-500">Правила пока не созданы.</div>}</div>

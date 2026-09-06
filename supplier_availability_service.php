@@ -31,8 +31,8 @@ function supplierAvailabilityValidateRawMapping(mixed $value): string
     }
     $value = supplierAvailabilityTrim($value);
     $controlMatch = preg_match('/[\x00-\x1F\x7F]/u', $value);
-    if ($value === '' || supplierAvailabilityTextLength($value) > 191 || $controlMatch !== 0) {
-        throw new InvalidArgumentException('Значение должно содержать от 1 до 191 символа без управляющих знаков');
+    if (supplierAvailabilityTextLength($value) > 191 || $controlMatch !== 0) {
+        throw new InvalidArgumentException('Значение должно содержать не более 191 символа без управляющих знаков');
     }
     return $value;
 }
@@ -158,14 +158,12 @@ function normalizeSupplierAvailability(
     $status = 'unknown';
     $warnings = [];
     $trimmedAvailability = $rawAvailability === null ? '' : supplierAvailabilityTrim($rawAvailability);
-    if ($trimmedAvailability !== '') {
-        $index = supplierAvailabilityIndexMappings($mappingRows);
-        $hash = hash('sha256', $trimmedAvailability);
-        if (isset($index[$hash]) && hash_equals($index[$hash]['raw_value'], $trimmedAvailability)) {
-            $status = $index[$hash]['status'];
-        } else {
-            $warnings[] = supplierAvailabilityWarning('availability_unmapped', 'Значение наличия не сопоставлено для этого профиля');
-        }
+    $index = supplierAvailabilityIndexMappings($mappingRows);
+    $hash = hash('sha256', $trimmedAvailability);
+    if (isset($index[$hash]) && hash_equals($index[$hash]['raw_value'], $trimmedAvailability)) {
+        $status = $index[$hash]['status'];
+    } elseif ($trimmedAvailability !== '') {
+        $warnings[] = supplierAvailabilityWarning('availability_unmapped', 'Значение наличия не сопоставлено для этого профиля');
     }
     $arrival = supplierAvailabilityParseDate($rawArrival, supplierAvailabilityValidateDateFormat($profile['arrival_date_format'] ?? null), $today);
     $stock = supplierAvailabilityParseStock($rawStock);
