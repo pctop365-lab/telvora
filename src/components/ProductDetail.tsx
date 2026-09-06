@@ -110,7 +110,7 @@ const productUrl =
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
           {/* Image */}
-          <div className="relative rounded-3xl overflow-hidden bg-graphite-100 dark:bg-graphite-800 border border-white/5">
+          <div className="relative self-start rounded-3xl overflow-hidden bg-graphite-100 dark:bg-graphite-800 border border-white/5">
             <div className="aspect-[4/3] relative overflow-hidden">
               <img
                 src={product.image}
