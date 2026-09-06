@@ -62,7 +62,7 @@ function productVariantIdentityResolve(PDO $pdo, array $product, array $relation
     $seen = []; $targets = []; $details = [];
     foreach ($variants as $index => $variant) {
         if (!is_array($variant)) throw new ProductVariantIdentityException('Legacy-вариант товара не является объектом');
-        $detail = productVariantIdentityCountry($weightStatement, $variant, (int)$product['id'], $allowZeroPrice);
+        $detail = productVariantIdentityCountry($weightStatement, $variant, (int)$product['id'], true);
         if (isset($seen[$detail['weight']])) throw new ProductVariantIdentityException('У товара есть дублирующиеся страны сборки');
         $seen[$detail['weight']] = true;
         $details[$index] = $detail;
@@ -71,5 +71,8 @@ function productVariantIdentityResolve(PDO $pdo, array $product, array $relation
     }
     if (count($targets) !== 1) throw new ProductVariantIdentityException('Не найдено однозначное соответствие relational и legacy-варианта');
     $target = $targets[0];
+    if (!$allowZeroPrice && $details[$target]['price_minor'] === 0) {
+        throw new ProductVariantIdentityException('Цена целевого legacy-варианта должна быть положительной');
+    }
     return ['variants' => $variants, 'target_index' => $target, 'target' => $details[$target], 'raw_hash' => hash('sha256', $raw)];
 }
