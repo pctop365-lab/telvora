@@ -91,6 +91,46 @@ type AdminProduct = {
   updated_at: string;
 };
 
+type AdminVariantDiagnosticEntry = {
+  legacy_index: number;
+  product_variant_id: number | null;
+  product_id: number;
+  country: string | null;
+  legacy_is_active: boolean | null;
+  published_price: number | string | null;
+  old_price: number | string | null;
+  identity_status: string;
+  diagnostic_code: string;
+};
+
+type AdminVariantListItem = {
+  product_variant_id: number;
+  product_id: number;
+  variant_key: string;
+  assembly_country: string | null;
+  relational_is_active: boolean;
+  legacy_is_active: boolean | null;
+  published_price: number | string | null;
+  old_price: number | string | null;
+  identity_status: string;
+  diagnostic_code: string | null;
+  diagnostics: string[];
+  identity_ready: boolean;
+  has_published_price: boolean;
+  references: { offers: number; matches: number; import_rows: number; audit: number; orders: number };
+  provenance_mismatch_count: number;
+};
+
+type AdminVariantListResponse = {
+  success: boolean;
+  product_id: number;
+  variants: AdminVariantListItem[];
+  legacy_orphans: AdminVariantDiagnosticEntry[];
+  legacy_unresolved: AdminVariantDiagnosticEntry[];
+  diagnostics: string[];
+  message?: string;
+};
+
 type Supplier = {
   id: number;
   name: string;
@@ -392,6 +432,35 @@ function formatAdminProductPrice(product: AdminProduct) {
   return publishedPrices.length > 1 ? `от ${formattedPrice}` : formattedPrice;
 }
 
+function formatPublishedVariantPrice(variant: AdminVariantListItem) {
+  const price = Number(variant.published_price);
+  return variant.identity_ready && variant.has_published_price && Number.isFinite(price) && price > 0
+    ? formatPrice(price)
+    : 'Цена не опубликована';
+}
+
+function adminVariantDiagnosticLabel(code: string) {
+  const labels: Record<string, string> = {
+    active_status_mismatch: 'Статусы relational и legacy не совпадают',
+    counterpart_identity_mismatch: 'Связь с relational-вариантом неоднозначна',
+    duplicate_legacy_country: 'Обнаружена повторяющаяся страна сборки',
+    identity_mismatch: 'Идентичность варианта не совпадает',
+    identity_invalid: 'Идентичность варианта повреждена',
+    legacy_document_invalid: 'Legacy-описание вариантов повреждено',
+    legacy_without_relational: 'Legacy-вариант не имеет relational-записи',
+    relational_without_legacy: 'Relational-вариант не имеет legacy-элемента',
+    invalid_country: 'Некорректная страна сборки',
+    invalid_legacy_fields: 'Некорректная структура legacy-варианта',
+    invalid_legacy_json: 'Некорректный JSON legacy-вариантов',
+    invalid_legacy_status: 'Некорректный статус legacy-варианта',
+    invalid_legacy_structure: 'Некорректная структура legacy-вариантов',
+    invalid_old_price: 'Некорректная старая цена',
+    invalid_published_price: 'Некорректная опубликованная цена',
+    offer_source_mismatch: 'Источник связанного предложения не подтверждён',
+  };
+  return labels[code] || `Диагностика: ${code}`;
+}
+
 function formatDate(value: string) {
   return new Date(value).toLocaleString('ru-RU', {
     day: '2-digit',
@@ -665,6 +734,20 @@ export default function AdminPage() {
     useState('Все страны');
   const [productBrandFilter, setProductBrandFilter] =
     useState('Все бренды');
+  const [variantViewProduct, setVariantViewProduct] = useState<AdminProduct | null>(null);
+  const [variantViewData, setVariantViewData] = useState<AdminVariantListResponse | null>(null);
+  const [variantViewLoading, setVariantViewLoading] = useState(false);
+  const [variantViewError, setVariantViewError] = useState('');
+  const variantViewRequestRef = useRef<AbortController | null>(null);
+  const variantViewRequestSequenceRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      variantViewRequestSequenceRef.current += 1;
+      variantViewRequestRef.current?.abort();
+      variantViewRequestRef.current = null;
+    };
+  }, []);
 
   const [showProductForm, setShowProductForm] = useState(false);
   const [editingProductId, setEditingProductId] = useState<number | null>(
@@ -807,6 +890,80 @@ const login = async (e: React.FormEvent) => {
     } finally {
       setProductsLoading(false);
     }
+  };
+
+  const loadAdminVariants = async (product: AdminProduct) => {
+    variantViewRequestRef.current?.abort();
+    const controller = new AbortController();
+    const requestSequence = variantViewRequestSequenceRef.current + 1;
+    variantViewRequestSequenceRef.current = requestSequence;
+    variantViewRequestRef.current = controller;
+
+    setVariantViewProduct(product);
+    setVariantViewData(null);
+    setVariantViewError('');
+    setVariantViewLoading(true);
+
+    try {
+      const response = await fetch(
+        `${PRODUCTS_API}?action=admin_variant_list&product_id=${encodeURIComponent(product.id)}`,
+        {
+          method: 'GET',
+          credentials: 'include',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        }
+      );
+      const data = await response.json().catch(() => null) as AdminVariantListResponse | null;
+
+      if (requestSequence !== variantViewRequestSequenceRef.current || controller.signal.aborted) {
+        return;
+      }
+
+      if (!response.ok || !data?.success) {
+        if (response.status === 401) {
+          setAuthenticated(false);
+          throw new Error('Сессия администратора завершена. Войдите снова.');
+        }
+        if (response.status === 400) throw new Error('Некорректный идентификатор товара.');
+        if (response.status === 404) throw new Error('Товар не найден.');
+        throw new Error('Не удалось загрузить варианты товара.');
+      }
+
+      setVariantViewData({
+        ...data,
+        variants: Array.isArray(data.variants) ? data.variants : [],
+        legacy_orphans: Array.isArray(data.legacy_orphans) ? data.legacy_orphans : [],
+        legacy_unresolved: Array.isArray(data.legacy_unresolved) ? data.legacy_unresolved : [],
+        diagnostics: Array.isArray(data.diagnostics) ? data.diagnostics : [],
+      });
+    } catch (error) {
+      if (
+        requestSequence !== variantViewRequestSequenceRef.current ||
+        controller.signal.aborted ||
+        (error instanceof DOMException && error.name === 'AbortError')
+      ) {
+        return;
+      }
+      setVariantViewError(
+        error instanceof Error ? error.message : 'Не удалось загрузить варианты товара.'
+      );
+    } finally {
+      if (requestSequence === variantViewRequestSequenceRef.current) {
+        variantViewRequestRef.current = null;
+        setVariantViewLoading(false);
+      }
+    }
+  };
+
+  const closeAdminVariants = () => {
+    variantViewRequestSequenceRef.current += 1;
+    variantViewRequestRef.current?.abort();
+    variantViewRequestRef.current = null;
+    setVariantViewProduct(null);
+    setVariantViewData(null);
+    setVariantViewError('');
+    setVariantViewLoading(false);
   };
 
   const loadSuppliers = async () => {
@@ -3495,12 +3652,13 @@ const toggleProductStatus = async (product: AdminProduct) => {
                               <div className="flex items-center justify-end gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => setError('Изменение идентичности вариантов временно недоступно после перехода на supplier variant architecture.')}
-                                  className="p-2 rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 transition"
-                                  title="Изменение идентичности вариантов временно недоступно после перехода на supplier variant architecture."
-                                  aria-label="Изменение вариантов временно недоступно"
+                                  onClick={() => loadAdminVariants(product)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-2 text-xs font-medium text-gray-600 transition hover:bg-gray-50"
+                                  title="Просмотреть варианты"
+                                  aria-label={`Просмотреть варианты товара ${product.name}`}
                                 >
                                   <Package className="w-4 h-4" />
+                                  <span>Варианты</span>
                                 </button>
 
                                 <button
@@ -4768,6 +4926,112 @@ const toggleProductStatus = async (product: AdminProduct) => {
           </>
         )}
       </div>
+
+      {variantViewProduct && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 p-3 backdrop-blur-md sm:p-6">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-variant-view-title"
+            className="mx-auto flex min-h-[calc(100vh-1.5rem)] max-w-5xl items-center sm:min-h-[calc(100vh-3rem)]"
+          >
+            <div className="w-full overflow-hidden rounded-2xl border border-white/10 bg-graphite-950 text-white shadow-2xl">
+              <div className="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4 sm:px-7">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-accent-400">Только просмотр</div>
+                  <h2 id="admin-variant-view-title" className="mt-1 text-xl font-bold">Варианты товара</h2>
+                  <p className="mt-1 text-sm text-graphite-400">{variantViewProduct.name} · товар #{variantViewProduct.id}</p>
+                </div>
+                <button type="button" onClick={closeAdminVariants} aria-label="Закрыть просмотр вариантов" className="rounded-lg border border-white/15 p-2 text-graphite-300 transition hover:bg-white/10 hover:text-white">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="max-h-[calc(100vh-10rem)] overflow-y-auto px-5 py-5 sm:px-7">
+                {variantViewLoading && (
+                  <div className="flex min-h-48 items-center justify-center gap-3 text-graphite-300" role="status">
+                    <RefreshCw className="h-5 w-5 animate-spin" /> Загрузка вариантов…
+                  </div>
+                )}
+
+                {!variantViewLoading && variantViewError && (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-5">
+                    <div className="font-semibold text-red-200">{variantViewError}</div>
+                    <button type="button" onClick={() => loadAdminVariants(variantViewProduct)} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-red-300/30 px-3 py-2 text-sm text-red-100 transition hover:bg-red-500/10">
+                      <RefreshCw className="h-4 w-4" /> Повторить
+                    </button>
+                  </div>
+                )}
+
+                {!variantViewLoading && !variantViewError && variantViewData && (
+                  <div className="space-y-5">
+                    {variantViewData.diagnostics.length > 0 && (
+                      <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4">
+                        <div className="font-semibold text-amber-200">Общие предупреждения</div>
+                        <ul className="mt-2 space-y-1 text-sm text-amber-100">
+                          {variantViewData.diagnostics.map((code) => <li key={code}>• {adminVariantDiagnosticLabel(code)} <span className="text-amber-300/70">({code})</span></li>)}
+                        </ul>
+                      </div>
+                    )}
+
+                    {variantViewData.variants.length === 0 && variantViewData.legacy_orphans.length === 0 && variantViewData.legacy_unresolved.length === 0 && (
+                      <div className="rounded-xl border border-dashed border-white/15 p-8 text-center text-graphite-400">Варианты для этого товара не найдены.</div>
+                    )}
+
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {variantViewData.variants.map((variant) => (
+                        <article key={variant.product_variant_id} className="rounded-xl border border-white/10 bg-white/5 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <h3 className="font-semibold">{variant.assembly_country || 'Страна не указана'}</h3>
+                              <div className="mt-1 font-mono text-xs text-graphite-400">product_variant_id: {variant.product_variant_id}</div>
+                            </div>
+                            <span className={`rounded-full border px-2.5 py-1 text-xs ${variant.relational_is_active ? 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200' : 'border-gray-400/30 bg-gray-400/10 text-gray-300'}`}>
+                              {variant.relational_is_active ? 'Активен' : 'Отключён'}
+                            </span>
+                          </div>
+                          <div className={`mt-4 text-lg font-bold ${variant.identity_ready && variant.has_published_price ? 'text-white' : 'text-graphite-300'}`}>{formatPublishedVariantPrice(variant)}</div>
+                          <dl className="mt-4 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                            <div><dt className="text-graphite-400">Relational-статус</dt><dd>{variant.relational_is_active ? 'Активен' : 'Отключён'}</dd></div>
+                            <div><dt className="text-graphite-400">Legacy-статус</dt><dd>{variant.legacy_is_active === null ? 'Не определён' : variant.legacy_is_active ? 'Активен' : 'Отключён'}</dd></div>
+                            <div><dt className="text-graphite-400">Identity согласована</dt><dd>{variant.identity_ready ? 'Да' : 'Нет'}</dd></div>
+                            <div><dt className="text-graphite-400">Есть опубликованная цена</dt><dd>{variant.has_published_price ? 'Да' : 'Нет'}</dd></div>
+                          </dl>
+                          {(variant.diagnostics.length > 0 || variant.diagnostic_code) && (
+                            <div className="mt-4 rounded-lg border border-amber-400/25 bg-amber-400/10 p-3 text-sm text-amber-100">
+                              {[...new Set([...(variant.diagnostics || []), variant.diagnostic_code].filter((code): code is string => Boolean(code)))].map((code) => <div key={code}>{adminVariantDiagnosticLabel(code)} <span className="text-amber-300/70">({code})</span></div>)}
+                            </div>
+                          )}
+                          <details className="mt-4 text-sm">
+                            <summary className="cursor-pointer text-graphite-300">Технические связи</summary>
+                            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-graphite-300 sm:grid-cols-5">
+                              <div>Offers: {variant.references.offers}</div><div>Matches: {variant.references.matches}</div><div>Import rows: {variant.references.import_rows}</div><div>Audit: {variant.references.audit}</div><div>Orders: {variant.references.orders}</div>
+                            </div>
+                          </details>
+                        </article>
+                      ))}
+                    </div>
+
+                    {([['Legacy без relational', variantViewData.legacy_orphans], ['Неоднозначные legacy-элементы', variantViewData.legacy_unresolved]] as const).map(([title, entries]) => entries.length > 0 && (
+                      <section key={title} className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4">
+                        <h3 className="font-semibold text-amber-200">{title}</h3>
+                        <div className="mt-3 space-y-2">
+                          {entries.map((entry) => (
+                            <div key={`${title}-${entry.legacy_index}`} className="rounded-lg border border-amber-300/20 bg-black/10 p-3 text-sm text-amber-50">
+                              <div className="font-medium">{entry.country || 'Страна не определена'} · legacy index {entry.legacy_index}</div>
+                              <div className="mt-1">{adminVariantDiagnosticLabel(entry.diagnostic_code)} <span className="text-amber-300/70">({entry.diagnostic_code})</span></div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showProductForm && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 p-3 backdrop-blur-md sm:p-6">
