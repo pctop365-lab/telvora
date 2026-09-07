@@ -14,12 +14,17 @@ function storefrontAvailabilityResolve(array $offers, int $quantity, ?DateTimeIm
         if (!is_array($offer) || !in_array($offer['availability_status'] ?? null, STOREFRONT_AVAILABILITY_STATUSES, true)) continue;
         if (array_key_exists('offer_active', $offer) && !(bool)$offer['offer_active']) continue;
         if (array_key_exists('supplier_active', $offer) && !(bool)$offer['supplier_active']) continue;
-        $source = $offer['effective_source_at'] ?? null;
-        if (!is_string($source) || $source === '') continue;
-        try { $sourceAt = new DateTimeImmutable($source); } catch (Throwable) { continue; }
-        $age = $now->getTimestamp() - $sourceAt->getTimestamp();
+        $sourceEpoch = $offer['effective_source_epoch'] ?? null;
+        if (is_int($sourceEpoch) || (is_string($sourceEpoch) && preg_match('/\A\d+\z/D', $sourceEpoch) === 1)) {
+            $sourceTimestamp = (int)$sourceEpoch;
+        } else {
+            $source = $offer['effective_source_at'] ?? null;
+            if (!is_string($source) || $source === '') continue;
+            try { $sourceTimestamp = (new DateTimeImmutable($source))->getTimestamp(); } catch (Throwable) { continue; }
+        }
+        $age = $now->getTimestamp() - $sourceTimestamp;
         if ($age < 0 || $age > STOREFRONT_AVAILABILITY_TTL_SECONDS) continue;
-        $offer['_source_ts'] = $sourceAt->getTimestamp();
+        $offer['_source_ts'] = $sourceTimestamp;
         $fresh[] = $offer;
     }
     $qualifying = array_values(array_filter($fresh, static function (array $offer) use ($quantity): bool {
@@ -64,6 +69,7 @@ function storefrontAvailabilityLoadOffers(PDO $pdo, array $variantIds, bool $loc
     $sql = "SELECT o.id AS offer_id, o.product_variant_id, o.availability_status,
                    o.stock_quantity, o.expected_arrival_at,
                    COALESCE(o.source_updated_at, o.imported_at) AS effective_source_at,
+                   UNIX_TIMESTAMP(COALESCE(o.source_updated_at, o.imported_at)) AS effective_source_epoch,
                    o.is_active AS offer_active, s.is_active AS supplier_active
             FROM supplier_offers o INNER JOIN suppliers s ON s.id = o.supplier_id
             WHERE o.product_variant_id IN ($placeholders)
@@ -74,6 +80,8 @@ function storefrontAvailabilityLoadOffers(PDO $pdo, array $variantIds, bool $loc
         $row['offer_id'] = (int)$row['offer_id'];
         $row['product_variant_id'] = (int)$row['product_variant_id'];
         $row['stock_quantity'] = $row['stock_quantity'] === null ? null : (int)$row['stock_quantity'];
+        $row['effective_source_epoch'] = $row['effective_source_epoch'] === null
+            ? null : (int)$row['effective_source_epoch'];
         $grouped[$row['product_variant_id']][] = $row;
     }
     return $grouped;

@@ -183,14 +183,16 @@ function pricePublicationContext(PDO $pdo, int $offerId, bool $lock): array
                 INNER JOIN supplier_import_jobs j ON j.id = r.import_job_id
                 WHERE j.supplier_id = :supplier_id
                   AND r.supplier_sku = :supplier_sku
-                  AND (j.created_at > :created_at OR (j.created_at = :created_at AND j.id > :job_id))
+                  AND (j.created_at > :created_at_after OR
+                       (j.created_at = :created_at_equal AND j.id > :job_id))
                 ORDER BY j.created_at DESC, j.id DESC, r.id DESC
                 LIMIT 1" . ($lock ? ' FOR UPDATE' : '')
             );
             $newerStmt->execute([
                 ':supplier_id' => $offer['supplier_id'],
                 ':supplier_sku' => $offer['supplier_sku'],
-                ':created_at' => $sourceJob['created_at'],
+                ':created_at_after' => $sourceJob['created_at'],
+                ':created_at_equal' => $sourceJob['created_at'],
                 ':job_id' => $sourceJob['id']
             ]);
             if ($newerStmt->fetchColumn() !== false) {

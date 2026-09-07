@@ -26,6 +26,10 @@ $assert('expected', storefrontAvailabilityResolve([$offer(6, 'expected', null, '
 $assert('all out', storefrontAvailabilityResolve([$offer(7, 'out_of_stock', null, '2026-09-03 11:00:00')], 1, $now), 'out_of_stock', false);
 $assert('no offers', storefrontAvailabilityResolve([], 1, $now), 'unknown', false);
 $assert('stale in stock', storefrontAvailabilityResolve([$offer(8, 'in_stock', null, '2026-09-02 11:59:59')], 1, $now), 'unknown', false);
+$assert('database epoch is timezone independent', storefrontAvailabilityResolve([array_merge(
+    $offer(14, 'in_stock', null, '2099-01-01 00:00:00'),
+    ['effective_source_epoch' => (new DateTimeImmutable('2026-09-03 11:00:00'))->getTimestamp()]
+)], 1, $now), 'in_stock', true, 14);
 $assert('variant isolation first', storefrontAvailabilityResolve([$offer(9, 'out_of_stock', null, '2026-09-03 11:00:00')], 1, $now), 'out_of_stock', false);
 $assert('variant isolation second', storefrontAvailabilityResolve([$offer(10, 'in_stock', null, '2026-09-03 11:00:00')], 1, $now), 'in_stock', true, 10);
 $assert('purchase price independent A', storefrontAvailabilityResolve([$offer(11, 'out_of_stock', null, '2026-09-03 11:00:00', null, '1.00'), $offer(12, 'in_stock', null, '2026-09-03 10:00:00', null, '999.00')], 1, $now), 'in_stock', true, 12);
