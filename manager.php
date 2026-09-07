@@ -3,6 +3,7 @@
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
 define('TELVORA_MANAGER_REQUEST', true);
+require_once __DIR__ . '/runtime_config.php';
 
 session_set_cookie_params([
     'lifetime' => 0,
@@ -39,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
  * ВРЕМЕННЫЙ пароль администратора.
  * Потом обязательно заменим его на более безопасную авторизацию.
  */
-$secretsFile = dirname(__DIR__, 2) . '/telvora_runtime/telvora_secrets.php';
+$secretsFile = telvoraSecretsFile();
 
 if (!is_file($secretsFile) || !is_readable($secretsFile)) {
     http_response_code(500);
@@ -85,8 +86,7 @@ try {
 
 function adminLoginRateLimitFile(): string
 {
-    return dirname(__DIR__, 2)
-        . '/telvora_runtime/admin_login_rate_limit.json';
+    return telvoraRuntimeFile('admin_login_rate_limit.json');
 }
 
 function processAdminLoginAttempt(

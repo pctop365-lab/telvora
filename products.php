@@ -10,7 +10,11 @@ session_set_cookie_params([
 
 session_start();
 
+require_once __DIR__ . '/runtime_config.php';
+
 require_once __DIR__ . '/product_variant_identity_service.php';
+require_once __DIR__ . '/product_activation_service.php';
+require_once __DIR__ . '/product_variant_mutation_service.php';
 require_once __DIR__ . '/storefront_availability_service.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -41,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 |--------------------------------------------------------------------------
 */
 
-$secretsFile = dirname(__DIR__, 2) . '/telvora_runtime/telvora_secrets.php';
+$secretsFile = telvoraSecretsFile();
 
 if (!is_file($secretsFile) || !is_readable($secretsFile)) {
     http_response_code(500);
@@ -314,7 +318,7 @@ if (empty($_SESSION['telvora_admin'])) {
 |--------------------------------------------------------------------------
 */
 
-if (in_array($action, ['upload_image', 'add', 'update', 'delete'], true)) {
+if (in_array($action, ['upload_image', 'add', 'update', 'delete', 'variant_add', 'variant_set_active'], true)) {
     $sessionToken = $_SESSION['csrf_token'] ?? '';
     $requestToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 
@@ -330,6 +334,35 @@ if (in_array($action, ['upload_image', 'add', 'update', 'delete'], true)) {
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
+}
+
+if ($action === 'variant_add' || $action === 'variant_set_active') {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['success'=>false,'message'=>'Метод не поддерживается'],JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $productId=productVariantMutationPositiveId($data['product_id'] ?? null);
+    $variantId=productVariantMutationPositiveId($data['product_variant_id'] ?? null);
+    try {
+        if ($action === 'variant_add') {
+            if ($productId===null) throw new ProductVariantMutationException(400,'Некорректный ID товара');
+            $result=productVariantAdd($pdo,$productId,$data['assembly_country'] ?? null);
+        } else {
+            if ($variantId===null) throw new ProductVariantMutationException(400,'Некорректный ID варианта');
+            $active=$data['is_active'] ?? null;
+            if (!is_bool($active)) throw new ProductVariantMutationException(400,'Некорректный статус варианта');
+            $result=productVariantSetActive($pdo,$variantId,$active);
+        }
+        echo json_encode(['success'=>true]+$result,JSON_UNESCAPED_UNICODE);
+    } catch (ProductVariantMutationException $error) {
+        http_response_code($error->httpStatus);
+        echo json_encode(['success'=>false,'message'=>$error->getMessage()],JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $error) {
+        http_response_code(500);
+        echo json_encode(['success'=>false,'message'=>'Не удалось изменить вариант товара'],JSON_UNESCAPED_UNICODE);
+    }
+    exit;
 }
 
 if ($action === 'upload_image') {
@@ -878,57 +911,6 @@ if ($action === 'update') {
         $data['is_active'] = $requestedIsActive ? 1 : 0;
     }
 
-    if ($requestedIsActive === true) {
-        $currentProductStmt = $pdo->prepare('
-            SELECT id, is_active, variants
-            FROM products
-            WHERE id = :id
-            LIMIT 1
-        ');
-        $currentProductStmt->execute([':id' => $id]);
-        $currentProduct = $currentProductStmt->fetch();
-
-        if (!$currentProduct) {
-            http_response_code(404);
-            echo json_encode(['success' => false, 'message' => 'Товар не найден'], JSON_UNESCAPED_UNICODE);
-            exit;
-        }
-
-        if ((int)$currentProduct['is_active'] === 0) {
-            $variantStmt = $pdo->prepare('
-                SELECT id, product_id, variant_key, assembly_country, display_name, is_active
-                FROM product_variants
-                WHERE product_id = :product_id AND is_active = 1
-                ORDER BY id ASC
-            ');
-            $variantStmt->execute([':product_id' => $id]);
-
-            $hasReadyVariant = false;
-            foreach ($variantStmt->fetchAll() as $relationalVariant) {
-                try {
-                    $identity = productVariantIdentityResolve($pdo, $currentProduct, $relationalVariant);
-                } catch (ProductVariantIdentityException) {
-                    continue;
-                }
-
-                if ($identity['target']['is_active'] === true && $identity['target']['price_minor'] > 0) {
-                    $hasReadyVariant = true;
-                    break;
-                }
-            }
-
-            if (!$hasReadyVariant) {
-                http_response_code(409);
-                echo json_encode([
-                    'success' => false,
-                    'message' => 'Товар нельзя активировать: сначала настройте вариант и опубликуйте положительную розничную цену.'
-                ], JSON_UNESCAPED_UNICODE);
-                exit;
-            }
-        }
-    }
-
-
     $fields = [];
 
     $params = [
@@ -1060,13 +1042,23 @@ if ($action === 'update') {
 
     try {
 
-        $stmt = $pdo->prepare("
-            UPDATE products
-            SET " . implode(', ', $fields) . "
-            WHERE id = :id
-        ");
-
-        $stmt->execute($params);
+        if ($requestedIsActive === true) {
+            productActivationRun($pdo, $id, static function () use ($pdo, $fields, $params): void {
+                $stmt = $pdo->prepare("
+                    UPDATE products
+                    SET " . implode(', ', $fields) . "
+                    WHERE id = :id
+                ");
+                $stmt->execute($params);
+            });
+        } else {
+            $stmt = $pdo->prepare("
+                UPDATE products
+                SET " . implode(', ', $fields) . "
+                WHERE id = :id
+            ");
+            $stmt->execute($params);
+        }
 
 
         echo json_encode([
@@ -1076,6 +1068,11 @@ if ($action === 'update') {
             'message' => 'Товар изменён'
 
         ], JSON_UNESCAPED_UNICODE);
+
+    } catch (ProductActivationException $e) {
+
+        http_response_code($e->httpStatus);
+        echo json_encode(['success' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
 
     } catch (PDOException $e) {
 
@@ -1088,6 +1085,14 @@ if ($action === 'update') {
             'message' =>
                 'Не удалось изменить товар'
 
+        ], JSON_UNESCAPED_UNICODE);
+
+    } catch (Throwable $e) {
+
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Не удалось изменить товар'
         ], JSON_UNESCAPED_UNICODE);
     }
 

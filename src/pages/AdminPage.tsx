@@ -17,6 +17,7 @@ import {
   Sun,
   Moon,
 } from 'lucide-react';
+import { canStartVariantMutation, isCurrentVariantMutation, isVariantDraft, shouldConfirmVariantDisable, variantMutationErrorMessage, type VariantMutationAction } from './adminVariantManagement';
 
 type Spec = {
   label: string;
@@ -738,14 +739,25 @@ export default function AdminPage() {
   const [variantViewData, setVariantViewData] = useState<AdminVariantListResponse | null>(null);
   const [variantViewLoading, setVariantViewLoading] = useState(false);
   const [variantViewError, setVariantViewError] = useState('');
+  const [variantCountry, setVariantCountry] = useState('');
+  const [variantMutationError, setVariantMutationError] = useState('');
+  const [variantMutationNotice, setVariantMutationNotice] = useState('');
+  const [variantMutationPendingKey, setVariantMutationPendingKey] = useState<string | null>(null);
   const variantViewRequestRef = useRef<AbortController | null>(null);
   const variantViewRequestSequenceRef = useRef(0);
+  const variantMutationRequestRef = useRef<AbortController | null>(null);
+  const variantMutationRequestSequenceRef = useRef(0);
+  const variantMutationPendingRef = useRef(false);
 
   useEffect(() => {
     return () => {
       variantViewRequestSequenceRef.current += 1;
       variantViewRequestRef.current?.abort();
       variantViewRequestRef.current = null;
+      variantMutationRequestSequenceRef.current += 1;
+      variantMutationRequestRef.current?.abort();
+      variantMutationRequestRef.current = null;
+      variantMutationPendingRef.current = false;
     };
   }, []);
 
@@ -892,7 +904,17 @@ const login = async (e: React.FormEvent) => {
     }
   };
 
-  const loadAdminVariants = async (product: AdminProduct) => {
+  const loadAdminVariants = async (product: AdminProduct, mode: 'open' | 'refresh' = 'open'): Promise<boolean> => {
+    if (mode === 'open') {
+      variantMutationRequestSequenceRef.current += 1;
+      variantMutationRequestRef.current?.abort();
+      variantMutationRequestRef.current = null;
+      variantMutationPendingRef.current = false;
+      setVariantMutationPendingKey(null);
+      setVariantMutationError('');
+      setVariantMutationNotice('');
+      setVariantCountry('');
+    }
     variantViewRequestRef.current?.abort();
     const controller = new AbortController();
     const requestSequence = variantViewRequestSequenceRef.current + 1;
@@ -917,7 +939,7 @@ const login = async (e: React.FormEvent) => {
       const data = await response.json().catch(() => null) as AdminVariantListResponse | null;
 
       if (requestSequence !== variantViewRequestSequenceRef.current || controller.signal.aborted) {
-        return;
+        return false;
       }
 
       if (!response.ok || !data?.success) {
@@ -937,17 +959,19 @@ const login = async (e: React.FormEvent) => {
         legacy_unresolved: Array.isArray(data.legacy_unresolved) ? data.legacy_unresolved : [],
         diagnostics: Array.isArray(data.diagnostics) ? data.diagnostics : [],
       });
+      return true;
     } catch (error) {
       if (
         requestSequence !== variantViewRequestSequenceRef.current ||
         controller.signal.aborted ||
         (error instanceof DOMException && error.name === 'AbortError')
       ) {
-        return;
+        return false;
       }
       setVariantViewError(
         error instanceof Error ? error.message : 'Не удалось загрузить варианты товара.'
       );
+      return false;
     } finally {
       if (requestSequence === variantViewRequestSequenceRef.current) {
         variantViewRequestRef.current = null;
@@ -956,14 +980,82 @@ const login = async (e: React.FormEvent) => {
     }
   };
 
+  const mutateAdminVariant = async (
+    product: AdminProduct,
+    action: VariantMutationAction,
+    payload: Record<string, unknown>,
+    pendingKey: string
+  ) => {
+    if (!canStartVariantMutation(variantMutationPendingRef.current, variantViewProduct?.id ?? null, product.id)) return;
+    variantMutationPendingRef.current = true;
+    const controller = new AbortController();
+    const requestSequence = variantMutationRequestSequenceRef.current + 1;
+    variantMutationRequestSequenceRef.current = requestSequence;
+    variantMutationRequestRef.current = controller;
+    setVariantMutationPendingKey(pendingKey);
+    setVariantMutationError('');
+    setVariantMutationNotice('');
+
+    let shouldRefresh = false;
+    try {
+      const response = await fetch(PRODUCTS_API, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-Token': csrfToken || '' },
+        body: JSON.stringify({ action: action === 'add' ? 'variant_add' : 'variant_set_active', ...payload }),
+        signal: controller.signal,
+      });
+      const data = await response.json().catch(() => null) as { success?: boolean } | null;
+      if (!isCurrentVariantMutation(requestSequence, variantMutationRequestSequenceRef.current, controller.signal.aborted)) return;
+      shouldRefresh = !response.ok || !data?.success;
+      if (!response.ok || !data?.success) {
+        if (response.status === 401) {
+          setAuthenticated(false);
+          setCsrfToken(null);
+        }
+        setVariantMutationError(variantMutationErrorMessage(response.status, action));
+        return;
+      }
+      const refreshed = await loadAdminVariants(product, 'refresh');
+      if (!isCurrentVariantMutation(requestSequence, variantMutationRequestSequenceRef.current, controller.signal.aborted)) return;
+      if (refreshed) {
+        setVariantCountry('');
+        setVariantMutationNotice(action === 'add' ? 'Вариант добавлен как черновик. Цена ещё не опубликована.' : 'Статус варианта обновлён.');
+      } else {
+        setVariantMutationError('Изменение принято сервером, но подтвердить новое состояние не удалось. Повторите загрузку списка.');
+      }
+    } catch (error) {
+      if (!isCurrentVariantMutation(requestSequence, variantMutationRequestSequenceRef.current, controller.signal.aborted) || (error instanceof DOMException && error.name === 'AbortError')) return;
+      shouldRefresh = true;
+      setVariantMutationError('Результат запроса неизвестен из-за ошибки сети. Состояние перечитывается с сервера; не отправляйте добавление повторно до проверки списка.');
+    } finally {
+      if (shouldRefresh && isCurrentVariantMutation(requestSequence, variantMutationRequestSequenceRef.current, controller.signal.aborted)) {
+        await loadAdminVariants(product, 'refresh');
+      }
+      if (isCurrentVariantMutation(requestSequence, variantMutationRequestSequenceRef.current, controller.signal.aborted)) {
+        variantMutationRequestRef.current = null;
+        variantMutationPendingRef.current = false;
+        setVariantMutationPendingKey(null);
+      }
+    }
+  };
+
   const closeAdminVariants = () => {
     variantViewRequestSequenceRef.current += 1;
     variantViewRequestRef.current?.abort();
     variantViewRequestRef.current = null;
+    variantMutationRequestSequenceRef.current += 1;
+    variantMutationRequestRef.current?.abort();
+    variantMutationRequestRef.current = null;
+    variantMutationPendingRef.current = false;
     setVariantViewProduct(null);
     setVariantViewData(null);
     setVariantViewError('');
     setVariantViewLoading(false);
+    setVariantMutationPendingKey(null);
+    setVariantMutationError('');
+    setVariantMutationNotice('');
+    setVariantCountry('');
   };
 
   const loadSuppliers = async () => {
@@ -4938,7 +5030,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
             <div className="w-full overflow-hidden rounded-2xl border border-white/10 bg-graphite-950 text-white shadow-2xl">
               <div className="flex items-start justify-between gap-4 border-b border-white/10 px-5 py-4 sm:px-7">
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-wider text-accent-400">Только просмотр</div>
+                  <div className="text-xs font-semibold uppercase tracking-wider text-accent-400">Управление вариантами</div>
                   <h2 id="admin-variant-view-title" className="mt-1 text-xl font-bold">Варианты товара</h2>
                   <p className="mt-1 text-sm text-graphite-400">{variantViewProduct.name} · товар #{variantViewProduct.id}</p>
                 </div>
@@ -4965,6 +5057,43 @@ const toggleProductStatus = async (product: AdminProduct) => {
 
                 {!variantViewLoading && !variantViewError && variantViewData && (
                   <div className="space-y-5">
+                    <section className="rounded-xl border border-white/10 bg-white/5 p-4">
+                      <form
+                        className="flex flex-col gap-3 sm:flex-row sm:items-end"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          const country = variantCountry.trim();
+                          if (!country || variantMutationPendingRef.current) return;
+                          void mutateAdminVariant(variantViewProduct, 'add', { product_id: variantViewProduct.id, assembly_country: country }, `add:${variantViewProduct.id}`);
+                        }}
+                      >
+                        <label className="flex-1 text-sm text-graphite-300">
+                          Новая страна сборки
+                          <input
+                            value={variantCountry}
+                            onChange={(event) => setVariantCountry(event.target.value)}
+                            disabled={variantMutationPendingKey !== null}
+                            maxLength={120}
+                            autoComplete="off"
+                            className="mt-2 w-full rounded-lg border border-white/15 bg-graphite-900 px-3 py-2.5 text-white outline-none transition placeholder:text-graphite-500 focus:border-accent-500"
+                            placeholder="Например, Россия"
+                          />
+                        </label>
+                        <button
+                          type="submit"
+                          disabled={!variantCountry.trim() || variantMutationPendingKey !== null}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg bg-accent-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {variantMutationPendingKey?.startsWith('add:') ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                          Добавить вариант
+                        </button>
+                      </form>
+                      <p className="mt-3 text-xs leading-5 text-graphite-400">Новый вариант создаётся активным черновиком с нулевой ценой. Товар автоматически не активируется; цену и identity здесь изменить нельзя.</p>
+                    </section>
+
+                    {variantMutationNotice && <div role="status" className="rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-4 text-sm text-emerald-100">{variantMutationNotice}</div>}
+                    {variantMutationError && <div role="alert" className="rounded-xl border border-red-400/30 bg-red-400/10 p-4 text-sm text-red-100">{variantMutationError}</div>}
+
                     {variantViewData.diagnostics.length > 0 && (
                       <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4">
                         <div className="font-semibold text-amber-200">Общие предупреждения</div>
@@ -4991,6 +5120,9 @@ const toggleProductStatus = async (product: AdminProduct) => {
                             </span>
                           </div>
                           <div className={`mt-4 text-lg font-bold ${variant.identity_ready && variant.has_published_price ? 'text-white' : 'text-graphite-300'}`}>{formatPublishedVariantPrice(variant)}</div>
+                          {isVariantDraft(variant.identity_ready, variant.has_published_price) && (
+                            <div className="mt-2 rounded-lg border border-sky-400/25 bg-sky-400/10 px-3 py-2 text-xs leading-5 text-sky-100">Черновик: identity согласована, но цена не опубликована. Это не означает доступность к продаже.</div>
+                          )}
                           <dl className="mt-4 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                             <div><dt className="text-graphite-400">Relational-статус</dt><dd>{variant.relational_is_active ? 'Активен' : 'Отключён'}</dd></div>
                             <div><dt className="text-graphite-400">Legacy-статус</dt><dd>{variant.legacy_is_active === null ? 'Не определён' : variant.legacy_is_active ? 'Активен' : 'Отключён'}</dd></div>
@@ -5002,6 +5134,27 @@ const toggleProductStatus = async (product: AdminProduct) => {
                               {[...new Set([...(variant.diagnostics || []), variant.diagnostic_code].filter((code): code is string => Boolean(code)))].map((code) => <div key={code}>{adminVariantDiagnosticLabel(code)} <span className="text-amber-300/70">({code})</span></div>)}
                             </div>
                           )}
+                          <div className="mt-4 border-t border-white/10 pt-4">
+                            <button
+                              type="button"
+                              disabled={!variant.identity_ready || variantMutationPendingKey !== null}
+                              onClick={() => {
+                                const nextActive = !variant.relational_is_active;
+                                if (shouldConfirmVariantDisable(variant.relational_is_active, nextActive) && !window.confirm(`Отключить вариант «${variant.assembly_country || `#${variant.product_variant_id}`}»?`)) return;
+                                void mutateAdminVariant(
+                                  variantViewProduct,
+                                  'set_active',
+                                  { product_variant_id: variant.product_variant_id, is_active: nextActive },
+                                  `active:${variant.product_variant_id}`
+                                );
+                              }}
+                              className={`inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-40 ${variant.relational_is_active ? 'border-red-300/25 text-red-100 hover:bg-red-500/10' : 'border-emerald-300/25 text-emerald-100 hover:bg-emerald-500/10'}`}
+                            >
+                              {variantMutationPendingKey === `active:${variant.product_variant_id}` && <RefreshCw className="h-4 w-4 animate-spin" />}
+                              {variant.relational_is_active ? 'Отключить вариант' : 'Включить вариант'}
+                            </button>
+                            {!variant.identity_ready && <p className="mt-2 text-xs text-amber-200">Управление отключено: сначала требуется отдельная диагностика identity.</p>}
+                          </div>
                           <details className="mt-4 text-sm">
                             <summary className="cursor-pointer text-graphite-300">Технические связи</summary>
                             <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-graphite-300 sm:grid-cols-5">
