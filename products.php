@@ -425,6 +425,57 @@ if ($action === 'upload_image') {
 
 /*
 |--------------------------------------------------------------------------
+| ADMIN VARIANT LIST
+|--------------------------------------------------------------------------
+*/
+
+if ($action === 'admin_variant_list') {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
+        http_response_code(405);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Метод не поддерживается'
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    require_once __DIR__ . '/admin_variant_list_service.php';
+    $productId = adminVariantListProductId($_GET['product_id'] ?? null);
+    if ($productId === null) {
+        http_response_code(400);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Некорректный ID товара'
+        ], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    try {
+        $result = adminVariantListFetch($pdo, $productId);
+        if ($result === null) {
+            http_response_code(404);
+            echo json_encode([
+                'success' => false,
+                'message' => 'Товар не найден'
+            ], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        echo json_encode(['success' => true] + $result, JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $error) {
+        error_log('admin variant list failed: ' . $error->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Не удалось получить варианты товара'
+        ], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
+
+/*
+|--------------------------------------------------------------------------
 | ADMIN PRODUCT LIST
 |--------------------------------------------------------------------------
 */
