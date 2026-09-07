@@ -377,6 +377,21 @@ function formatPrice(value: string | number) {
   return new Intl.NumberFormat('ru-RU').format(Number(value)) + ' ₽';
 }
 
+function formatAdminProductPrice(product: AdminProduct) {
+  const publishedPrices = (product.variants || [])
+    .filter((variant) => variant.is_active !== false)
+    .map((variant) => Number(variant.price))
+    .filter((price) => Number.isFinite(price) && price > 0);
+
+  if (publishedPrices.length === 0) {
+    return 'Цена не опубликована';
+  }
+
+  const formattedPrice = formatPrice(Math.min(...publishedPrices));
+
+  return publishedPrices.length > 1 ? `от ${formattedPrice}` : formattedPrice;
+}
+
 function formatDate(value: string) {
   return new Date(value).toLocaleString('ru-RU', {
     day: '2-digit',
@@ -3448,14 +3463,8 @@ const toggleProductStatus = async (product: AdminProduct) => {
 
                             <td className="px-5 py-4">
                               <div className="text-sm font-semibold text-graphite-900">
-                                {formatPrice(product.price)}
+                                {formatAdminProductPrice(product)}
                               </div>
-
-                              {product.old_price !== null && (
-                                <div className="text-xs text-gray-400 line-through mt-1">
-                                  {formatPrice(product.old_price)}
-                                </div>
-                              )}
                             </td>
 
                             <td className="px-5 py-4">
