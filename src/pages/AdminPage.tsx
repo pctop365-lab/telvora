@@ -113,6 +113,10 @@ type AdminVariantListItem = {
   legacy_is_active: boolean | null;
   published_price: number | string | null;
   old_price: number | string | null;
+  automatic_price: number | string | null;
+  automatic_old_price: number | string | null;
+  price_source: 'automatic' | 'manual' | null;
+  minimum_purchase_price: number | null;
   identity_status: string;
   diagnostic_code: string | null;
   diagnostics: string[];
@@ -743,6 +747,7 @@ export default function AdminPage() {
   const [variantMutationError, setVariantMutationError] = useState('');
   const [variantMutationNotice, setVariantMutationNotice] = useState('');
   const [variantMutationPendingKey, setVariantMutationPendingKey] = useState<string | null>(null);
+  const [variantPriceDrafts, setVariantPriceDrafts] = useState<Record<number, { price: string; oldPrice: string }>>({});
   const variantViewRequestRef = useRef<AbortController | null>(null);
   const variantViewRequestSequenceRef = useRef(0);
   const variantMutationRequestRef = useRef<AbortController | null>(null);
@@ -914,6 +919,7 @@ const login = async (e: React.FormEvent) => {
       setVariantMutationError('');
       setVariantMutationNotice('');
       setVariantCountry('');
+      setVariantPriceDrafts({});
     }
     variantViewRequestRef.current?.abort();
     const controller = new AbortController();
@@ -959,6 +965,10 @@ const login = async (e: React.FormEvent) => {
         legacy_unresolved: Array.isArray(data.legacy_unresolved) ? data.legacy_unresolved : [],
         diagnostics: Array.isArray(data.diagnostics) ? data.diagnostics : [],
       });
+      setVariantPriceDrafts(Object.fromEntries((Array.isArray(data.variants) ? data.variants : []).map((variant) => [
+        variant.product_variant_id,
+        { price: variant.published_price === null ? '' : String(variant.published_price), oldPrice: variant.old_price === null ? '' : String(variant.old_price) },
+      ])));
       return true;
     } catch (error) {
       if (
@@ -1002,7 +1012,7 @@ const login = async (e: React.FormEvent) => {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-Token': csrfToken || '' },
-        body: JSON.stringify({ action: action === 'add' ? 'variant_add' : 'variant_set_active', ...payload }),
+        body: JSON.stringify({ action: action === 'add' ? 'variant_add' : action === 'set_active' ? 'variant_set_active' : action === 'price_manual' ? 'variant_price_set_manual' : 'variant_price_set_automatic', ...payload }),
         signal: controller.signal,
       });
       const data = await response.json().catch(() => null) as { success?: boolean } | null;
@@ -1020,7 +1030,7 @@ const login = async (e: React.FormEvent) => {
       if (!isCurrentVariantMutation(requestSequence, variantMutationRequestSequenceRef.current, controller.signal.aborted)) return;
       if (refreshed) {
         setVariantCountry('');
-        setVariantMutationNotice(action === 'add' ? 'Вариант добавлен как черновик. Цена ещё не опубликована.' : 'Статус варианта обновлён.');
+        setVariantMutationNotice(action === 'add' ? 'Вариант добавлен как черновик. Цена ещё не опубликована.' : action === 'set_active' ? 'Статус варианта обновлён.' : action === 'price_manual' ? 'Ручная розничная цена сохранена.' : 'Восстановлен автоматический режим цены.');
       } else {
         setVariantMutationError('Изменение принято сервером, но подтвердить новое состояние не удалось. Повторите загрузку списка.');
       }
@@ -1056,6 +1066,7 @@ const login = async (e: React.FormEvent) => {
     setVariantMutationError('');
     setVariantMutationNotice('');
     setVariantCountry('');
+    setVariantPriceDrafts({});
   };
 
   const loadSuppliers = async () => {
@@ -5120,6 +5131,29 @@ const toggleProductStatus = async (product: AdminProduct) => {
                             </span>
                           </div>
                           <div className={`mt-4 text-lg font-bold ${variant.identity_ready && variant.has_published_price ? 'text-white' : 'text-graphite-300'}`}>{formatPublishedVariantPrice(variant)}</div>
+                          {variant.identity_ready && (
+                            <div className="mt-4 rounded-lg border border-white/10 bg-black/10 p-3">
+                              <div className="grid gap-2 text-sm sm:grid-cols-2">
+                                <div><span className="text-graphite-400">Источник цены:</span> {variant.price_source === 'manual' ? 'Ручная' : 'Автоматическая'}</div>
+                                <div><span className="text-graphite-400">Автоматическая цена:</span> {variant.automatic_price !== null && Number(variant.automatic_price) > 0 ? formatPrice(variant.automatic_price) : 'не опубликована'}</div>
+                                <div><span className="text-graphite-400">Старая цена:</span> {variant.old_price !== null ? formatPrice(variant.old_price) : '—'}</div>
+                                <div><span className="text-graphite-400">Мин. закупочная цена:</span> {variant.minimum_purchase_price !== null ? formatPrice(variant.minimum_purchase_price) : 'нет данных'}</div>
+                              </div>
+                              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                                <label className="text-xs text-graphite-300">Ручная цена
+                                  <input type="number" min="0.01" step="0.01" inputMode="decimal" value={variantPriceDrafts[variant.product_variant_id]?.price ?? ''} onChange={(event) => setVariantPriceDrafts((current) => ({ ...current, [variant.product_variant_id]: { price: event.target.value, oldPrice: current[variant.product_variant_id]?.oldPrice ?? '' } }))} disabled={variantMutationPendingKey !== null} className="mt-1 w-full rounded-lg border border-white/15 bg-graphite-900 px-3 py-2 text-white" />
+                                </label>
+                                <label className="text-xs text-graphite-300">Старая цена (необязательно)
+                                  <input type="number" min="0.01" step="0.01" inputMode="decimal" value={variantPriceDrafts[variant.product_variant_id]?.oldPrice ?? ''} onChange={(event) => setVariantPriceDrafts((current) => ({ ...current, [variant.product_variant_id]: { price: current[variant.product_variant_id]?.price ?? '', oldPrice: event.target.value } }))} disabled={variantMutationPendingKey !== null} className="mt-1 w-full rounded-lg border border-white/15 bg-graphite-900 px-3 py-2 text-white" />
+                                </label>
+                              </div>
+                              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                                <button type="button" disabled={variantMutationPendingKey !== null || !variantPriceDrafts[variant.product_variant_id]?.price} onClick={() => void mutateAdminVariant(variantViewProduct, 'price_manual', { product_variant_id: variant.product_variant_id, price: variantPriceDrafts[variant.product_variant_id]?.price ?? '', old_price: variantPriceDrafts[variant.product_variant_id]?.oldPrice || null }, `price:${variant.product_variant_id}`)} className="flex-1 rounded-lg bg-accent-500 px-3 py-2 text-sm font-semibold disabled:opacity-40">Сохранить ручную цену</button>
+                                {variant.price_source === 'manual' && <button type="button" disabled={variantMutationPendingKey !== null} onClick={() => { if (!window.confirm('Вернуть автоматический режим? Будет использована последняя цена, опубликованная через прайс поставщика.')) return; void mutateAdminVariant(variantViewProduct, 'price_automatic', { product_variant_id: variant.product_variant_id }, `price:${variant.product_variant_id}`); }} className="flex-1 rounded-lg border border-amber-300/30 px-3 py-2 text-sm text-amber-100 disabled:opacity-40">Вернуть автоматическую цену</button>}
+                              </div>
+                              <p className="mt-2 text-xs text-graphite-400">Импорт продолжает обновлять закупочные данные, а публикация прайса — автоматическую цену. В ручном режиме розничная цена не заменяется публикацией прайса.</p>
+                            </div>
+                          )}
                           {isVariantDraft(variant.identity_ready, variant.has_published_price) && (
                             <div className="mt-2 rounded-lg border border-sky-400/25 bg-sky-400/10 px-3 py-2 text-xs leading-5 text-sky-100">Черновик: identity согласована, но цена не опубликована. Это не означает доступность к продаже.</div>
                           )}

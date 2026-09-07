@@ -14,7 +14,9 @@ final class ProductActivationFixtureStatement extends PDOStatement
     public function execute(?array $params = null): bool
     {
         $params ??= [];
-        if (str_contains($this->sql, 'FROM product_variants')) {
+        if (str_contains($this->sql, 'FROM product_variant_price_overrides')) {
+            $this->rows = array_values(array_filter($this->fixture->overrides, static fn(array $row): bool => in_array((int)$row['product_variant_id'], array_map('intval', $params), true)));
+        } elseif (str_contains($this->sql, 'FROM product_variants')) {
             if (str_contains($this->sql, 'FOR UPDATE')) {
                 $this->fixture->events[] = 'lock_candidate';
                 $this->fixture->runBeforeCandidateLock();
@@ -74,7 +76,7 @@ final class ProductActivationFixturePdo extends PDO
     private $beforeCandidateLock = null;
     private $beforeProductLock = null;
 
-    public function __construct(public array $products, public array $variants) {}
+    public function __construct(public array $products, public array $variants, public array $overrides = []) {}
     public function prepare(string $query, array $options = []): PDOStatement|false
     {
         return new ProductActivationFixtureStatement($this, $query);
@@ -140,11 +142,12 @@ function activationVariant(int $id, int $productId, string $country, bool $activ
         'variant_key'=>$key ?? 'legacy-country-sha256-' . hash('sha256', $country),
         'assembly_country'=>$country, 'display_name'=>$country, 'is_active'=>$active ? 1 : 0];
 }
-function activationPdo(array $legacy, array $variants, bool $productActive = false): ProductActivationFixturePdo
+function activationPdo(array $legacy, array $variants, bool $productActive = false, array $overrides = []): ProductActivationFixturePdo
 {
     return new ProductActivationFixturePdo(
         [5 => ['id'=>5, 'is_active'=>$productActive ? 1 : 0, 'variants'=>json_encode($legacy, JSON_UNESCAPED_UNICODE)]],
-        $variants
+        $variants,
+        $overrides
     );
 }
 function activationAttempt(ProductActivationFixturePdo $pdo): void
@@ -176,6 +179,10 @@ $lg = activationPdo(
 activationAttempt($lg);
 activationExpect('LG-like activation succeeds', $lg->products[5]['is_active'], 1);
 activationExpect('candidate lock precedes product lock', array_slice($lg->events, 2, 3), ['begin','lock_candidate','lock_product']);
+
+$manualDraft = activationPdo([activationLegacy('Russia',0)], [activationVariant(5,5,'Russia')], false, [['product_variant_id'=>5,'manual_price'=>'271400.00','manual_old_price'=>null,'is_active'=>1,'updated_at'=>'2026-09-08 00:00:00']]);
+activationAttempt($manualDraft);
+activationExpect('manual positive overlay makes canonical draft ready', $manualDraft->products[5]['is_active'], 1);
 
 $zeros = activationPdo([activationLegacy('Russia',0)], [activationVariant(5,5,'Russia')]);
 activationExpectConflict('all-zero variants conflict', $zeros);

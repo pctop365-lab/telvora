@@ -44,11 +44,13 @@ file_put_contents($secretsFile, '<?php return ' . var_export(['admin_password'=>
 $process = null; $pipes = []; $renamed = false;
 try {
     $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+    $pdo->exec('DROP TABLE IF EXISTS product_variant_price_overrides');
     $pdo->exec('DROP TABLE IF EXISTS product_variants');
     $pdo->exec('DROP TABLE IF EXISTS products');
     $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
     $pdo->exec("CREATE TABLE products (id BIGINT UNSIGNED PRIMARY KEY, name VARCHAR(255) NOT NULL, variants JSON NOT NULL, is_active TINYINT(1) NOT NULL DEFAULT 0) ENGINE=InnoDB");
     $pdo->exec("CREATE TABLE product_variants (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, product_id BIGINT UNSIGNED NOT NULL, variant_key VARCHAR(255) NOT NULL, assembly_country VARCHAR(120) COLLATE utf8mb4_unicode_ci NOT NULL, display_name VARCHAR(255), classification_status VARCHAR(40), classification_evidence TEXT, is_active TINYINT(1) NOT NULL DEFAULT 1, UNIQUE KEY uq_product_variant_key(product_id,variant_key), UNIQUE KEY uq_product_country(product_id,assembly_country), CONSTRAINT fk_http_product FOREIGN KEY(product_id) REFERENCES products(id) ON DELETE RESTRICT) ENGINE=InnoDB");
+    $pdo->exec("CREATE TABLE product_variant_price_overrides (product_variant_id BIGINT UNSIGNED PRIMARY KEY, manual_price DECIMAL(12,2) NOT NULL, manual_old_price DECIMAL(12,2) NULL, is_active TINYINT(1) NOT NULL DEFAULT 1, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, CONSTRAINT fk_http_price_variant FOREIGN KEY(product_variant_id) REFERENCES product_variants(id) ON DELETE RESTRICT) ENGINE=InnoDB");
     $legacy = json_encode([['country'=>'Россия','price'=>271400,'old_price'=>null,'is_active'=>true]], JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR);
     $pdo->prepare('INSERT INTO products(id,name,variants,is_active) VALUES(5,?,?,1)')->execute(['Synthetic HTTP', $legacy]);
     $pdo->prepare('INSERT INTO product_variants(product_id,variant_key,assembly_country,display_name,is_active) VALUES(5,?,?,?,1)')->execute(['legacy-country-sha256-'.hash('sha256','Россия'),'Россия','Россия']);
@@ -80,15 +82,20 @@ try {
     httpTestAssert('missing variant is 404', httpTestRequest('/products.php',['action'=>'variant_set_active','product_variant_id'=>999999,'is_active'=>false],$cookie,$csrf)[0]===404);
     httpTestRequest('/products.php',['action'=>'variant_set_active','product_variant_id'=>$chinaId,'is_active'=>false],$cookie,$csrf);
     $russiaId=(int)$pdo->query("SELECT id FROM product_variants WHERE assembly_country='Россия'")->fetchColumn();
+    httpTestAssert('manual price requires positive value', httpTestRequest('/products.php',['action'=>'variant_price_set_manual','product_variant_id'=>$russiaId,'price'=>0],$cookie,$csrf)[0]===400);
+    httpTestAssert('manual price succeeds', httpTestRequest('/products.php',['action'=>'variant_price_set_manual','product_variant_id'=>$russiaId,'price'=>'280000.00','old_price'=>'290000.00'],$cookie,$csrf)[0]===200);
+    httpTestAssert('manual price persists separately from legacy JSON', (string)$pdo->query("SELECT manual_price FROM product_variant_price_overrides WHERE product_variant_id=$russiaId AND is_active=1")->fetchColumn()==='280000.00' && !str_contains((string)$pdo->query('SELECT variants FROM products WHERE id=5')->fetchColumn(),'280000'));
+    httpTestAssert('automatic mode requires confirmation endpoint and succeeds', httpTestRequest('/products.php',['action'=>'variant_price_set_automatic','product_variant_id'=>$russiaId],$cookie,$csrf)[0]===200);
+    httpTestAssert('automatic mode disables override', (int)$pdo->query("SELECT is_active FROM product_variant_price_overrides WHERE product_variant_id=$russiaId")->fetchColumn()===0);
     httpTestAssert('last ready active variant is 409', httpTestRequest('/products.php',['action'=>'variant_set_active','product_variant_id'=>$russiaId,'is_active'=>false],$cookie,$csrf)[0]===409);
-    $pdo->exec('RENAME TABLE product_variants TO product_variants_http_fault'); $renamed=true;
-    [$status,$errorBody] = httpTestRequest('/products.php',['action'=>'variant_set_active','product_variant_id'=>$russiaId,'is_active'=>false],$cookie,$csrf);
-    httpTestAssert('safe 500 hides SQL details', $status===500 && ($errorBody['message']??'')==='Не удалось изменить вариант товара' && !str_contains(json_encode($errorBody),'SQLSTATE'));
-    $pdo->exec('RENAME TABLE product_variants_http_fault TO product_variants'); $renamed=false;
+    $pdo->exec('RENAME TABLE product_variant_price_overrides TO product_variant_price_overrides_http_fault'); $renamed=true;
+    [$status,$errorBody] = httpTestRequest('/products.php',['action'=>'variant_price_set_manual','product_variant_id'=>$russiaId,'price'=>'281000.00'], $cookie, $csrf);
+    httpTestAssert('safe 500 hides SQL details', $status===500 && ($errorBody['success']??null)===false && is_string($errorBody['message']??null) && !str_contains(json_encode($errorBody),'SQLSTATE'));
+    $pdo->exec('RENAME TABLE product_variant_price_overrides_http_fault TO product_variant_price_overrides'); $renamed=false;
     echo "PASS original products.php HTTP integration\n";
 } finally {
-    if ($renamed) $pdo->exec('RENAME TABLE product_variants_http_fault TO product_variants');
+    if ($renamed) $pdo->exec('RENAME TABLE product_variant_price_overrides_http_fault TO product_variant_price_overrides');
     if (is_resource($process)) { proc_terminate($process); foreach ($pipes as $pipe) if (is_resource($pipe)) fclose($pipe); proc_close($process); }
-    $pdo->exec('SET FOREIGN_KEY_CHECKS=0'); $pdo->exec('DROP TABLE IF EXISTS product_variants'); $pdo->exec('DROP TABLE IF EXISTS products'); $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
+    $pdo->exec('SET FOREIGN_KEY_CHECKS=0'); $pdo->exec('DROP TABLE IF EXISTS product_variant_price_overrides'); $pdo->exec('DROP TABLE IF EXISTS product_variants'); $pdo->exec('DROP TABLE IF EXISTS products'); $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
     foreach (glob($runtime.'/*') ?: [] as $file) unlink($file); @rmdir($runtime);
 }

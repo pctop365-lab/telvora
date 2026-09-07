@@ -1,10 +1,10 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 
 const product = { id: 5, slug: 'lg', name: 'LG Test', brand: 'LG', series: '', country: null, category: 'OLED', screen_size: '55', resolution: '4K', price: 0, old_price: null, image: '', badge: null, rating: 0, reviews: 0, description: '', specs: [], highlights: [], variants: [], is_active: true, created_at: '', updated_at: '' };
-const variant = (id: number, country: string, price: number, active = true) => ({ product_variant_id: id, product_id: 5, variant_key: `key-${id}`, assembly_country: country, relational_is_active: active, legacy_is_active: active, published_price: price, old_price: null, identity_status: 'resolved', diagnostic_code: null, diagnostics: [], identity_ready: true, has_published_price: price > 0, references: { offers: 0, matches: 0, import_rows: 0, audit: 0, orders: 0 }, provenance_mismatch_count: 0 });
+const variant = (id: number, country: string, price: number, active = true) => ({ product_variant_id: id, product_id: 5, variant_key: `key-${id}`, assembly_country: country, relational_is_active: active, legacy_is_active: active, published_price: price, old_price: null, automatic_price: price, automatic_old_price: null, price_source: 'automatic' as const, minimum_purchase_price: 120000, identity_status: 'resolved', diagnostic_code: null, diagnostics: [], identity_ready: true, has_published_price: price > 0, references: { offers: 0, matches: 0, import_rows: 0, audit: 0, orders: 0 }, provenance_mismatch_count: 0 });
 
 async function boot(page: Page, variants = [variant(5, 'Россия', 271400)]) {
-  let list = variants;
+  let list: Array<ReturnType<typeof variant> & { price_source: 'automatic' | 'manual' }> = variants;
   let mutationCount = 0;
   let mutationHandler: ((route: Route) => Promise<void>) | null = null;
   await page.route('https://**', route => route.abort());
@@ -21,6 +21,8 @@ async function boot(page: Page, variants = [variant(5, 'Россия', 271400)])
     const body = route.request().postDataJSON();
     if (body.action === 'variant_add') list = [...list, variant(6, body.assembly_country, 0)];
     if (body.action === 'variant_set_active') list = list.map(item => item.product_variant_id === body.product_variant_id ? { ...item, relational_is_active: body.is_active, legacy_is_active: body.is_active } : item);
+    if (body.action === 'variant_price_set_manual') list = list.map(item => item.product_variant_id === body.product_variant_id ? { ...item, published_price: Number(body.price), old_price: body.old_price === null ? null : Number(body.old_price), price_source: 'manual' as const, has_published_price: true } : item);
+    if (body.action === 'variant_price_set_automatic') list = list.map(item => item.product_variant_id === body.product_variant_id ? { ...item, published_price: item.automatic_price, old_price: item.automatic_old_price, price_source: 'automatic' as const, has_published_price: Number(item.automatic_price) > 0 } : item);
     return route.fulfill({ json: { success: true } });
   });
   await page.goto('/admin', { waitUntil: 'commit' });
@@ -75,4 +77,24 @@ test('closing pending panel ignores late success', async ({ page }) => {
   await page.getByRole('button', { name: 'Закрыть просмотр вариантов' }).click();
   release();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+});
+
+test('manual price is server-refreshed, survives automatic updates and returns to automatic with confirmation', async ({ page }) => {
+  const api = await boot(page);
+  await page.getByLabel('Ручная цена').fill('250000');
+  await page.getByLabel('Старая цена (необязательно)').fill('270000');
+  await page.getByRole('button', { name: 'Сохранить ручную цену' }).dblclick();
+  await expect(page.getByText('Источник цены: Ручная')).toBeVisible();
+  expect(api.getMutationCount()).toBe(1);
+
+  api.setList(api.getList().map(item => ({ ...item, automatic_price: 300000 })));
+  page.once('dialog', dialog => dialog.dismiss());
+  await page.getByRole('button', { name: 'Вернуть автоматическую цену' }).click();
+  expect(api.getMutationCount()).toBe(1);
+
+  page.once('dialog', dialog => dialog.accept());
+  await page.getByRole('button', { name: 'Вернуть автоматическую цену' }).click();
+  await expect(page.getByText('Источник цены: Автоматическая')).toBeVisible();
+  await expect(page.getByText('300 000 ₽', { exact: true })).toBeVisible();
+  expect(api.getMutationCount()).toBe(2);
 });

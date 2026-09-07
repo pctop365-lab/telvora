@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/product_variant_identity_service.php';
 require_once __DIR__ . '/storefront_availability_service.php';
+require_once __DIR__ . '/product_variant_price_service.php';
 
 final class StorefrontCartException extends RuntimeException
 {
@@ -98,6 +99,7 @@ function storefrontCartResolve(PDO $pdo, array $items, bool $lock = false): arra
             $resolvedRows[$index] = $lockedRow;
         }
     }
+    $priceOverrides = productVariantPriceLoad($pdo, $resolvedVariantIds, $lock);
     $results = []; $allOrderable = true;
     foreach ($items as $index => $item) {
         $row = $resolvedRows[$index] ?? null;
@@ -109,10 +111,21 @@ function storefrontCartResolve(PDO $pdo, array $items, bool $lock = false): arra
         $id = $row['product_variant_id'];
         $availability = storefrontAvailabilityResolve($offerGroups[$id] ?? [], $item['quantity']);
         if (!$availability['orderable']) $allOrderable = false;
+        $legacy = $row['_identity']['variants'][$row['_identity']['target_index']];
+        try {
+            $effectivePrice = productVariantPriceEffective(
+                $row['_identity']['target'] + ['price'=>$legacy['price'],'old_price'=>$legacy['old_price']],
+                $priceOverrides[$id] ?? null
+            );
+        } catch (ProductVariantPriceException) {
+            $availability = storefrontAvailabilityResult('unknown', null);
+            $allOrderable = false;
+            $effectivePrice = ['price'=>null];
+        }
         $results[] = storefrontAvailabilityPublic($availability, $id) + [
             'product_id' => $row['product_id'], 'slug' => $row['slug'], 'name' => $row['name'],
             'assembly_country' => $row['_identity']['target']['country'],
-            'quantity' => $item['quantity'], 'price' => $row['_identity']['variants'][$row['_identity']['target_index']]['price'],
+            'quantity' => $item['quantity'], 'price' => $effectivePrice['price'],
             '_qualifying_offer_id' => $availability['qualifying_offer_id']
         ];
     }

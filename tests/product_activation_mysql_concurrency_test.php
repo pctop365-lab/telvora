@@ -248,6 +248,7 @@ mysqlTestAssert(
     $identity
 );
 $pdo->exec('SET SESSION innodb_lock_wait_timeout = 1');
+$pdo->exec('DROP TABLE IF EXISTS product_variant_price_overrides');
 $pdo->exec('DROP TABLE IF EXISTS product_variants');
 $pdo->exec('DROP TABLE IF EXISTS products');
 $pdo->exec("CREATE TABLE products (
@@ -262,6 +263,14 @@ $pdo->exec("CREATE TABLE product_variants (
     PRIMARY KEY (id), UNIQUE KEY uq_product_variants_product_key (product_id, variant_key),
     KEY idx_product_variants_product_active (product_id, is_active),
     CONSTRAINT fk_test_variant_product FOREIGN KEY (product_id) REFERENCES products(id) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+$pdo->exec("CREATE TABLE product_variant_price_overrides (
+    product_variant_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+    manual_price DECIMAL(12,2) NOT NULL, manual_old_price DECIMAL(12,2) NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    CONSTRAINT fk_test_price_variant FOREIGN KEY(product_variant_id) REFERENCES product_variants(id) ON UPDATE RESTRICT ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 $indexes = $pdo->query("SELECT INDEX_NAME, GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) columns_list FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='product_variants' GROUP BY INDEX_NAME ORDER BY INDEX_NAME")->fetchAll();
 mysqlTestAssert('actual test indexes', count($indexes) === 3, $indexes);
@@ -405,6 +414,7 @@ mysqlTestAssert('mutation real 1213 rollback and retry',is_file("$dir/saw_1213")
 foreach(glob("$dir/*")?:[] as $file)unlink($file);rmdir($dir);
 
 echo 'ENV ' . json_encode($identity, JSON_UNESCAPED_SLASHES) . "\n";
+$pdo->exec('DROP TABLE product_variant_price_overrides');
 $pdo->exec('DROP TABLE product_variants');
 $pdo->exec('DROP TABLE products');
 echo "PASS real MySQL concurrency suite\n";

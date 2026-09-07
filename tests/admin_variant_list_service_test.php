@@ -76,6 +76,8 @@ function fixtureVariant(int $id, int $productId, string $country, bool $active =
         'offers_count' => 0, 'matches_count' => 0, 'import_rows_count' => 0,
         'audit_count' => 0, 'order_references_count' => 0,
         'provenance_mismatch_count' => 0,
+        'manual_price' => null, 'manual_old_price' => null,
+        'manual_price_active' => null, 'minimum_purchase_price' => null,
     ];
 }
 
@@ -105,6 +107,7 @@ $products = [
     8 => ['id'=>8, 'variants'=>json_encode([fixtureLegacy('Indonesia',280000,300000,false)], JSON_UNESCAPED_UNICODE)],
     9 => ['id'=>9, 'variants'=>json_encode([fixtureLegacy('Spain',260000,null,false)], JSON_UNESCAPED_UNICODE)],
     10 => ['id'=>10, 'variants'=>json_encode([fixtureLegacy('Korea',275000)], JSON_UNESCAPED_UNICODE)],
+    11 => ['id'=>11, 'variants'=>json_encode([fixtureLegacy('France',210000,220000)], JSON_UNESCAPED_UNICODE)],
 ];
 $variants = [
     fixtureVariant(1,1,'Russia',true,['offers_count'=>1,'provenance_mismatch_count'=>1]),
@@ -114,6 +117,7 @@ $variants = [
     fixtureVariant(7,6,'Vietnam'), fixtureVariant(8,8,'Indonesia',false),
     fixtureVariant(9,9,'Spain',true),
     fixtureVariant(10,10,'Korea',true,['variant_key'=>'wrong-key']),
+    fixtureVariant(11,11,'France',true,['manual_price'=>'230000.00','manual_old_price'=>'240000.00','manual_price_active'=>1,'minimum_purchase_price'=>'150000.00']),
 ];
 $pdo = new AdminVariantFixturePdo($products, $variants);
 
@@ -186,6 +190,13 @@ expectValue('key-only mismatch keeps resolver diagnostic', $keyMismatch['variant
 expectValue('key-only mismatch price closed', $keyMismatch['variants'][0]['published_price'], null);
 expectValue('key-only mismatch identity closed', $keyMismatch['variants'][0]['identity_ready'], false);
 expectValue('key-only mismatch is not orphan', $keyMismatch['legacy_orphans'], []);
+
+$manualPrice = adminVariantListFetch($pdo, 11)['variants'][0];
+expectValue('manual price is effective in admin list', $manualPrice['published_price'], 230000);
+expectValue('manual old price is effective in admin list', $manualPrice['old_price'], 240000);
+expectValue('automatic price remains visible diagnostically', $manualPrice['automatic_price'], 210000);
+expectValue('manual price source is explicit', $manualPrice['price_source'], 'manual');
+expectValue('minimum purchase price is aggregated per variant', $manualPrice['minimum_purchase_price'], 150000.0);
 
 expectThrows('PDO exception propagates', static fn(): ?array => adminVariantListFetch(new AdminVariantThrowingPdo([], []), 1), PDOException::class);
 

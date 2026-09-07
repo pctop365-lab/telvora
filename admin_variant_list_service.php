@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/product_variant_identity_service.php';
+require_once __DIR__ . '/product_variant_price_service.php';
 
 function adminVariantListProductId(mixed $value): ?int
 {
@@ -50,6 +51,11 @@ function adminVariantListFetch(PDO $pdo, int $productId): ?array
     $variantStmt = $pdo->prepare("
         SELECT pv.id, pv.product_id, pv.variant_key, pv.assembly_country,
                pv.is_active,
+               po.manual_price, po.manual_old_price, po.is_active AS manual_price_active,
+               (SELECT MIN(o.purchase_price) FROM supplier_offers o
+                INNER JOIN suppliers s ON s.id = o.supplier_id
+                WHERE o.product_variant_id = pv.id AND o.is_active = 1 AND s.is_active = 1
+                  AND o.currency_code = 'RUB') AS minimum_purchase_price,
                (SELECT COUNT(*) FROM supplier_offers o
                 WHERE o.product_variant_id = pv.id) AS offers_count,
                (SELECT COUNT(*) FROM supplier_product_matches m
@@ -72,6 +78,7 @@ function adminVariantListFetch(PDO $pdo, int $productId): ?array
                       r.status <> 'matched'
                   )) AS provenance_mismatch_count
         FROM product_variants pv
+        LEFT JOIN product_variant_price_overrides po ON po.product_variant_id = pv.id
         WHERE pv.product_id = :product_id
         ORDER BY pv.id ASC
     ");
@@ -146,6 +153,9 @@ function adminVariantListFetch(PDO $pdo, int $productId): ?array
         $publishedPrice = null;
         $oldPrice = null;
         $publishedPriceMinor = null;
+        $priceSource = null;
+        $automaticPrice = null;
+        $automaticOldPrice = null;
         $identityStatus = 'invalid';
         $diagnosticCode = 'identity_invalid';
 
@@ -158,10 +168,30 @@ function adminVariantListFetch(PDO $pdo, int $productId): ?array
                 $publishedPrice = $legacyVariant['price'];
                 $oldPrice = $legacyVariant['old_price'];
                 $publishedPriceMinor = $identity['target']['price_minor'];
+                $automaticPrice = $legacyVariant['price'];
+                $automaticOldPrice = $legacyVariant['old_price'];
 
                 if ((bool)$relationalVariant['is_active'] === $legacyActive) {
                     $identityStatus = 'ok';
                     $diagnosticCode = null;
+                    try {
+                        $effective = productVariantPriceEffective(
+                            $identity['target'] + ['price'=>$legacyVariant['price'],'old_price'=>$legacyVariant['old_price']],
+                            ($relationalVariant['manual_price_active'] ?? null) === null ? null : [
+                                'is_active'=>$relationalVariant['manual_price_active'],
+                                'manual_price'=>$relationalVariant['manual_price'],
+                                'manual_old_price'=>$relationalVariant['manual_old_price'],
+                            ]
+                        );
+                        $publishedPrice = $effective['price'];
+                        $oldPrice = $effective['old_price'];
+                        $publishedPriceMinor = $effective['price_minor'];
+                        $priceSource = $effective['price_source'];
+                    } catch (ProductVariantPriceException) {
+                        $identityStatus = 'mismatch';
+                        $diagnosticCode = 'invalid_manual_price';
+                        $publishedPrice = null; $oldPrice = null; $publishedPriceMinor = null;
+                    }
                 } else {
                     $identityStatus = 'mismatch';
                     $diagnosticCode = 'active_status_mismatch';
@@ -197,6 +227,10 @@ function adminVariantListFetch(PDO $pdo, int $productId): ?array
             'legacy_is_active' => $legacyActive,
             'published_price' => $publishedPrice,
             'old_price' => $oldPrice,
+            'automatic_price' => $automaticPrice,
+            'automatic_old_price' => $automaticOldPrice,
+            'price_source' => $priceSource,
+            'minimum_purchase_price' => ($relationalVariant['minimum_purchase_price'] ?? null) === null ? null : (float)$relationalVariant['minimum_purchase_price'],
             'identity_status' => $identityStatus,
             'diagnostic_code' => $diagnosticCode,
             'diagnostics' => $diagnostics,

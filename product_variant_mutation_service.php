@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/product_variant_identity_service.php';
 require_once __DIR__ . '/product_activation_service.php';
+require_once __DIR__ . '/product_variant_price_service.php';
 
 final class ProductVariantMutationException extends RuntimeException
 {
@@ -106,10 +107,15 @@ function productVariantSetActive(PDO $pdo, int $variantId, bool $requestedActive
             $stmt=$pdo->prepare('SELECT id,product_id,variant_key,assembly_country,display_name,is_active FROM product_variants WHERE product_id=:product_id AND id<>:id AND is_active=1 ORDER BY id ASC');
             $stmt->execute([':product_id'=>$snapshot['product_id'],':id'=>$variantId]);
             $product=['id'=>$snapshot['product_id'],'variants'=>$snapshot['variants']];
-            foreach ($stmt->fetchAll() as $candidate) {
+            $candidates = $stmt->fetchAll();
+            $overrides = productVariantPriceLoad($pdo, array_column($candidates, 'id'));
+            foreach ($candidates as $candidate) {
                 try { $identity=productVariantIdentityResolve($pdo,$product,$candidate,true); }
                 catch (ProductVariantIdentityException) { continue; }
-                if ($identity['target']['is_active'] && $identity['target']['price_minor']>0) { $alternateId=(int)$candidate['id']; break; }
+                $legacyVariant=$identity['variants'][$identity['target_index']];
+                try { $effective=productVariantPriceEffective($identity['target']+['price'=>$legacyVariant['price'],'old_price'=>$legacyVariant['old_price']],$overrides[(int)$candidate['id']]??null); }
+                catch (ProductVariantPriceException) { continue; }
+                if ($identity['target']['is_active'] && $effective['price_minor']>0) { $alternateId=(int)$candidate['id']; break; }
             }
         }
         $ids=[$variantId]; if ($alternateId!==null) $ids[]=$alternateId; sort($ids,SORT_NUMERIC);
@@ -125,7 +131,10 @@ function productVariantSetActive(PDO $pdo, int $variantId, bool $requestedActive
             if ($alternateId===null || !isset($locked[$alternateId]) || !(bool)$locked[$alternateId]['is_active']) throw new ProductVariantMutationException(409,'Нельзя отключить последний готовый вариант активного товара');
             try { $alternate=productVariantIdentityResolve($pdo,$product,$locked[$alternateId],true); }
             catch (ProductVariantIdentityException) { throw new ProductVariantMutationException(409,'Нельзя отключить последний готовый вариант активного товара'); }
-            if (!$alternate['target']['is_active'] || $alternate['target']['price_minor']<=0) throw new ProductVariantMutationException(409,'Нельзя отключить последний готовый вариант активного товара');
+            $legacyAlternate=$alternate['variants'][$alternate['target_index']];
+            try { $override=productVariantPriceLoad($pdo,[$alternateId],true); $effective=productVariantPriceEffective($alternate['target']+['price'=>$legacyAlternate['price'],'old_price'=>$legacyAlternate['old_price']],$override[$alternateId]??null); }
+            catch (ProductVariantPriceException) { throw new ProductVariantMutationException(409,'Нельзя отключить последний готовый вариант активного товара'); }
+            if (!$alternate['target']['is_active'] || $effective['price_minor']<=0) throw new ProductVariantMutationException(409,'Нельзя отключить последний готовый вариант активного товара');
         }
         $variants=$identity['variants']; $variants[$identity['target_index']]['is_active']=$requestedActive;
         $encoded=json_encode($variants,JSON_UNESCAPED_UNICODE|JSON_PRESERVE_ZERO_FRACTION|JSON_THROW_ON_ERROR);

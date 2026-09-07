@@ -15,6 +15,7 @@ require_once __DIR__ . '/runtime_config.php';
 require_once __DIR__ . '/product_variant_identity_service.php';
 require_once __DIR__ . '/product_activation_service.php';
 require_once __DIR__ . '/product_variant_mutation_service.php';
+require_once __DIR__ . '/product_variant_price_service.php';
 require_once __DIR__ . '/storefront_availability_service.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -197,6 +198,7 @@ function attachStorefrontVariants(PDO $pdo, array $products): array
         $variantIds[] = $variant['id'];
     }
     $offersByVariant = storefrontAvailabilityLoadOffers($pdo, $variantIds);
+    $priceOverrides = productVariantPriceLoad($pdo, $variantIds);
     foreach ($products as &$product) {
         $publicVariants = [];
         foreach ($byProduct[(int)$product['id']] ?? [] as $variant) {
@@ -206,13 +208,21 @@ function attachStorefrontVariants(PDO $pdo, array $products): array
                 continue;
             }
             $legacy = $identity['variants'][$identity['target_index']];
+            try {
+                $effectivePrice = productVariantPriceEffective(
+                    $identity['target'] + ['price' => $legacy['price'], 'old_price' => $legacy['old_price']],
+                    $priceOverrides[$variant['id']] ?? null
+                );
+            } catch (ProductVariantPriceException) {
+                continue;
+            }
             $availability = storefrontAvailabilityResolve($offersByVariant[$variant['id']] ?? [], 1);
             $publicVariants[] = [
                 'product_variant_id' => $variant['id'],
                 'country' => $identity['target']['country'],
                 'display_name' => $variant['display_name'],
-                'price' => $legacy['price'],
-                'old_price' => $legacy['old_price'],
+                'price' => $effectivePrice['price'],
+                'old_price' => $effectivePrice['old_price'],
                 'is_active' => $identity['target']['is_active'],
                 'availability' => storefrontAvailabilityPublic($availability, $variant['id'])
             ];
@@ -318,7 +328,7 @@ if (empty($_SESSION['telvora_admin'])) {
 |--------------------------------------------------------------------------
 */
 
-if (in_array($action, ['upload_image', 'add', 'update', 'delete', 'variant_add', 'variant_set_active'], true)) {
+if (in_array($action, ['upload_image', 'add', 'update', 'delete', 'variant_add', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic'], true)) {
     $sessionToken = $_SESSION['csrf_token'] ?? '';
     $requestToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 
@@ -336,7 +346,7 @@ if (in_array($action, ['upload_image', 'add', 'update', 'delete', 'variant_add',
     }
 }
 
-if ($action === 'variant_add' || $action === 'variant_set_active') {
+if (in_array($action, ['variant_add', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic'], true)) {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         http_response_code(405);
         echo json_encode(['success'=>false,'message'=>'Метод не поддерживается'],JSON_UNESCAPED_UNICODE);
@@ -348,14 +358,26 @@ if ($action === 'variant_add' || $action === 'variant_set_active') {
         if ($action === 'variant_add') {
             if ($productId===null) throw new ProductVariantMutationException(400,'Некорректный ID товара');
             $result=productVariantAdd($pdo,$productId,$data['assembly_country'] ?? null);
-        } else {
+        } elseif ($action === 'variant_set_active') {
             if ($variantId===null) throw new ProductVariantMutationException(400,'Некорректный ID варианта');
             $active=$data['is_active'] ?? null;
             if (!is_bool($active)) throw new ProductVariantMutationException(400,'Некорректный статус варианта');
             $result=productVariantSetActive($pdo,$variantId,$active);
+        } else {
+            if ($variantId===null) throw new ProductVariantPriceException(400,'Некорректный ID варианта');
+            $result=productVariantPriceSet(
+                $pdo,
+                $variantId,
+                $action === 'variant_price_set_manual',
+                $data['price'] ?? null,
+                $data['old_price'] ?? null
+            );
         }
         echo json_encode(['success'=>true]+$result,JSON_UNESCAPED_UNICODE);
     } catch (ProductVariantMutationException $error) {
+        http_response_code($error->httpStatus);
+        echo json_encode(['success'=>false,'message'=>$error->getMessage()],JSON_UNESCAPED_UNICODE);
+    } catch (ProductVariantPriceException $error) {
         http_response_code($error->httpStatus);
         echo json_encode(['success'=>false,'message'=>$error->getMessage()],JSON_UNESCAPED_UNICODE);
     } catch (Throwable $error) {

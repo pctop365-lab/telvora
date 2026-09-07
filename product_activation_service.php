@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/product_variant_identity_service.php';
+require_once __DIR__ . '/product_variant_price_service.php';
 
 final class ProductActivationException extends RuntimeException
 {
@@ -36,13 +37,18 @@ function productActivationReadyCandidate(PDO $pdo, int $productId): array
         ORDER BY id ASC
     ');
     $variantStmt->execute([':product_id' => $productId]);
-    foreach ($variantStmt->fetchAll() as $relationalVariant) {
+    $relationalVariants = $variantStmt->fetchAll();
+    $overrides = productVariantPriceLoad($pdo, array_column($relationalVariants, 'id'));
+    foreach ($relationalVariants as $relationalVariant) {
         try {
             $identity = productVariantIdentityResolve($pdo, $product, $relationalVariant, true);
         } catch (ProductVariantIdentityException) {
             continue;
         }
-        if ($identity['target']['is_active'] === true && $identity['target']['price_minor'] > 0) {
+        $legacy = $identity['variants'][$identity['target_index']];
+        try { $effective = productVariantPriceEffective($identity['target'] + ['price'=>$legacy['price'],'old_price'=>$legacy['old_price']], $overrides[(int)$relationalVariant['id']] ?? null); }
+        catch (ProductVariantPriceException) { continue; }
+        if ($identity['target']['is_active'] === true && $effective['price_minor'] > 0) {
             return ['product_was_active' => false, 'candidate_id' => (int)$relationalVariant['id']];
         }
     }
@@ -95,7 +101,14 @@ function productActivationLockAndValidate(PDO $pdo, int $productId, array $prefl
     } catch (ProductVariantIdentityException) {
         throw new ProductActivationException(409, 'Данные вариантов изменились. Повторите активацию.');
     }
-    if ($identity['target']['is_active'] !== true || $identity['target']['price_minor'] <= 0) {
+    $legacy = $identity['variants'][$identity['target_index']];
+    try {
+        $overrides = productVariantPriceLoad($pdo, [(int)$candidate['id']], true);
+        $effective = productVariantPriceEffective($identity['target'] + ['price'=>$legacy['price'],'old_price'=>$legacy['old_price']], $overrides[(int)$candidate['id']] ?? null);
+    } catch (ProductVariantPriceException) {
+        throw new ProductActivationException(409, 'Данные цены варианта изменились. Повторите активацию.');
+    }
+    if ($identity['target']['is_active'] !== true || $effective['price_minor'] <= 0) {
         throw new ProductActivationException(409, 'Данные вариантов изменились. Повторите активацию.');
     }
 
