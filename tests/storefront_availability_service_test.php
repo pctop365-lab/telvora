@@ -25,7 +25,9 @@ $assert('no split fulfillment', storefrontAvailabilityResolve([$offer(4, 'in_sto
 $assert('expected', storefrontAvailabilityResolve([$offer(6, 'expected', null, '2026-09-03 11:00:00', '2026-09-10 00:00:00')], 1, $now), 'expected', false);
 $assert('all out', storefrontAvailabilityResolve([$offer(7, 'out_of_stock', null, '2026-09-03 11:00:00')], 1, $now), 'out_of_stock', false);
 $assert('no offers', storefrontAvailabilityResolve([], 1, $now), 'unknown', false);
-$assert('stale in stock', storefrontAvailabilityResolve([$offer(8, 'in_stock', null, '2026-09-02 11:59:59')], 1, $now), 'unknown', false);
+$assert('exact seven day boundary is fresh', storefrontAvailabilityResolve([$offer(8, 'in_stock', null, '2026-08-27 12:00:00')], 1, $now), 'in_stock', true, 8);
+$assert('older than seven days is stale', storefrontAvailabilityResolve([$offer(15, 'in_stock', null, '2026-08-27 11:59:59')], 1, $now), 'unknown', false);
+$assert('explicit out of stock remains authoritative', storefrontAvailabilityResolve([$offer(16, 'out_of_stock', 0, '2026-08-27 12:00:00')], 1, $now), 'out_of_stock', false);
 $assert('database epoch is timezone independent', storefrontAvailabilityResolve([array_merge(
     $offer(14, 'in_stock', null, '2099-01-01 00:00:00'),
     ['effective_source_epoch' => (new DateTimeImmutable('2026-09-03 11:00:00'))->getTimestamp()]

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-const STOREFRONT_AVAILABILITY_TTL_SECONDS = 86400;
+const STOREFRONT_AVAILABILITY_TTL_SECONDS = 168 * 60 * 60;
 const STOREFRONT_AVAILABILITY_STATUSES = ['in_stock', 'out_of_stock', 'expected', 'unknown'];
 
 function storefrontAvailabilityResolve(array $offers, int $quantity, ?DateTimeImmutable $now = null): array
