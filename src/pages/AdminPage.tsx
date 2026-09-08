@@ -18,6 +18,7 @@ import {
   Moon,
 } from 'lucide-react';
 import { canStartVariantMutation, isCurrentVariantMutation, isVariantDraft, shouldConfirmVariantDisable, variantMutationErrorMessage, type VariantMutationAction } from './adminVariantManagement';
+import { convertProductImageForUpload } from './productImageConversion';
 
 type Spec = {
   label: string;
@@ -2385,8 +2386,10 @@ const login = async (e: React.FormEvent) => {
     galleryUploadPendingRef.current = true;
     setImageUploading(true); setImageUploadError('');
     try {
+      const uploadFiles = await Promise.all(galleryFiles.map(convertProductImageForUpload));
+      if (uploadFiles.reduce((sum, file) => sum + file.size, 0) > 32 * 1024 * 1024) throw new Error('После преобразования общий размер превышает 32 МБ.');
       const formData = new FormData(); formData.append('action', 'upload_gallery');
-      galleryFiles.forEach((file) => formData.append('images[]', file));
+      uploadFiles.forEach((file) => formData.append('images[]', file));
       const response = await fetch(PRODUCTS_API, { method:'POST', credentials:'include', headers:{'X-CSRF-Token':csrfToken || ''}, body:formData });
       const data = await response.json();
       if (!response.ok || !data.success || !Array.isArray(data.images)) throw new Error(data.message || 'Не удалось загрузить изображения');
@@ -2411,86 +2414,7 @@ const login = async (e: React.FormEvent) => {
     setImageUploadError('');
 
     try {
-      let uploadFile = imageFile;
-      const isAvif =
-        imageFile.type.toLowerCase() === 'image/avif' ||
-        /\.avif$/i.test(imageFile.name);
-
-      if (isAvif) {
-        let imageBitmap: ImageBitmap;
-
-        try {
-          imageBitmap = await createImageBitmap(imageFile);
-        } catch {
-          setImageUploadError(
-            'Браузер не смог преобразовать AVIF. Попробуйте другое изображение или формат WebP/JPG.'
-          );
-          return;
-        }
-
-        try {
-          const { width, height } = imageBitmap;
-          const maxDimension = 10000;
-          const maxPixels = 40_000_000;
-
-          if (
-            width <= 0 ||
-            height <= 0 ||
-            width > maxDimension ||
-            height > maxDimension ||
-            width * height > maxPixels
-          ) {
-            setImageUploadError(
-              'Размеры AVIF слишком велики для безопасного преобразования.'
-            );
-            return;
-          }
-
-          const canvas = document.createElement('canvas');
-          canvas.width = width;
-          canvas.height = height;
-
-          const context = canvas.getContext('2d');
-          if (!context) {
-            setImageUploadError('Не удалось подготовить AVIF к преобразованию.');
-            return;
-          }
-
-          context.drawImage(imageBitmap, 0, 0);
-
-          const webpBlob = await new Promise<Blob | null>((resolve) => {
-            canvas.toBlob(resolve, 'image/webp', 0.9);
-          });
-
-          if (!webpBlob || webpBlob.size <= 0) {
-            setImageUploadError('Не удалось преобразовать AVIF в WebP.');
-            return;
-          }
-
-          if (webpBlob.type.toLowerCase() !== 'image/webp') {
-            setImageUploadError(
-              'Браузер не смог создать WebP. Попробуйте другой браузер или изображение WebP/JPG.'
-            );
-            return;
-          }
-
-          if (webpBlob.size > 8 * 1024 * 1024) {
-            setImageUploadError('После преобразования изображение превышает 8 МБ.');
-            return;
-          }
-
-          const webpName = `${imageFile.name.replace(/\.avif$/i, '')}.webp`;
-          uploadFile = new File([webpBlob], webpName, {
-            type: 'image/webp',
-            lastModified: imageFile.lastModified || Date.now(),
-          });
-        } catch {
-          setImageUploadError('Не удалось преобразовать AVIF в WebP.');
-          return;
-        } finally {
-          imageBitmap.close();
-        }
-      }
+      const uploadFile = await convertProductImageForUpload(imageFile);
 
       const formData = new FormData();
       formData.append('action', 'upload_image');
@@ -2520,9 +2444,9 @@ if (!response.ok || !data.success || !data.image) {
       }));
 
       setImageFile(null);
-    } catch {
+    } catch (error) {
       setImageUploadError(
-        'Не удалось подключиться к серверу'
+        error instanceof Error ? error.message : 'Не удалось подключиться к серверу'
       );
     } finally {
       setImageUploading(false);
@@ -5509,7 +5433,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                           </div>
                         ))}
                       </div>
-                      <input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(e)=>{setGalleryFiles(Array.from(e.target.files || []));setImageUploadError('');}} className="mt-3 block w-full rounded-xl border border-dashed border-white/15 bg-white/5 p-3 text-sm text-graphite-300" />
+                      <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/avif,.avif" onChange={(e)=>{setGalleryFiles(Array.from(e.target.files || []));setImageUploadError('');}} className="mt-3 block w-full rounded-xl border border-dashed border-white/15 bg-white/5 p-3 text-sm text-graphite-300" />
                       <button type="button" onClick={uploadGalleryImages} disabled={!galleryFiles.length || imageUploading} className="mt-3 rounded-xl bg-accent-500 px-4 py-2.5 font-semibold text-white disabled:opacity-40">{imageUploading ? 'Загрузка...' : 'Загрузить выбранные'}</button>
                       {imageUploadError && <p className="mt-2 text-sm text-red-500">{imageUploadError}</p>}
                     </div>

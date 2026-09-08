@@ -6,6 +6,8 @@ const service=fs.readFileSync(new URL('../src/services/productService.ts',import
 for (const text of ['Предыдущее изображение','Следующее изображение','Увеличить изображение','aria-modal="true"','ArrowLeft','ArrowRight','Escape']) assert.match(gallery,new RegExp(text));
 assert.match(gallery,/items\.length > 1/); assert.match(gallery,/\[productName\]/);
 for (const text of ["formData.append('action', 'upload_gallery')","action:'gallery_save'",'multiple','Главное','Удалить','32 * 1024 * 1024']) assert.ok(admin.includes(text),text);
+assert.match(admin,/galleryFiles\.map\(convertProductImageForUpload\)/);
+assert.match(admin,/image\/avif,\.avif/);
 assert.match(admin,/'X-CSRF-Token':csrfToken \|\| ''/);
 assert.match(admin,/galleryUploadPendingRef\.current/); assert.match(admin,/requestSequence !== galleryContextSequenceRef\.current/);
 assert.match(service,/product\.images\?\.\[0\]/); assert.match(service,/\[String\(product\.image \|\| ''\)\]\.filter\(Boolean\)/);

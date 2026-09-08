@@ -1,0 +1,4 @@
+dist/assets/index-Zh1mao2u.js
+dist/index.html
+
+INSTALL ORDER: upload the new hashed JS asset first; publish index.html last. No PHP, SQL, uploads, products, prices, suppliers, orders, or secrets changes.
