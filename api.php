@@ -3,6 +3,7 @@
 header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/storefront_cart_service.php';
+require_once __DIR__ . '/delivery_quote_service.php';
 
 function telvoraApiSecretsFile(): string
 {
@@ -63,8 +64,6 @@ class AvailabilityChangedException extends RuntimeException
     public function __construct(public readonly array $publicResult) { parent::__construct('Availability changed'); }
 }
 
-const TELVORA_FREE_DELIVERY_THRESHOLD = 50000.0;
-const TELVORA_DELIVERY_FEE = 1990.0;
 const TELVORA_MAX_ITEM_QUANTITY = 100;
 
 try {
@@ -290,6 +289,8 @@ $deliveryMethod = trim($data['delivery_method'] ?? '');
 $paymentMethod = trim($data['payment_method'] ?? '');
 $deliveryTime = trim($data['delivery_time'] ?? '');
 $comment = trim($data['comment'] ?? '');
+$outsideMkad = ($data['outside_mkad'] ?? false) === true;
+$requestedOutsideMkadKm = $data['outside_mkad_km'] ?? null;
 $items = $data['items'] ?? [];
 
 if ($customerName === '') {
@@ -331,6 +332,10 @@ try {
         throw new OrderValidationException();
     }
 
+    if ($deliveryMethod === 'post' && $paymentMethod !== 'sbp') {
+        throw new OrderValidationException();
+    }
+
     if (count($items) > 100) {
         throw new OrderValidationException();
     }
@@ -348,12 +353,9 @@ try {
     unset($serverItem);
 
     $subtotal = round($subtotal, 2);
-    $delivery =
-        $deliveryMethod === 'pickup' ||
-        $subtotal >= TELVORA_FREE_DELIVERY_THRESHOLD
-            ? 0.0
-            : TELVORA_DELIVERY_FEE;
-    $total = round($subtotal + $delivery, 2);
+    $deliveryQuote = telvoraDeliveryQuote($deliveryMethod, $serverItems, $outsideMkad, $requestedOutsideMkadKm);
+    $delivery = $deliveryQuote['price'];
+    $total = round($subtotal + ($delivery ?? 0.0), 2);
     $rateLimit = consumeApiOrderRateLimit();
 
     if ($rateLimit['status'] === 'state_error') {
@@ -387,9 +389,9 @@ try {
     unset($serverItem);
     $subtotal = round(array_reduce($serverItems, static fn(float $sum, array $item): float =>
         $sum + ($item['price'] * $item['quantity']), 0.0), 2);
-    $delivery = $deliveryMethod === 'pickup' || $subtotal >= TELVORA_FREE_DELIVERY_THRESHOLD
-        ? 0.0 : TELVORA_DELIVERY_FEE;
-    $total = round($subtotal + $delivery, 2);
+    $deliveryQuote = telvoraDeliveryQuote($deliveryMethod, $serverItems, $outsideMkad, $requestedOutsideMkadKm);
+    $delivery = $deliveryQuote['price'];
+    $total = round($subtotal + ($delivery ?? 0.0), 2);
 
 
     $stmt = $pdo->prepare("
@@ -402,6 +404,10 @@ try {
     delivery_method,
     payment_method,
     comment,
+    subtotal,
+    delivery_price,
+    delivery_quote_status,
+    delivery_details,
     total,
     status
 )
@@ -414,6 +420,10 @@ try {
     :delivery_method,
     :payment_method,
     :comment,
+    :subtotal,
+    :delivery_price,
+    :delivery_quote_status,
+    :delivery_details,
     :total,
     'Новый'
 )
@@ -428,6 +438,10 @@ try {
         ':delivery_method' => $deliveryMethod,
         ':payment_method' => $paymentMethod,
         ':comment' => $comment,
+        ':subtotal' => $subtotal,
+        ':delivery_price' => $delivery,
+        ':delivery_quote_status' => $deliveryQuote['status'],
+        ':delivery_details' => json_encode($deliveryQuote['details'] + ['reason'=>$deliveryQuote['reason'],'estimate'=>$deliveryQuote['estimate']], JSON_UNESCAPED_UNICODE),
         ':total' => $total
     ]);
 
@@ -537,8 +551,9 @@ $telegramMessage =
     "🆕 <b>Новый заказ</b>\n\n" .
     "🧾 <b>Заказ:</b> {$orderNumber}\n" .
     "👤 <b>Покупатель:</b> " . htmlspecialchars($customerName, ENT_QUOTES, 'UTF-8') . "\n" .
-    "💰 <b>Сумма:</b> " .
-    number_format($total, 0, ',', ' ') . " ₽\n" .
+    "💰 <b>Товары:</b> " . number_format($subtotal, 0, ',', ' ') . " ₽\n" .
+    "🚚 <b>Стоимость доставки:</b> " . ($deliveryQuote['status'] === TELVORA_DELIVERY_QUOTE_CONFIRMED ? number_format((float)$delivery, 0, ',', ' ') . ' ₽' : 'согласовывается') . "\n" .
+    "💰 <b>Итог:</b> " . ($deliveryQuote['status'] === TELVORA_DELIVERY_QUOTE_CONFIRMED ? number_format($total, 0, ',', ' ') . ' ₽' : 'после согласования доставки') . "\n" .
     "🚚 <b>Доставка:</b> " .
     htmlspecialchars($deliveryMethod, ENT_QUOTES, 'UTF-8') . "\n" .
     "📌 <b>Статус:</b> Новый\n\n" .
@@ -557,7 +572,10 @@ echo json_encode([
     'order_number' => $orderNumber,
     'subtotal' => $subtotal,
     'delivery' => $delivery,
-    'total' => $total,
+    'delivery_status' => $deliveryQuote['status'],
+    'delivery_estimate' => $deliveryQuote['estimate'],
+    'delivery_reason' => $deliveryQuote['reason'],
+    'total' => $deliveryQuote['status'] === TELVORA_DELIVERY_QUOTE_CONFIRMED ? $total : null,
     'items' => array_map(static fn(array $item): array => [
         'product_id' => $item['product_id'],
         'product_variant_id' => $item['product_variant_id'],

@@ -10,7 +10,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '@/store/cart';
 import { useUI } from '@/store/ui';
 import { formatPrice } from '@/lib/format';
-import { siteContent } from '@/data/siteContent';
 import AvailabilityStatus from './AvailabilityStatus';
 
 export default function CartDrawer() {
@@ -19,8 +18,6 @@ export default function CartDrawer() {
     items,
     count,
     subtotal,
-    delivery,
-    total,
     updateQuantity,
     removeFromCart,
   } = useCart();
@@ -173,28 +170,17 @@ export default function CartDrawer() {
                 </span>
 
                 <span className="text-graphite-900 dark:text-white font-medium">
-                  {delivery === 0 ? 'Бесплатно' : formatPrice(delivery)}
+                  Рассчитывается при оформлении
                 </span>
               </div>
 
-              {subtotal > 0 &&
-                subtotal < siteContent.freeDeliveryThreshold && (
-                  <p className="text-xs text-accent-500">
-                    Добавьте товаров ещё на{' '}
-                    {formatPrice(
-                      siteContent.freeDeliveryThreshold - subtotal
-                    )}{' '}
-                    для бесплатной доставки
-                  </p>
-                )}
-
               <div className="flex justify-between items-center pt-3 border-t border-graphite-200 dark:border-white/10">
                 <span className="text-base font-semibold text-graphite-900 dark:text-white">
-                  Итого
+                  Товары
                 </span>
 
                 <span className="text-2xl font-bold text-graphite-900 dark:text-white">
-                  {formatPrice(total)}
+                  {formatPrice(subtotal)}
                 </span>
               </div>
 

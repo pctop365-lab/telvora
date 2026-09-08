@@ -254,6 +254,20 @@ function money($value): string
     ) . ' ₽';
 }
 
+function orderTotalText(array $order): string
+{
+    return ($order['delivery_quote_status'] ?? null) === 'pending'
+        ? 'После согласования доставки'
+        : money($order['total']);
+}
+
+function orderDeliveryText(array $order): string
+{
+    if (($order['delivery_quote_status'] ?? null) === 'pending') return 'Стоимость согласовывается';
+    if (array_key_exists('delivery_price', $order) && $order['delivery_price'] !== null) return money($order['delivery_price']);
+    return 'Включена в итог legacy-заказа';
+}
+
 function editStateFile(): string
 {
     return dirname(__DIR__, 2) . '/telvora_runtime/telegram_edit_state.json';
@@ -1218,6 +1232,7 @@ function sendOrdersMenu(int $chatId): void
                 id,
                 order_number,
                 customer_name,
+                delivery_quote_status,
                 total,
                 status,
                 created_at
@@ -1263,7 +1278,7 @@ function sendOrdersMenu(int $chatId): void
                 $text =
                     "📦 <b>" . h($orderNumber) . "</b>\n" .
                     "👤 " . h($order['customer_name']) . "\n" .
-                    "💰 " . money($order['total']) . "\n" .
+                    "💰 " . h(orderTotalText($order)) . "\n" .
                     "📌 " . h($order['status']) . "\n" .
                     "📅 " . h($order['created_at']);
 
@@ -1340,6 +1355,9 @@ function sendOrderCard(int $chatId, int $orderId): void
                 delivery_method,
                 payment_method,
                 comment,
+                subtotal,
+                delivery_price,
+                delivery_quote_status,
                 total,
                 status,
                 created_at
@@ -1396,9 +1414,10 @@ function sendOrderCard(int $chatId, int $orderId): void
             "📍 " . h($order['address'] ?: '—') . "\n" .
             "🕐 " . h($order['delivery_time'] ?: '—') . "\n" .
             "🚚 " . h($order['delivery_method'] ?: '—') . "\n" .
+            "🚚 Стоимость: " . h(orderDeliveryText($order)) . "\n" .
             "💳 " . h($order['payment_method'] ?: '—') . "\n" .
             "💬 " . h($order['comment'] ?: '—') . "\n" .
-            "💰 " . money($order['total']) . "\n" .
+            "💰 " . h(orderTotalText($order)) . "\n" .
             "📌 " . h($order['status']) . "\n" .
             "📅 " . h($order['created_at']);
 
@@ -1519,7 +1538,7 @@ foreach ($updates as $update) {
             deleteOldTransientMessages((int)$callbackChatId);
             try {
                 $pdo = getDatabase();
-                $stmt = $pdo->query("SELECT id, order_number, customer_name, total, status, created_at FROM orders WHERE status = 'Новый' ORDER BY id DESC LIMIT 20");
+                $stmt = $pdo->query("SELECT id, order_number, customer_name, delivery_quote_status, total, status, created_at FROM orders WHERE status = 'Новый' ORDER BY id DESC LIMIT 20");
                 $orders = $stmt->fetchAll();
 
                 $text = "🆕 <b>НОВЫЕ ЗАКАЗЫ</b>\n\n";
@@ -1535,7 +1554,7 @@ foreach ($updates as $update) {
                         $text .=
                             "📦 <b>" . h($number) . "</b>\n" .
                             "👤 " . h($order['customer_name']) . "\n" .
-                            "💰 " . money($order['total']) . "\n" .
+                            "💰 " . h(orderTotalText($order)) . "\n" .
                             "📌 " . h($order['status']) . "\n" .
                             "🕐 " . h($order['created_at']) . "\n\n";
                     }
@@ -1578,7 +1597,7 @@ foreach ($updates as $update) {
                 $pdo=getDatabase();
 
                 $stmt=$pdo->query("
-                    SELECT id, order_number, customer_name, total, status, created_at
+                    SELECT id, order_number, customer_name, delivery_quote_status, total, status, created_at
                     FROM orders
                     ORDER BY id DESC
                     LIMIT 10
@@ -1597,7 +1616,7 @@ foreach ($updates as $update) {
                         $text.=
                             "📦 <b>".h($number)."</b>\n".
                             "👤 ".h($order['customer_name'])."\n".
-                            "💰 ".money($order['total'])."\n".
+                            "💰 ".h(orderTotalText($order))."\n".
                             "📌 ".h($order['status'])."\n".
                             "🕐 ".h($order['created_at'])."\n\n";
                     }
@@ -1704,6 +1723,9 @@ foreach ($updates as $update) {
                         delivery_method,
                         payment_method,
                         comment,
+                        subtotal,
+                        delivery_price,
+                        delivery_quote_status,
                         total,
                         status
                     FROM orders
@@ -1826,7 +1848,7 @@ foreach ($updates as $update) {
                             "📞 " . h($order['phone']) . "\n" .
                             "📍 " . h($order['address'] ?: '—') . "\n" .
                             "🕐 " . h($order['delivery_time'] ?: '—') . "\n" .
-                            "💰 " . money($order['total']) . "\n\n" .
+                            "💰 " . h(orderTotalText($order)) . "\n\n" .
                             "Выбери, что изменить:",
                         'parse_mode' => 'HTML',
                         'reply_markup' => json_encode(

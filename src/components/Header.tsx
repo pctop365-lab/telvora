@@ -16,8 +16,8 @@ import { useTheme } from '@/store/theme';
 const navLinks = [
   { label: 'Каталог', to: '/catalog' },
   { label: 'Телевизоры', to: '/televisions' },
-  { label: 'Саундбары', to: '/soundbars' },
-  { label: 'Аксессуары', to: '/accessories' },
+  { label: 'Доставка', to: '/delivery' },
+  { label: 'Сервисные услуги', to: '/services' },
   { label: 'Технологии', to: '/#tech' },
  { label: 'Поддержка', to: '/support' },
 ];

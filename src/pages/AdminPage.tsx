@@ -55,6 +55,10 @@ type Order = {
   delivery_method: string;
   payment_method: string;
   comment: string | null;
+  subtotal: string | number | null;
+  delivery_price: string | number | null;
+  delivery_quote_status: string | null;
+  delivery_details: string | null;
   total: string | number;
   status: string;
   created_at: string;
@@ -3296,7 +3300,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                             </div>
 
                             <div className="text-graphite-900 font-semibold mt-1">
-                              {formatPrice(order.total)}
+                              {order.delivery_quote_status === 'pending' ? 'После согласования доставки' : formatPrice(order.total)}
                             </div>
                           </div>
 
@@ -3345,6 +3349,13 @@ const toggleProductStatus = async (product: AdminProduct) => {
 
                             <div className="text-graphite-900 mt-1">
                               {order.delivery_method}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">
+                              {order.delivery_quote_status === 'pending'
+                                ? 'Стоимость согласовывается'
+                                : order.delivery_price !== null
+                                  ? `${Number(order.delivery_price).toLocaleString('ru-RU')} ₽`
+                                  : 'Legacy-заказ: доставка включена в итог'}
                             </div>
                           </div>
 

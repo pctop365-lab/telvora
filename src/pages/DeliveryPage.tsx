@@ -1,75 +1,19 @@
+import type { ReactNode } from 'react';
+import { deliveryTariffs } from '@/lib/deliveryQuote';
+
+const carriers = ['DPD', 'Байкал Сервис', 'Деловые Линии', 'ЖелДорЭкспедиция', 'ПЭК', 'СДЭК', 'Возовоз'];
+
 export default function DeliveryPage() {
-  return (
-    <main className="min-h-screen bg-graphite-50 dark:bg-graphite-950 text-graphite-900 dark:text-white py-20 sm:py-28">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-
-        <div className="text-center mb-14">
-          <span className="text-sm font-semibold text-accent-500 uppercase tracking-widest">
-            TELVORA
-          </span>
-
-          <h1 className="font-display font-extrabold text-4xl sm:text-5xl mt-3 tracking-tight">
-            Доставка
-          </h1>
-
-          <p className="text-graphite-600 dark:text-graphite-300 text-lg mt-5 max-w-2xl mx-auto">
-            Мы стремимся сделать получение заказа TELVORA максимально
-            удобным и понятным.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-          {/* Доставка заказа */}
-          <div className="p-8 bg-white dark:bg-graphite-900 rounded-3xl border border-graphite-200 dark:border-white/5">
-            <h2 className="font-display font-bold text-2xl mb-3">
-              Доставка заказа
-            </h2>
-
-            <p className="text-graphite-600 dark:text-graphite-300 leading-relaxed">
-              Способ и условия доставки определяются при оформлении заказа
-              с учётом выбранного товара и адреса получения.
-            </p>
-          </div>
-
-          {/* Получение товара */}
-          <div className="p-8 bg-white dark:bg-graphite-900 rounded-3xl border border-graphite-200 dark:border-white/5">
-            <h2 className="font-display font-bold text-2xl mb-3">
-              Получение товара
-            </h2>
-
-            <p className="text-graphite-600 dark:text-graphite-300 leading-relaxed">
-              Перед получением заказа рекомендуем проверить целостность
-              упаковки и соответствие товара вашему заказу.
-            </p>
-          </div>
-
-          {/* Подъём и установка */}
-          <div className="p-8 bg-white dark:bg-graphite-900 rounded-3xl border border-graphite-200 dark:border-white/5">
-            <h2 className="font-display font-bold text-2xl mb-3">
-              Подъём и установка
-            </h2>
-
-            <p className="text-graphite-600 dark:text-graphite-300 leading-relaxed">
-              Дополнительные услуги, включая подъём и установку телевизора,
-              могут предоставляться отдельно в зависимости от условий заказа.
-            </p>
-          </div>
-
-          {/* Важная информация */}
-          <div className="p-8 bg-white dark:bg-graphite-900 rounded-3xl border border-graphite-200 dark:border-white/5">
-            <h2 className="font-display font-bold text-2xl mb-3">
-              Важная информация
-            </h2>
-
-            <p className="text-graphite-600 dark:text-graphite-300 leading-relaxed">
-              Точные сроки, стоимость и доступные способы доставки будут
-              указаны при оформлении заказа после определения условий продаж.
-            </p>
-          </div>
-
-        </div>
-      </div>
-    </main>
-  );
+  return <main className="min-h-screen bg-graphite-50 dark:bg-graphite-950 py-24 sm:py-32"><div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+    <header className="max-w-3xl"><span className="text-sm font-semibold uppercase tracking-widest text-accent-500">Получение заказа</span><h1 className="mt-3 font-display text-4xl sm:text-5xl font-extrabold">Доставка</h1><p className="mt-5 text-lg text-graphite-600 dark:text-graphite-300">Стоимость зависит от диагонали, состава заказа и адреса. Окончательные условия нестандартной доставки подтверждает менеджер.</p></header>
+    <section className="rounded-3xl border border-graphite-200 dark:border-white/10 bg-white dark:bg-graphite-900 overflow-hidden"><div className="p-6 sm:p-8"><h2 className="font-display text-2xl font-bold">Тарифы по Москве</h2><p className="mt-2 text-graphite-600 dark:text-graphite-300">Для одного телевизора в пределах МКАД.</p></div><div className="overflow-x-auto"><table className="w-full text-left"><thead className="bg-graphite-100 dark:bg-white/5"><tr><th className="px-6 py-4">Диагональ</th><th className="px-6 py-4">Стоимость</th></tr></thead><tbody>{deliveryTariffs.map((tariff)=><tr key={tariff.label} className="border-t border-graphite-200 dark:border-white/10"><td className="px-6 py-4 font-medium">{tariff.label}</td><td className="px-6 py-4 text-accent-500 font-bold">{tariff.price.toLocaleString('ru-RU')} ₽</td></tr>)}</tbody></table></div><p className="p-6 sm:px-8 text-sm text-graphite-600 dark:text-graphite-300">Для отсутствующих в таблице диагоналей, нескольких телевизоров и нестандартных условий стоимость согласовывается индивидуально. За МКАД: базовый тариф + 60 ₽ за каждый согласованный километр.</p></section>
+    <div className="grid md:grid-cols-2 gap-6">
+      <Info title="Курьерская доставка"><ul><li>Заказы до 10:00 могут быть доставлены в тот же день при наличии возможности.</li><li>Ежедневные интервалы: 10:00–18:00 и 18:00–23:00.</li><li>Курьер предварительно звонит ориентировочно за час.</li><li>Платный въезд и дополнительные расходы согласовываются заранее.</li><li>Монтаж и настройка оплачиваются отдельно.</li></ul></Info>
+      <Info title="Региональная отправка"><p>Доставка до московского терминала ТК рассчитывается по московскому тарифу. Междугородняя перевозка и доставка до адреса оплачиваются отдельно по тарифу перевозчика.</p><p>Для региональных заказов предусмотрена 100% предоплата после подтверждения заказа и итоговых условий менеджером. Оформление заказа на сайте само по себе не является оплатой.</p></Info>
+      <Info title="Транспортные компании"><p>Возможна отправка через: {carriers.join(', ')}. Перечень носит информационный характер и не означает наличия действующих договоров. Перевозчик, условия и итоговая стоимость согласовываются менеджером.</p></Info>
+      <Info title="Приёмка товара"><p>При получении осмотрите упаковку и товар, проверьте комплектность. Видимые повреждения зафиксируйте в документах перевозчика и на фото, затем свяжитесь с продавцом. Эти рекомендации не ограничивают права покупателя, предусмотренные Законом РФ «О защите прав потребителей».</p></Info>
+    </div>
+  </div></main>;
 }
+
+function Info({title, children}:{title:string; children:ReactNode}) { return <section className="rounded-3xl border border-graphite-200 dark:border-white/10 bg-white dark:bg-graphite-900 p-6 sm:p-8"><h2 className="font-display text-xl font-bold mb-4">{title}</h2><div className="space-y-3 text-graphite-600 dark:text-graphite-300 leading-relaxed [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-2">{children}</div></section>; }

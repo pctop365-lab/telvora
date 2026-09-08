@@ -1,0 +1,14 @@
+database/migrations/preflight_20260908_010_order_delivery_quotes.sql
+database/migrations/20260908_010_order_delivery_quotes.sql
+database/migrations/verify_20260908_010_order_delivery_quotes.sql
+delivery_quote_service.php
+storefront_cart_service.php
+api.php
+manager.php
+telegram_polling.php
+generate_invoice_pdf.php
+dist/assets/index-CW4S5SGR.css
+dist/assets/index-BU63nviF.js
+dist/index.html
+
+INSTALL ORDER: run preflight and apply only the delivery-quotes migration when preflight is empty; verify schema; publish PHP files and service first; upload new hashed CSS/JS before index.html; publish index.html last. Preserve legacy order rows and all old assets. No supplier, price, variant, availability, order-history, secrets, or production data changes beyond new order delivery snapshot columns.

@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict'; import fs from 'node:fs';
+const read=(path)=>fs.readFileSync(new URL(`../${path}`,import.meta.url),'utf8');
+const header=read('src/components/Header.tsx'), app=read('src/App.tsx'), delivery=read('src/pages/DeliveryPage.tsx'), services=read('src/pages/ServicesPage.tsx'), checkout=read('src/pages/CheckoutPage.tsx'), quote=read('src/lib/deliveryQuote.ts');
+assert.match(header,/Доставка.+\/delivery/s); assert.match(header,/Сервисные услуги.+\/services/s); assert.doesNotMatch(header,/label: 'Саундбары'/); assert.doesNotMatch(header,/label: 'Аксессуары'/);
+assert.match(app,/path="\/services"/); assert.match(app,/path="\/soundbars"/); assert.match(app,/path="\/accessories"/);
+for(const text of ['DPD','Байкал Сервис','Деловые Линии','ЖелДорЭкспедиция','ПЭК','СДЭК','Возовоз','100% предоплата','не ограничивают права']) assert.ok(delivery.includes(text),`delivery copy: ${text}`);
+for(const text of ['Установка телевизора','Настройка','Проверка на битые пиксели','Стоимость уточняется','не добавляются к заказу автоматически']) assert.ok(services.includes(text),`services copy: ${text}`);
+for(const text of ['Адрес находится за МКАД','подтверждает менеджер','перевозка транспортной компанией оплачивается отдельно']) assert.ok(checkout.includes(text),`checkout: ${text}`);
+assert.ok(quote.includes('Стоимость согласовывается'));
+console.log('PASS header routes, delivery/services pages and checkout UI');

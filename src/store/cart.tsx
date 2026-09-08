@@ -1,6 +1,5 @@
 import { createContext, useContext, useReducer, useCallback, useMemo, useEffect, type ReactNode } from 'react';
 import type { CartItem, Product, ProductVariant } from '@/types';
-import { siteContent } from '@/data/siteContent';
 
 const CART_STORAGE_KEY = 'telvora_cart';
 
@@ -160,10 +159,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const value = useMemo<CartContextValue>(() => {
     const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const count = items.reduce((sum, item) => sum + item.quantity, 0);
-    const delivery =
-      subtotal === 0 || subtotal >= siteContent.freeDeliveryThreshold
-        ? 0
-        : siteContent.deliveryFee;
+    const delivery = 0;
     return {
       items,
       count,

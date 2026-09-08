@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs'; import vm from 'node:vm'; import ts from 'typescript';
+let source=fs.readFileSync(new URL('../src/lib/deliveryQuote.ts',import.meta.url),'utf8').replace("import type { CartItem, DeliveryMethod } from '@/types';",'');
+const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
+const module={exports:{}}; vm.runInNewContext(compiled,{module,exports:module.exports,Intl},{filename:'deliveryQuote.ts'});
+const {moscowDeliveryRate,calculateDeliveryQuote}=module.exports;
+assert.equal(moscowDeliveryRate(43),1000); assert.equal(moscowDeliveryRate(65),1500); assert.equal(moscowDeliveryRate(66),null); assert.equal(moscowDeliveryRate(146),25000);
+const item=(screenSize,quantity=1)=>({screenSize,quantity});
+assert.equal(calculateDeliveryQuote('courier',[item('77″')]).price,2000);
+assert.deepEqual(JSON.parse(JSON.stringify(calculateDeliveryQuote('courier',[item('55')],true,10))),{status:'pending',price:null,estimate:1600,reason:'outside_mkad_requires_confirmation'});
+assert.equal(calculateDeliveryQuote('courier',[item('55'),item('65')]).status,'pending');
+assert.equal(calculateDeliveryQuote('post',[item('70')]).price,null);
+assert.equal(calculateDeliveryQuote('pickup',[item('70',2)]).price,0);
+console.log('PASS frontend delivery quotes');

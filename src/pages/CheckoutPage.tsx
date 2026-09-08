@@ -14,8 +14,8 @@ import {
 
 import { useCart } from '@/store/cart';
 import { formatPrice } from '@/lib/format';
-import { siteContent } from '@/data/siteContent';
 import { createOrder, validateCart } from '@/services/orderService';
+import { calculateDeliveryQuote, deliveryQuoteLabel } from '@/lib/deliveryQuote';
 import type { CheckoutFormData, DeliveryMethod } from '@/types';
 
 const deliveryOptions: {
@@ -39,18 +39,14 @@ const deliveryOptions: {
   {
     value: 'post',
     label: 'Транспортная компания',
-    desc: 'Доставка транспортной компанией по всей России.',
+    desc: 'Региональная отправка после подтверждения заказа и 100% предоплаты; тариф перевозчика оплачивается отдельно.',
     icon: Package,
   },
 ];
 
 const deliveryTimeOptions = [
-  '10:00–12:00',
-  '12:00–14:00',
-  '14:00–16:00',
-  '16:00–18:00',
-  '18:00–20:00',
-  '20:00–22:00',
+  '10:00–18:00',
+  '18:00–23:00',
 ];
 const paymentOptions = [
   {
@@ -77,6 +73,8 @@ export default function CheckoutPage() {
   const [cartOrderable, setCartOrderable] = useState(false);
   const [personalDataConsent, setPersonalDataConsent] = useState(false);
   const [consentError, setConsentError] = useState(false);
+  const [outsideMkad, setOutsideMkad] = useState(false);
+  const [outsideMkadKm, setOutsideMkadKm] = useState('');
 
   const [form, setForm] = useState<
     CheckoutFormData & { paymentMethod: string }
@@ -129,13 +127,13 @@ comment: '',
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const deliveryCost =
-    form.deliveryMethod === 'pickup' ||
-    subtotal >= siteContent.freeDeliveryThreshold
-      ? 0
-      : siteContent.deliveryFee;
-
-  const total = subtotal + deliveryCost;
+  const deliveryQuote = calculateDeliveryQuote(
+    form.deliveryMethod,
+    items,
+    outsideMkad,
+    outsideMkadKm ? Number(outsideMkadKm) : undefined
+  );
+  const total = deliveryQuote.price === null ? null : subtotal + deliveryQuote.price;
 
   const errors: Record<string, string> = {};
 
@@ -201,7 +199,11 @@ comment: '',
 
     try {
       const order = await createOrder(
-        form as CheckoutFormData,
+        {
+          ...form,
+          outsideMkad: form.deliveryMethod === 'courier' && outsideMkad,
+          outsideMkadKm: outsideMkadKm ? Number(outsideMkadKm) : undefined,
+        } as CheckoutFormData,
         items
       );
 
@@ -212,6 +214,8 @@ comment: '',
             items: order.items,
             subtotal: order.subtotal,
             delivery: order.delivery,
+            deliveryStatus: order.deliveryStatus,
+            deliveryEstimate: order.deliveryEstimate,
             total: order.total,
             createdAt: order.createdAt,
           },
@@ -429,12 +433,11 @@ comment: '',
                       name="deliveryMethod"
                       value={opt.value}
                       checked={form.deliveryMethod === opt.value}
-                      onChange={(e) =>
-                        updateField(
-                          'deliveryMethod',
-                          e.target.value
-                        )
-                      }
+                      onChange={(e) => setForm((previous) => ({
+                        ...previous,
+                        deliveryMethod: e.target.value as DeliveryMethod,
+                        paymentMethod: e.target.value === 'post' ? 'sbp' : previous.paymentMethod,
+                      }))}
                       className="sr-only"
                     />
 
@@ -480,6 +483,27 @@ comment: '',
                   </label>
                 ))}
 
+                {form.deliveryMethod === 'courier' && (
+                  <div className="rounded-2xl border border-graphite-200 dark:border-white/10 bg-white dark:bg-graphite-900 p-4 space-y-3">
+                    <label className="flex items-center gap-3 text-sm font-medium">
+                      <input type="checkbox" checked={outsideMkad} onChange={(event) => setOutsideMkad(event.target.checked)} className="accent-orange-500" />
+                      Адрес находится за МКАД
+                    </label>
+                    {outsideMkad && (
+                      <label className="block text-sm text-graphite-600 dark:text-graphite-300">
+                        Согласуемое расстояние за МКАД, км
+                        <input type="number" min="1" max="500" inputMode="numeric" value={outsideMkadKm} onChange={(event) => setOutsideMkadKm(event.target.value)} className="mt-2 w-full rounded-xl border border-graphite-200 dark:border-white/10 bg-graphite-50 dark:bg-graphite-800 px-4 py-3" />
+                      </label>
+                    )}
+                    <p className="text-xs text-graphite-500">Расстояние и окончательную стоимость подтверждает менеджер. Расчёт: московский тариф + 60 ₽ за согласованный километр.</p>
+                  </div>
+                )}
+
+                <p className="text-sm text-graphite-600 dark:text-graphite-300">
+                  {deliveryQuoteLabel(deliveryQuote)}
+                  {form.deliveryMethod === 'post' && ' · перевозка транспортной компанией оплачивается отдельно по её тарифу'}
+                </p>
+
               </div>
             </div>
 
@@ -506,6 +530,7 @@ comment: '',
                       name="paymentMethod"
                       value={opt.value}
                       checked={form.paymentMethod === opt.value}
+                      disabled={form.deliveryMethod === 'post' && opt.value === 'cash'}
                       onChange={(e) =>
                         updateField(
                           'paymentMethod',
@@ -647,9 +672,7 @@ comment: '',
                   </span>
 
                   <span className="text-graphite-900 dark:text-white font-medium">
-                    {deliveryCost === 0
-                      ? 'Бесплатно'
-                      : formatPrice(deliveryCost)}
+                    {deliveryQuoteLabel(deliveryQuote)}
                   </span>
 
                 </div>
@@ -661,7 +684,7 @@ comment: '',
                   </span>
 
                   <span className="text-2xl font-bold text-graphite-900 dark:text-white">
-                    {formatPrice(total)}
+                    {total === null ? 'После согласования доставки' : formatPrice(total)}
                   </span>
 
                 </div>

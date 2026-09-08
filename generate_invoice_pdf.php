@@ -149,6 +149,10 @@ delivery_time,
 delivery_method,
         payment_method,
         comment,
+        subtotal,
+        delivery_price,
+        delivery_quote_status,
+        delivery_details,
         total,
         status,
         created_at
@@ -247,6 +251,7 @@ function translateDeliveryMethod($value): string
     $map = [
         'courier' => 'Курьером',
         'pickup' => 'Самовывоз',
+        'post' => 'Транспортная компания',
         'delivery' => 'Доставка',
     ];
 
@@ -536,12 +541,14 @@ table {
 ';
 
 $rowNumber = 1;
+$itemsSubtotal = 0.0;
 
 foreach ($items as $item) {
 
     $quantity = (int)$item['quantity'];
     $price = (float)$item['price'];
     $sum = $quantity * $price;
+    $itemsSubtotal += $sum;
 
     $html .= '
 <tr>
@@ -572,6 +579,12 @@ foreach ($items as $item) {
     $rowNumber++;
 }
 
+$isDeliveryPending = ($order['delivery_quote_status'] ?? null) === 'pending';
+$deliveryText = $isDeliveryPending
+    ? 'Стоимость согласовывается'
+    : (($order['delivery_price'] ?? null) !== null ? money($order['delivery_price']) : 'Включена в итог legacy-заказа');
+$totalText = $isDeliveryPending ? 'После согласования доставки' : money($order['total']);
+
 $html .= '
 
 </tbody>
@@ -580,6 +593,9 @@ $html .= '
 
 <table class="total-table">
 
+<tr><td style="width:75%; text-align:left;">ТОВАРЫ:</td><td style="width:25%; text-align:right;">' . money($order['subtotal'] ?? $itemsSubtotal) . '</td></tr>
+<tr><td style="width:75%; text-align:left;">ДОСТАВКА:</td><td style="width:25%; text-align:right;">' . h($deliveryText) . '</td></tr>
+
 <tr>
 
 <td style="width:75%; text-align:left;">
@@ -587,7 +603,7 @@ $html .= '
 </td>
 
 <td style="width:25%; text-align:right;">
-    ' . money($order['total']) . '
+    ' . h($totalText) . '
 </td>
 
 </tr>
@@ -615,10 +631,9 @@ $html .= '
 
 <div class="notice">
 
-При получении товара Вам необходимо проверить его внешний вид,
-комплектность, отсутствие механических повреждений.
-После приемки товара претензии по комплектности и наличию
-механических повреждений не принимаются.
+При получении осмотрите упаковку и товар, проверьте комплектность.
+Видимые повреждения зафиксируйте в документах перевозчика и на фото,
+затем свяжитесь с продавцом. Это не ограничивает законные права покупателя.
 
 </div>
 

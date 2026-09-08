@@ -6,8 +6,10 @@ import { formatPrice } from '@/lib/format';
 type OrderSummary = {
   items: OrderItem[];
   subtotal: number;
-  delivery: number;
-  total: number;
+  delivery: number | null;
+  deliveryStatus: 'confirmed' | 'pending';
+  deliveryEstimate?: number | null;
+  total: number | null;
   createdAt: string;
 };
 
@@ -70,8 +72,8 @@ export default function OrderSuccessPage() {
               </div>
               <div className="space-y-2 pt-6 border-t border-graphite-200 dark:border-white/10">
                 <div className="flex justify-between text-sm"><span className="text-graphite-500 dark:text-graphite-400">Товары</span><span className="font-medium">{formatPrice(summary.subtotal)}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-graphite-500 dark:text-graphite-400">Доставка</span><span className="font-medium">{summary.delivery === 0 ? 'Бесплатно' : formatPrice(summary.delivery)}</span></div>
-                <div className="flex justify-between items-center pt-3 border-t border-graphite-200 dark:border-white/10"><span className="font-semibold">Итого</span><span className="text-2xl font-bold">{formatPrice(summary.total)}</span></div>
+                <div className="flex justify-between gap-4 text-sm"><span className="text-graphite-500 dark:text-graphite-400">Доставка</span><span className="font-medium text-right">{summary.deliveryStatus === 'pending' ? (summary.deliveryEstimate ? `Ориентировочно ${formatPrice(summary.deliveryEstimate)} · подтвердит менеджер` : 'Стоимость согласовывается') : summary.delivery === 0 ? 'Без доплаты' : formatPrice(summary.delivery ?? 0)}</span></div>
+                <div className="flex justify-between items-center gap-4 pt-3 border-t border-graphite-200 dark:border-white/10"><span className="font-semibold">Итого</span><span className="text-xl sm:text-2xl font-bold text-right">{summary.total === null ? 'После согласования доставки' : formatPrice(summary.total)}</span></div>
               </div>
             </>
           ) : (

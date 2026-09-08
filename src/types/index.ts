@@ -94,6 +94,8 @@ export type CheckoutFormData = {
   deliveryTime?: string;
   paymentMethod: 'cash' | 'sbp';
   comment?: string;
+  outsideMkad?: boolean;
+  outsideMkadKm?: number;
 };
 
 
@@ -103,8 +105,10 @@ export type Order = {
   items: OrderItem[];
   customer: CheckoutFormData;
   subtotal: number;
-  delivery: number;
-  total: number;
+  delivery: number | null;
+  deliveryStatus?: 'confirmed' | 'pending';
+  deliveryEstimate?: number | null;
+  total: number | null;
   status: 'pending' | 'confirmed' | 'shipped' | 'delivered' | 'cancelled';
   createdAt: string;
 };

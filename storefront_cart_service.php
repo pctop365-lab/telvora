@@ -31,7 +31,7 @@ function storefrontCartResolve(PDO $pdo, array $items, bool $lock = false): arra
     if ($variantIds !== []) { $conditions[] = 'pv.id IN (' . implode(',', array_fill(0, count($variantIds), '?')) . ')'; array_push($params, ...$variantIds); }
     if ($legacySlugs !== []) { $conditions[] = 'p.slug IN (' . implode(',', array_fill(0, count($legacySlugs), '?')) . ')'; array_push($params, ...$legacySlugs); }
     $sql = "SELECT pv.id AS product_variant_id, p.id AS id, pv.product_id, pv.variant_key, pv.assembly_country,
-                   pv.display_name, pv.is_active AS variant_active, p.slug, p.name, p.variants,
+                   pv.display_name, pv.is_active AS variant_active, p.slug, p.name, p.screen_size, p.variants,
                    p.is_active AS product_active
             FROM product_variants pv INNER JOIN products p ON p.id = pv.product_id
             WHERE (" . implode(' OR ', $conditions) . ')';
@@ -75,7 +75,7 @@ function storefrontCartResolve(PDO $pdo, array $items, bool $lock = false): arra
         $lockIds = array_values(array_unique(array_map('intval', $resolvedVariantIds)));
         sort($lockIds, SORT_NUMERIC);
         $lockSql = "SELECT pv.id AS product_variant_id, p.id AS id, pv.product_id, pv.variant_key, pv.assembly_country,
-                           pv.display_name, pv.is_active AS variant_active, p.slug, p.name, p.variants,
+                           pv.display_name, pv.is_active AS variant_active, p.slug, p.name, p.screen_size, p.variants,
                            p.is_active AS product_active
                     FROM product_variants pv INNER JOIN products p ON p.id = pv.product_id
                     WHERE pv.id IN (" . implode(',', array_fill(0, count($lockIds), '?')) . ")
@@ -124,7 +124,7 @@ function storefrontCartResolve(PDO $pdo, array $items, bool $lock = false): arra
         }
         $results[] = storefrontAvailabilityPublic($availability, $id) + [
             'product_id' => $row['product_id'], 'slug' => $row['slug'], 'name' => $row['name'],
-            'assembly_country' => $row['_identity']['target']['country'],
+            'assembly_country' => $row['_identity']['target']['country'], 'screen_size' => $row['screen_size'],
             'quantity' => $item['quantity'], 'price' => $effectivePrice['price'],
             '_qualifying_offer_id' => $availability['qualifying_offer_id']
         ];

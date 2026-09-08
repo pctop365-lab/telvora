@@ -62,6 +62,7 @@ export async function createOrder(
     customer: formData,
     subtotal: 0,
     delivery: 0,
+    deliveryStatus: 'confirmed',
     total: 0,
     status: 'pending',
     createdAt: new Date().toISOString(),
@@ -82,6 +83,8 @@ export async function createOrder(
       payment_method: formData.paymentMethod,
       delivery_time: formData.deliveryTime ?? '',
       comment: formData.comment ?? '',
+      outside_mkad: formData.outsideMkad === true,
+      outside_mkad_km: formData.outsideMkadKm ?? null,
 
       items: cartItems.map((item) => ({
         product_id: Number(item.productId), product_variant_id: item.productVariantId,
@@ -97,8 +100,10 @@ export async function createOrder(
     message?: string;
     code?: string;
     subtotal?: number;
-    delivery?: number;
-    total?: number;
+    delivery?: number | null;
+    delivery_status?: 'confirmed' | 'pending';
+    delivery_estimate?: number | null;
+    total?: number | null;
     items?: Array<{
       product_id: number;
       product_variant_id: number;
@@ -117,7 +122,9 @@ export async function createOrder(
   }
 
   if (!response.ok || !result.success || !result.order_number ||
-      typeof result.subtotal !== 'number' || typeof result.delivery !== 'number' || typeof result.total !== 'number' ||
+      typeof result.subtotal !== 'number' || !['confirmed','pending'].includes(result.delivery_status ?? '') ||
+      (result.delivery_status === 'confirmed' && (typeof result.delivery !== 'number' || typeof result.total !== 'number')) ||
+      (result.delivery_status === 'pending' && (result.delivery !== null || result.total !== null)) ||
       !Array.isArray(result.items) || result.items.length !== cartItems.length) {
     throw new Error(
       result.message || 'Не удалось сохранить заказ'
@@ -126,8 +133,10 @@ export async function createOrder(
 
   order.orderNumber = result.order_number;
   order.subtotal = result.subtotal;
-  order.delivery = result.delivery;
-  order.total = result.total;
+  order.delivery = result.delivery ?? null;
+  order.deliveryStatus = result.delivery_status!;
+  order.deliveryEstimate = result.delivery_estimate;
+  order.total = result.total ?? null;
   order.items = result.items.map((serverItem, index) => ({
     ...order.items[index],
     productId: String(serverItem.product_id),

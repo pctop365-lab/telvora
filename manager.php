@@ -2877,6 +2877,10 @@ if ($action === 'orders') {
             delivery_method,
             payment_method,
             comment,
+            subtotal,
+            delivery_price,
+            delivery_quote_status,
+            delivery_details,
             total,
             status,
             created_at

@@ -21,6 +21,7 @@ import OrderSuccessPage from '@/pages/OrderSuccessPage';
 import WarrantyPage from '@/pages/WarrantyPage';
 import SupportPage from '@/pages/SupportPage';
 import DeliveryPage from '@/pages/DeliveryPage';
+import ServicesPage from '@/pages/ServicesPage';
 import SoundbarsPage from '@/pages/SoundbarsPage';
 import AccessoriesPage from '@/pages/AccessoriesPage';
 import NotFoundPage from '@/pages/NotFoundPage';
@@ -122,6 +123,7 @@ const isAdmin = location.pathname.startsWith('/admin');
           <Route path="/warranty" element={<WarrantyPage />} />
           <Route path="/support" element={<SupportPage />} />
           <Route path="/delivery" element={<DeliveryPage />} />
+          <Route path="/services" element={<ServicesPage />} />
           <Route path="/soundbars" element={<SoundbarsPage />} />
           <Route path="/accessories" element={<AccessoriesPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
