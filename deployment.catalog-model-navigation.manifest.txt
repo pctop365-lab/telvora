@@ -1,0 +1,5 @@
+dist/assets/index-CzmDTvOV.css
+dist/assets/index-pAf27jdM.js
+dist/index.html
+
+INSTALL ORDER: upload new hashed CSS and JS first; publish index.html last. Frontend only; no PHP, SQL, DB, products, uploads, prices, suppliers, orders, or secrets changes.

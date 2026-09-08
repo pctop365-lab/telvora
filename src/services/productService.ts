@@ -11,6 +11,7 @@ type ApiProduct = {
   id: number | string;
   slug: string;
   name: string;
+  brand?: string;
   series: string;
   country?: string;
   category: ProductCategory;
@@ -64,6 +65,7 @@ function normalizeProduct(product: ApiProduct): Product {
     id: String(product.id),
     slug: String(product.slug || ''),
     name: String(product.name || ''),
+    brand: product.brand ? String(product.brand) : undefined,
     series: String(product.series || ''),
     category: product.category,
     screenSize: String(product.screen_size ?? ''),

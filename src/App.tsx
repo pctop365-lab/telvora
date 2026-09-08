@@ -99,6 +99,7 @@ const isAdmin = location.pathname.startsWith('/admin');
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/catalog" element={<CatalogPage />} />
+          <Route path="/televisions" element={<CatalogPage />} />
 
           <Route
             path="/catalog/:categorySlug"

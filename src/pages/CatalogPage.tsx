@@ -1,388 +1,54 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
 import { SlidersHorizontal, X } from 'lucide-react';
-import type { Product, SortKey } from '@/types';
+import type { SortKey } from '@/types';
 import { useProducts } from '@/hooks/useProducts';
 import { useUI } from '@/store/ui';
 import ProductGrid from '@/components/ProductGrid';
+import { filterCatalogProducts, getFilterOptions, getModelGroups, getTechnology } from './catalogModelFilters';
 
-const categoryTabs = [
-  { slug: '', label: 'Все' },
-  { slug: 'oled', label: 'OLED' },
-  { slug: 'qled', label: 'QLED' },
-  { slug: '8k', label: '8K' },
-  { slug: 'led', label: 'LED' },
-];
+type Props = { initialTechnology?: string; initialResolutionToken?: string };
+const toggleValue = (value: string, values: string[], setValues: (next: string[])=>void) => setValues(values.includes(value)?values.filter(item=>item!==value):[...values,value]);
 
-const screenSizes = ['50"', '55"', '65"', '75"', '77"', '85"'];
-const resolutions = ['4K Ultra HD', '8K Ultra HD'];
-const refreshRates = ['60 Гц', '120 Гц', '144 Гц'];
-const ratings = [4.5, 4.7, 4.9];
-
-export default function CatalogPage() {
+export default function CatalogPage({ initialTechnology, initialResolutionToken }: Props) {
   const { searchQuery } = useUI();
-  const [activeCat, setActiveCat] = useState('');
-  const [sort, setSort] = useState<SortKey>('default');
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const { products, loading, error } = useProducts({ search: searchQuery || undefined });
+  const [filtersOpen,setFiltersOpen]=useState(false);
+  const [modelKey,setModelKey]=useState('');
+  const [brands,setBrands]=useState<string[]>([]);
+  const [sizes,setSizes]=useState<string[]>([]);
+  const [resolutions,setResolutions]=useState<string[]>([]);
+  const [technologies,setTechnologies]=useState<string[]>(initialTechnology?[initialTechnology]:[]);
+  const [minPrice,setMinPrice]=useState(''); const [maxPrice,setMaxPrice]=useState('');
+  const [sort,setSort]=useState<SortKey>('default');
 
-  const [minPrice, setMinPrice] = useState('');
-  const [maxPrice, setMaxPrice] = useState('');
-  const [selectedSizes, setSelectedSizes] = useState<string[]>([]);
-  const [selectedResolutions, setSelectedResolutions] = useState<string[]>([]);
-  const [selectedRates, setSelectedRates] = useState<string[]>([]);
-  const [minRating, setMinRating] = useState<number | null>(null);
+  const modelGroups=useMemo(()=>getModelGroups(products),[products]);
+  const brandOptions=useMemo(()=>getFilterOptions(products,p=>p.brand??''),[products]);
+  const sizeOptions=useMemo(()=>getFilterOptions(products,p=>p.screenSize),[products]);
+  const resolutionOptions=useMemo(()=>getFilterOptions(products,p=>p.resolution),[products]);
+  const technologyOptions=useMemo(()=>getFilterOptions(products,getTechnology),[products]);
+  useEffect(()=>{ if(initialResolutionToken&&!resolutions.length){const match=resolutionOptions.find(value=>value.toLowerCase().includes(initialResolutionToken));if(match)setResolutions([match]);} },[initialResolutionToken,resolutionOptions,resolutions.length]);
 
-  const { products, loading, error } = useProducts({
-    search: searchQuery || undefined,
-    sort,
-  });
+  const filtered=useMemo(()=>filterCatalogProducts(products,{modelKey,brands,sizes,resolutions,technologies,minPrice,maxPrice,sort}),[products,modelKey,brands,sizes,resolutions,technologies,minPrice,maxPrice,sort]);
+  const activeCount=(modelKey?1:0)+brands.length+sizes.length+resolutions.length+technologies.length+(minPrice?1:0)+(maxPrice?1:0);
+  const resetFilters=()=>{setModelKey('');setBrands([]);setSizes([]);setResolutions([]);setTechnologies([]);setMinPrice('');setMaxPrice('');setSort('default');};
 
-  const toggle = (
-    value: string,
-    values: string[],
-    setter: React.Dispatch<React.SetStateAction<string[]>>
-  ) => {
-    setter(
-      values.includes(value)
-        ? values.filter((item) => item !== value)
-        : [...values, value]
-    );
-  };
+  const choices=(title:string,options:string[],selected:string[],setter:(next:string[])=>void)=><div><h3 className="mb-3 text-sm font-semibold text-white">{title}</h3><div className="flex flex-wrap gap-2">{options.map(value=><button key={value} type="button" onClick={()=>toggleValue(value,selected,setter)} className={`rounded-xl border px-3 py-2 text-sm ${selected.includes(value)?'border-white bg-white text-graphite-900':'border-white/10 bg-white/5 text-graphite-300'}`}>{value}</button>)}</div></div>;
 
-  const resetFilters = () => {
-    setMinPrice('');
-    setMaxPrice('');
-    setSelectedSizes([]);
-    setSelectedResolutions([]);
-    setSelectedRates([]);
-    setMinRating(null);
-  };
+  return <section className="min-h-screen bg-white pb-20 pt-24 dark:bg-graphite-900"><div className="mx-auto max-w-8xl px-4 sm:px-6 lg:px-8">
+    <div className="mb-8 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between"><div><span className="text-sm font-semibold uppercase tracking-widest text-accent-500">Телевизоры</span><h1 className="mt-2 font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl">Каталог по модельным рядам</h1><p className="mt-3 max-w-2xl text-graphite-400">Выберите модельный ряд, затем уточните технологию экрана, разрешение, бренд, диагональ и цену.</p></div><div className="flex flex-wrap gap-3"><button type="button" onClick={()=>setFiltersOpen(true)} className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white"><SlidersHorizontal className="h-4 w-4"/>Фильтры{activeCount>0&&<span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-500 text-xs font-bold">{activeCount}</span>}</button><select value={sort} onChange={e=>setSort(e.target.value as SortKey)} className="rounded-xl border border-white/10 bg-graphite-800 px-4 py-2.5 text-sm text-white"><option value="default">По умолчанию</option><option value="price-asc">Сначала дешевле</option><option value="price-desc">Сначала дороже</option><option value="rating">По рейтингу</option></select></div></div>
 
-console.log('TELVORA PRODUCTS:', products);
-  const filtered = products.filter((product: Product) => {
-    const categoryMatch =
-      !activeCat ||
-      product.category.toLowerCase() === activeCat ||
-      (activeCat === '8k' && product.category === '8K');
+    <div className="mb-8 rounded-2xl border border-white/10 bg-white/[0.03] p-4"><div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-graphite-400">Модельные ряды</div><div className="flex flex-wrap gap-2"><button type="button" onClick={()=>setModelKey('')} className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${!modelKey?'bg-white text-graphite-900':'border border-white/10 bg-white/5 text-white'}`}>Все модели <span className="opacity-60">{products.length}</span></button>{modelGroups.map(group=><button type="button" key={group.key} onClick={()=>setModelKey(group.key)} className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${modelKey===group.key?'bg-accent-500 text-white':'border border-white/10 bg-white/5 text-graphite-200 hover:bg-white/10'}`}>{group.label} <span className="opacity-60">{group.count}</span></button>)}</div></div>
 
-    const minPriceMatch =
-      !minPrice || product.price >= Number(minPrice);
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-3"><span className="text-sm text-graphite-400">Найдено товаров: {filtered.length}</span>{activeCount>0&&<button type="button" onClick={resetFilters} className="text-sm font-semibold text-accent-500 hover:text-accent-400">Сбросить все фильтры</button>}</div>
+    {!loading&&!error&&filtered.length===0?<div className="rounded-2xl border border-white/10 py-20 text-center"><p className="text-lg text-graphite-300">По выбранным условиям ничего не найдено.</p><button type="button" onClick={resetFilters} className="mt-4 rounded-xl bg-accent-500 px-5 py-2.5 font-semibold text-white">Сбросить фильтры</button></div>:<ProductGrid products={filtered} loading={loading} error={error}/>}
 
-    const maxPriceMatch =
-      !maxPrice || product.price <= Number(maxPrice);
-
-    const sizeMatch =
-      selectedSizes.length === 0 ||
-      selectedSizes.includes(product.screenSize);
-
-    const resolutionMatch =
-      selectedResolutions.length === 0 ||
-      selectedResolutions.includes(product.resolution);
-
-    const rateMatch =
-      selectedRates.length === 0 ||
-      selectedRates.some((rate) => {
-        const hz = rate.split(' ')[0];
-        return product.specs.some(
-          (spec) =>
-            spec.label.includes('Частота') &&
-            spec.value.includes(hz)
-        );
-      });
-
-    const ratingMatch =
-      minRating === null || product.rating >= minRating;
-
-    return (
-      categoryMatch &&
-      minPriceMatch &&
-      maxPriceMatch &&
-      sizeMatch &&
-      resolutionMatch &&
-      rateMatch &&
-      ratingMatch
-    );
-  });
-
-  const filtersCount =
-    selectedSizes.length +
-    selectedResolutions.length +
-    selectedRates.length +
-    (minPrice ? 1 : 0) +
-    (maxPrice ? 1 : 0) +
-    (minRating !== null ? 1 : 0);
-
-  return (
-    <section className="pt-24 pb-20 bg-white dark:bg-graphite-900 min-h-screen">
-      <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
-
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-6 mb-8">
-          <div>
-            <span className="text-sm font-semibold text-accent-500 uppercase tracking-widest">
-              Каталог
-            </span>
-
-            <h1 className="font-display font-extrabold text-4xl sm:text-5xl text-white mt-2 tracking-tight">
-              Выберите свой TELVORA
-            </h1>
-
-            <p className="text-graphite-400 mt-3 max-w-lg">
-              От доступных LED-моделей до флагманских 8K. Найдите идеальный телевизор под ваш интерьер и бюджет.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setFiltersOpen(true)}
-              className="flex items-center gap-2 bg-white/5 border border-white/10 text-white text-sm rounded-xl px-4 py-2.5 hover:bg-white/10 transition-colors"
-            >
-              <SlidersHorizontal className="w-4 h-4" />
-              Фильтры
-
-              {filtersCount > 0 && (
-                <span className="w-5 h-5 rounded-full bg-accent-500 text-white text-xs font-bold flex items-center justify-center">
-                  {filtersCount}
-                </span>
-              )}
-            </button>
-
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as SortKey)}
-              className="bg-graphite-100 dark:bg-graphite-800 border border-white/10 text-white text-sm rounded-xl px-4 py-2.5 focus:outline-none focus:border-accent-500/50 cursor-pointer"
-            >
-              <option value="default">По умолчанию</option>
-              <option value="price-asc">Сначала дешевле</option>
-              <option value="price-desc">Сначала дороже</option>
-              <option value="rating">По рейтингу</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 mb-8 overflow-x-auto hide-scrollbar pb-1">
-          {categoryTabs.map((cat) => (
-            <Link
-              key={cat.slug || 'all'}
-              to={cat.slug ? `/catalog/${cat.slug}` : '/catalog'}
-              onClick={() => setActiveCat(cat.slug)}
-              className={`px-5 py-2.5 text-sm font-semibold rounded-xl whitespace-nowrap transition-all ${
-                activeCat === cat.slug
-                  ? 'bg-white text-graphite-900'
-                  : 'bg-white/5 text-graphite-300 hover:bg-white/10 hover:text-white border border-white/10'
-              }`}
-            >
-              {cat.label}
-            </Link>
-          ))}
-        </div>
-
-        {filtersCount > 0 && (
-          <div className="flex items-center gap-4 mb-8">
-            <span className="text-sm text-graphite-400">
-              Найдено товаров: {filtered.length}
-            </span>
-
-            <button
-              type="button"
-              onClick={resetFilters}
-              className="text-sm text-accent-500 hover:text-accent-400"
-            >
-              Сбросить фильтры
-            </button>
-          </div>
-        )}
-
-        <ProductGrid
-          products={filtered}
-          loading={loading}
-          error={error}
-        />
-
-        {filtersOpen && (
-          <div className="fixed inset-0 z-[70]">
-            <div
-              className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-              onClick={() => setFiltersOpen(false)}
-            />
-
-            <div className="absolute right-0 top-0 bottom-0 w-full sm:w-[420px] bg-graphite-100 dark:bg-graphite-800 border-l border-white/10 overflow-y-auto">
-
-              <div className="sticky top-0 z-10 bg-graphite-100 dark:bg-graphite-800 border-b border-white/10 p-5 flex items-center justify-between">
-                <div>
-                  <h2 className="text-xl font-bold text-white">
-                    Фильтры
-                  </h2>
-
-                  <p className="text-sm text-graphite-400 mt-1">
-                    Найдено: {filtered.length}
-                  </p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setFiltersOpen(false)}
-                  className="p-2 text-graphite-300 hover:text-white hover:bg-white/10 rounded-lg"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="p-5 space-y-8">
-
-                <div>
-                  <h3 className="text-sm font-semibold text-white mb-3">
-                    Цена, ₽
-                  </h3>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <input
-                      type="number"
-                      placeholder="От"
-                      value={minPrice}
-                      onChange={(e) => setMinPrice(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white placeholder:text-graphite-500 outline-none"
-                    />
-
-                    <input
-                      type="number"
-                      placeholder="До"
-                      value={maxPrice}
-                      onChange={(e) => setMaxPrice(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-white placeholder:text-graphite-500 outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-semibold text-white mb-3">
-                    Диагональ
-                  </h3>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    {screenSizes.map((size) => (
-                      <button
-                        key={size}
-                        type="button"
-                        onClick={() =>
-                          toggle(size, selectedSizes, setSelectedSizes)
-                        }
-                        className={`px-3 py-2.5 rounded-xl text-sm border ${
-                          selectedSizes.includes(size)
-                            ? 'bg-white text-graphite-900 border-white'
-                            : 'bg-white/5 text-graphite-300 border-white/10'
-                        }`}
-                      >
-                        {size}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-semibold text-white mb-3">
-                    Разрешение
-                  </h3>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    {resolutions.map((resolution) => (
-                      <button
-                        key={resolution}
-                        type="button"
-                        onClick={() =>
-                          toggle(
-                            resolution,
-                            selectedResolutions,
-                            setSelectedResolutions
-                          )
-                        }
-                        className={`px-3 py-2.5 rounded-xl text-sm border ${
-                          selectedResolutions.includes(resolution)
-                            ? 'bg-white text-graphite-900 border-white'
-                            : 'bg-white/5 text-graphite-300 border-white/10'
-                        }`}
-                      >
-                        {resolution.replace(' Ultra HD', '')}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-semibold text-white mb-3">
-                    Частота обновления
-                  </h3>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    {refreshRates.map((rate) => (
-                      <button
-                        key={rate}
-                        type="button"
-                        onClick={() =>
-                          toggle(rate, selectedRates, setSelectedRates)
-                        }
-                        className={`px-3 py-2.5 rounded-xl text-sm border ${
-                          selectedRates.includes(rate)
-                            ? 'bg-white text-graphite-900 border-white'
-                            : 'bg-white/5 text-graphite-300 border-white/10'
-                        }`}
-                      >
-                        {rate}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-semibold text-white mb-3">
-                    Рейтинг
-                  </h3>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    {ratings.map((rating) => (
-                      <button
-                        key={rating}
-                        type="button"
-                        onClick={() =>
-                          setMinRating(
-                            minRating === rating ? null : rating
-                          )
-                        }
-                        className={`px-3 py-2.5 rounded-xl text-sm border ${
-                          minRating === rating
-                            ? 'bg-white text-graphite-900 border-white'
-                            : 'bg-white/5 text-graphite-300 border-white/10'
-                        }`}
-                      >
-                        ★ {rating}+
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pb-6">
-                  <button
-                    type="button"
-                    onClick={resetFilters}
-                    className="flex-1 px-4 py-3 rounded-xl border border-white/10 text-white hover:bg-white/10"
-                  >
-                    Сбросить
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setFiltersOpen(false)}
-                    className="flex-1 px-4 py-3 rounded-xl bg-white text-graphite-900 font-semibold"
-                  >
-                    Показать {filtered.length}
-                  </button>
-                </div>
-
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </section>
-  );
+    {filtersOpen&&<div className="fixed inset-0 z-[70]"><button type="button" aria-label="Закрыть фильтры" className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm" onClick={()=>setFiltersOpen(false)}/><aside role="dialog" aria-modal="true" aria-label="Фильтры каталога" className="absolute bottom-0 right-0 top-0 w-full overflow-y-auto border-l border-white/10 bg-graphite-800 sm:w-[430px]"><div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/10 bg-graphite-800 p-5"><div><h2 className="text-xl font-bold text-white">Фильтры</h2><p className="mt-1 text-sm text-graphite-400">Найдено: {filtered.length}</p></div><button type="button" aria-label="Закрыть" onClick={()=>setFiltersOpen(false)} className="rounded-lg p-2 text-white hover:bg-white/10"><X className="h-5 w-5"/></button></div><div className="space-y-8 p-5">
+      {choices('Бренд',brandOptions,brands,setBrands)}
+      {choices('Диагональ',sizeOptions,sizes,setSizes)}
+      {choices('Разрешение',resolutionOptions,resolutions,setResolutions)}
+      {choices('Технология экрана',technologyOptions,technologies,setTechnologies)}
+      <div><h3 className="mb-3 text-sm font-semibold text-white">Цена, ₽</h3><div className="grid grid-cols-2 gap-3"><input type="number" min="0" placeholder="От" value={minPrice} onChange={e=>setMinPrice(e.target.value)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-white"/><input type="number" min="0" placeholder="До" value={maxPrice} onChange={e=>setMaxPrice(e.target.value)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-white"/></div></div>
+      <div className="flex gap-3 pb-6"><button type="button" onClick={resetFilters} className="flex-1 rounded-xl border border-white/10 px-4 py-3 text-white">Сбросить</button><button type="button" onClick={()=>setFiltersOpen(false)} className="flex-1 rounded-xl bg-accent-500 px-4 py-3 font-semibold text-white">Показать {filtered.length}</button></div>
+    </div></aside></div>}
+  </div></section>;
 }
