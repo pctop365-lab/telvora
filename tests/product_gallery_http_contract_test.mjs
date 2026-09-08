@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const endpoint=fs.readFileSync(new URL('../products.php',import.meta.url),'utf8');
+const service=fs.readFileSync(new URL('../product_gallery_service.php',import.meta.url),'utf8');
+assert.match(endpoint,/\['upload_image', 'upload_gallery', 'gallery_save'/);
+assert.match(endpoint,/hash_equals\(\$sessionToken, \$requestToken\)/);
+assert.match(endpoint,/\$_SESSION\['product_gallery_uploads'\]/);
+assert.match(endpoint,/in_array\(\$path,\$allowed,true\)/);
+assert.match(endpoint,/beginTransaction\(\).*productGalleryReplace/s);
+assert.doesNotMatch(endpoint,/unlink\s*\(/);
+assert.match(service,/is_uploaded_file/); assert.match(service,/FILEINFO_MIME_TYPE/); assert.match(service,/getimagesize/);
+assert.match(service,/PRODUCT_GALLERY_MAX_IMAGES = 10/); assert.match(service,/PRODUCT_GALLERY_MAX_REQUEST_BYTES = 33554432/);
+assert.match(service,/product_\[a-f0-9\]\{24\}/); assert.match(service,/path.*legacyImage/s);
+console.log('PASS product gallery HTTP security contracts');

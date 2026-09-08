@@ -8,6 +8,7 @@ import { getCategorySlugForProduct } from '@/services/productService';
 import { useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import AvailabilityStatus from './AvailabilityStatus';
+import ProductGallery from './ProductGallery';
 
 type ProductDetailProps = {
   product: Product;
@@ -109,8 +110,8 @@ const productUrl =
         </Link>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
-          {/* Image */}
-          <div className="relative self-start rounded-3xl overflow-hidden bg-graphite-100 dark:bg-graphite-800 border border-white/5">
+          <ProductGallery images={product.images} legacyImage={product.image} productName={product.name} badge={product.badge} discount={discount} />
+          <div className="hidden">
             <div className="aspect-[4/3] relative overflow-hidden">
               <img
                 src={product.image}

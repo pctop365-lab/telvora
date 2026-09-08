@@ -80,6 +80,7 @@ type AdminProduct = {
   price: number;
   old_price: number | null;
   image: string;
+  images?: string[];
   badge: string | null;
   rating: number;
   reviews: number;
@@ -728,6 +729,10 @@ export default function AdminPage() {
 
   const [products, setProducts] = useState<AdminProduct[]>([]);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
+  const [galleryImages, setGalleryImages] = useState<string[]>([]);
+  const galleryUploadPendingRef = useRef(false);
+  const galleryContextSequenceRef = useRef(0);
   const [imageUploading, setImageUploading] = useState(false);
   const [imageUploadError, setImageUploadError] = useState('');
   const [productsLoading, setProductsLoading] = useState(false);
@@ -2366,6 +2371,36 @@ const login = async (e: React.FormEvent) => {
     (order) => order.status === 'Новый'
   ).length;
 
+  const uploadGalleryImages = async () => {
+    if (galleryUploadPendingRef.current) return;
+    if (!galleryFiles.length || galleryImages.length + galleryFiles.length > 10) {
+      setImageUploadError('В галерее может быть не более 10 изображений.');
+      return;
+    }
+    if (galleryFiles.some((file) => file.size > 8 * 1024 * 1024) || galleryFiles.reduce((sum, file) => sum + file.size, 0) > 32 * 1024 * 1024) {
+      setImageUploadError('Файл превышает 8 МБ или общий размер превышает 32 МБ.');
+      return;
+    }
+    const requestSequence = galleryContextSequenceRef.current;
+    galleryUploadPendingRef.current = true;
+    setImageUploading(true); setImageUploadError('');
+    try {
+      const formData = new FormData(); formData.append('action', 'upload_gallery');
+      galleryFiles.forEach((file) => formData.append('images[]', file));
+      const response = await fetch(PRODUCTS_API, { method:'POST', credentials:'include', headers:{'X-CSRF-Token':csrfToken || ''}, body:formData });
+      const data = await response.json();
+      if (!response.ok || !data.success || !Array.isArray(data.images)) throw new Error(data.message || 'Не удалось загрузить изображения');
+      if (requestSequence !== galleryContextSequenceRef.current) return;
+      setGalleryImages((current) => {
+        const next = [...current, ...data.images].slice(0, 10);
+        setProductForm((form) => ({...form, image: next[0] || ''}));
+        return next;
+      });
+      setGalleryFiles([]);
+    } catch (error) { if (requestSequence === galleryContextSequenceRef.current) setImageUploadError(error instanceof Error ? error.message : 'Ошибка сети при загрузке'); }
+    finally { galleryUploadPendingRef.current = false; if (requestSequence === galleryContextSequenceRef.current) setImageUploading(false); }
+  };
+
     const uploadProductImage = async () => {
     if (!imageFile) {
       setImageUploadError('Сначала выберите изображение');
@@ -2494,6 +2529,7 @@ if (!response.ok || !data.success || !data.image) {
     }
   };
   const resetProductForm = () => {
+    galleryContextSequenceRef.current += 1;
     setProductForm(emptyProductForm);
     setProductSlugManuallyEdited(false);
     setSpecs([]);
@@ -2503,6 +2539,8 @@ if (!response.ok || !data.success || !data.image) {
     setSpecValue('');
     setHighlightValue('');
     setEditingProductId(null);
+    setGalleryFiles([]);
+    setGalleryImages([]);
   };
 
   const openAddProduct = () => {
@@ -2534,6 +2572,8 @@ if (!response.ok || !data.success || !data.image) {
       description: product.description || '',
       is_active: Boolean(product.is_active),
     });
+    setGalleryImages(product.images?.length ? product.images : [product.image].filter(Boolean));
+    setGalleryFiles([]);
 
     setSpecs(
       Array.isArray(product.specs)
@@ -2731,6 +2771,19 @@ if (!response.ok || !data.success || !data.image) {
         return;
       }
 
+      const savedProductId = editingProductId || Number(data.id);
+      if (savedProductId && galleryImages.length) {
+        const galleryResponse = await fetch(PRODUCTS_API, {
+          method: 'POST', credentials: 'include',
+          headers: {'Content-Type':'application/json', 'X-CSRF-Token':csrfToken || ''},
+          body: JSON.stringify({action:'gallery_save', product_id:savedProductId, images:galleryImages}),
+        });
+        const galleryData = await galleryResponse.json();
+        if (!galleryResponse.ok || !galleryData.success) {
+          setError(galleryData.message || 'Товар сохранён, но галерею сохранить не удалось');
+          return;
+        }
+      }
       setShowProductForm(false);
       resetProductForm();
       await loadProducts();
@@ -5442,6 +5495,26 @@ const toggleProductStatus = async (product: AdminProduct) => {
                     </div>
 
                     <div className="rounded-2xl border border-white/10 bg-graphite-950/70 p-4 md:col-span-2 sm:p-5">
+                      <div className="mb-3 text-sm font-semibold text-white">Галерея товара</div>
+                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                        {galleryImages.map((src, index) => (
+                          <div key={src} className="rounded-xl border border-white/10 p-2">
+                            <img src={src} alt={`Превью ${index + 1}`} className="h-24 w-full rounded-lg bg-white object-contain" />
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              <button type="button" onClick={() => { const next=[...galleryImages]; [next[index-1],next[index]]=[next[index],next[index-1]]; setGalleryImages(next); setProductForm((f)=>({...f,image:next[0]})); }} disabled={index===0} className="rounded bg-white/10 px-2 py-1 text-xs text-white disabled:opacity-30">←</button>
+                              <button type="button" onClick={() => { const next=[...galleryImages]; [next[index],next[index+1]]=[next[index+1],next[index]]; setGalleryImages(next); setProductForm((f)=>({...f,image:next[0]})); }} disabled={index===galleryImages.length-1} className="rounded bg-white/10 px-2 py-1 text-xs text-white disabled:opacity-30">→</button>
+                              {index !== 0 && <button type="button" onClick={() => { const next=[src,...galleryImages.filter((item)=>item!==src)]; setGalleryImages(next); setProductForm((f)=>({...f,image:src})); }} className="rounded bg-accent-500 px-2 py-1 text-xs text-white">Главное</button>}
+                              <button type="button" disabled={galleryImages.length === 1} onClick={() => { const next=galleryImages.filter((item)=>item!==src); setGalleryImages(next); setProductForm((f)=>({...f,image:next[0] || ''})); }} className="rounded bg-red-500/80 px-2 py-1 text-xs text-white disabled:opacity-30">Удалить</button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(e)=>{setGalleryFiles(Array.from(e.target.files || []));setImageUploadError('');}} className="mt-3 block w-full rounded-xl border border-dashed border-white/15 bg-white/5 p-3 text-sm text-graphite-300" />
+                      <button type="button" onClick={uploadGalleryImages} disabled={!galleryFiles.length || imageUploading} className="mt-3 rounded-xl bg-accent-500 px-4 py-2.5 font-semibold text-white disabled:opacity-40">{imageUploading ? 'Загрузка...' : 'Загрузить выбранные'}</button>
+                      {imageUploadError && <p className="mt-2 text-sm text-red-500">{imageUploadError}</p>}
+                    </div>
+
+                    <div className="hidden">
   <div className="mb-4">
     <div className="text-sm font-semibold text-white">Изображение</div>
     <p className="mt-1 text-xs text-graphite-400">Загрузите файл или укажите URL изображения товара.</p>

@@ -1,0 +1,10 @@
+product_gallery_service.php
+products.php
+database/migrations/20260908_009_product_images.sql
+database/migrations/preflight_20260908_009_product_images.sql
+database/migrations/verify_20260908_009_product_images.sql
+dist/index.html
+dist/assets/index-mNhgUa2c.css
+dist/assets/index-WE52Jdrt.js
+
+INSTALL ORDER: run preflight; apply migration; upload PHP; deploy dist; run verify. Do not remove existing uploads/products files.

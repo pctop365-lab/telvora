@@ -19,6 +19,7 @@ type ApiProduct = {
   price?: number | string;
   old_price?: number | string | null;
   image?: string;
+  images?: string[];
   badge?: string;
   rating?: number | string;
   reviews?: number | string;
@@ -73,7 +74,10 @@ function normalizeProduct(product: ApiProduct): Product {
       product.old_price !== undefined
         ? Number(product.old_price)
         : undefined,
-    image: String(product.image || ''),
+    image: String(product.image || product.images?.[0] || ''),
+    images: Array.isArray(product.images) && product.images.length > 0
+      ? product.images.map(String)
+      : [String(product.image || '')].filter(Boolean),
     badge: product.badge
       ? String(product.badge)
       : undefined,

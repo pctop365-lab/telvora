@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const gallery=fs.readFileSync(new URL('../src/components/ProductGallery.tsx',import.meta.url),'utf8');
+const admin=fs.readFileSync(new URL('../src/pages/AdminPage.tsx',import.meta.url),'utf8');
+const service=fs.readFileSync(new URL('../src/services/productService.ts',import.meta.url),'utf8');
+for (const text of ['Предыдущее изображение','Следующее изображение','Увеличить изображение','aria-modal="true"','ArrowLeft','ArrowRight','Escape']) assert.match(gallery,new RegExp(text));
+assert.match(gallery,/items\.length > 1/); assert.match(gallery,/\[productName\]/);
+for (const text of ["formData.append('action', 'upload_gallery')","action:'gallery_save'",'multiple','Главное','Удалить','32 * 1024 * 1024']) assert.ok(admin.includes(text),text);
+assert.match(admin,/'X-CSRF-Token':csrfToken \|\| ''/);
+assert.match(admin,/galleryUploadPendingRef\.current/); assert.match(admin,/requestSequence !== galleryContextSequenceRef\.current/);
+assert.match(service,/product\.images\?\.\[0\]/); assert.match(service,/\[String\(product\.image \|\| ''\)\]\.filter\(Boolean\)/);
+console.log('PASS product gallery frontend contracts');

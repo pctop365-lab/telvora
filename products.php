@@ -17,6 +17,7 @@ require_once __DIR__ . '/product_activation_service.php';
 require_once __DIR__ . '/product_variant_mutation_service.php';
 require_once __DIR__ . '/product_variant_price_service.php';
 require_once __DIR__ . '/storefront_availability_service.php';
+require_once __DIR__ . '/product_gallery_service.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -277,7 +278,7 @@ if ($action === '' || $action === 'list') {
             ORDER BY id DESC
         ");
 
-        $products = attachStorefrontVariants($pdo, $stmt->fetchAll());
+        $products = productGalleryAttach($pdo, attachStorefrontVariants($pdo, $stmt->fetchAll()));
 
         foreach ($products as &$product) {
             $product = prepareProduct($product);
@@ -328,7 +329,7 @@ if (empty($_SESSION['telvora_admin'])) {
 |--------------------------------------------------------------------------
 */
 
-if (in_array($action, ['upload_image', 'add', 'update', 'delete', 'variant_add', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic'], true)) {
+if (in_array($action, ['upload_image', 'upload_gallery', 'gallery_save', 'add', 'update', 'delete', 'variant_add', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic'], true)) {
     $sessionToken = $_SESSION['csrf_token'] ?? '';
     $requestToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 
@@ -384,6 +385,51 @@ if (in_array($action, ['variant_add', 'variant_set_active', 'variant_price_set_m
         http_response_code(500);
         echo json_encode(['success'=>false,'message'=>'Не удалось изменить вариант товара'],JSON_UNESCAPED_UNICODE);
     }
+    exit;
+}
+
+if ($action === 'upload_gallery') {
+    $input = $_FILES['images'] ?? null;
+    $files = is_array($input) ? productGalleryFlattenFiles($input) : [];
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || $files === [] || count($files) > PRODUCT_GALLERY_MAX_IMAGES) {
+        http_response_code(400); echo json_encode(['success'=>false,'message'=>'Можно загрузить от 1 до 10 изображений'], JSON_UNESCAPED_UNICODE); exit;
+    }
+    if (array_sum(array_map(static fn(array $f): int => (int)($f['size'] ?? 0), $files)) > PRODUCT_GALLERY_MAX_REQUEST_BYTES) {
+        http_response_code(400); echo json_encode(['success'=>false,'message'=>'Общий размер загрузки не должен превышать 32 МБ'], JSON_UNESCAPED_UNICODE); exit;
+    }
+    $uploadDir = __DIR__ . '/uploads/products';
+    if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true)) { http_response_code(500); echo json_encode(['success'=>false,'message'=>'Не удалось создать папку изображений'], JSON_UNESCAPED_UNICODE); exit; }
+    $urls = [];
+    try {
+        $validatedFiles = [];
+        foreach ($files as $file) $validatedFiles[] = [$file, productGalleryValidateUpload($file)];
+        foreach ($validatedFiles as [$file, $valid]) {
+            $filename = 'product_' . bin2hex(random_bytes(12)) . '.' . $valid['extension'];
+            if (!move_uploaded_file($file['tmp_name'], $uploadDir . DIRECTORY_SEPARATOR . $filename)) throw new RuntimeException();
+            $urls[] = '/uploads/products/' . $filename;
+        }
+    } catch (InvalidArgumentException $e) { http_response_code(400); echo json_encode(['success'=>false,'message'=>$e->getMessage()], JSON_UNESCAPED_UNICODE); exit;
+    } catch (Throwable $e) { http_response_code(500); echo json_encode(['success'=>false,'message'=>'Не удалось сохранить изображение'], JSON_UNESCAPED_UNICODE); exit; }
+    $_SESSION['product_gallery_uploads'] = array_slice(array_values(array_unique(array_merge($_SESSION['product_gallery_uploads'] ?? [], $urls))), -40);
+    echo json_encode(['success'=>true,'images'=>$urls,'image'=>$urls[0]], JSON_UNESCAPED_UNICODE); exit;
+}
+
+if ($action === 'gallery_save') {
+    $productId = filter_var($data['product_id'] ?? null, FILTER_VALIDATE_INT, ['options'=>['min_range'=>1]]);
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || !$productId || !is_array($data['images'] ?? null)) { http_response_code(400); echo json_encode(['success'=>false,'message'=>'Некорректная галерея'], JSON_UNESCAPED_UNICODE); exit; }
+    try {
+        $images = productGalleryNormalize($data['images']);
+        $stmt=$pdo->prepare('SELECT image FROM products WHERE id=?'); $stmt->execute([$productId]); $legacy=$stmt->fetchColumn();
+        if ($legacy === false) { http_response_code(404); echo json_encode(['success'=>false,'message'=>'Товар не найден'], JSON_UNESCAPED_UNICODE); exit; }
+        $stmt=$pdo->prepare('SELECT image_path FROM product_images WHERE product_id=?'); $stmt->execute([$productId]);
+        $allowed=array_merge($stmt->fetchAll(PDO::FETCH_COLUMN), $_SESSION['product_gallery_uploads'] ?? [], is_string($legacy)&&$legacy!=='' ? [$legacy] : []);
+        foreach ($images as $path) if (!in_array($path,$allowed,true) || (!productGalleryIsManagedPath($path) && $path !== $legacy)) throw new InvalidArgumentException('Изображение не принадлежит товару или текущей загрузке');
+        $pdo->beginTransaction(); productGalleryReplace($pdo,(int)$productId,$images); $main=$images[0] ?? (string)$legacy;
+        $stmt=$pdo->prepare('UPDATE products SET image=? WHERE id=?'); $stmt->execute([$main,$productId]); $pdo->commit();
+        $_SESSION['product_gallery_uploads']=array_values(array_diff($_SESSION['product_gallery_uploads'] ?? [],$images));
+        echo json_encode(['success'=>true,'image'=>$main,'images'=>$images], JSON_UNESCAPED_UNICODE);
+    } catch (InvalidArgumentException $e) { if($pdo->inTransaction())$pdo->rollBack(); http_response_code(400); echo json_encode(['success'=>false,'message'=>$e->getMessage()], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) { if($pdo->inTransaction())$pdo->rollBack(); http_response_code(500); echo json_encode(['success'=>false,'message'=>'Не удалось сохранить галерею'], JSON_UNESCAPED_UNICODE); }
     exit;
 }
 
@@ -567,7 +613,7 @@ if ($action === 'admin_list') {
             ORDER BY id DESC
         ");
 
-        $products = $stmt->fetchAll();
+        $products = productGalleryAttach($pdo, $stmt->fetchAll());
 
         foreach ($products as &$product) {
             $product = prepareProduct($product);
