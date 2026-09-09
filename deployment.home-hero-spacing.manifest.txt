@@ -1,0 +1,5 @@
+dist/assets/index-DdhyWGQv.css
+dist/assets/index-ixNSlkT2.js
+dist/index.html
+
+INSTALL ORDER: upload the new hashed CSS and JS first; publish index.html last. Frontend only; keep all existing assets. No PHP, SQL, DB, catalog, checkout, prices, API, Telegram, PDF, or business-logic changes.
