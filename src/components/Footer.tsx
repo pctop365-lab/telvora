@@ -3,21 +3,23 @@ import { Link } from 'react-router-dom';
 
 const footerLinks = {
   Каталог: [
-    { label: 'OLED телевизоры', to: '/catalog/oled' },
-    { label: 'QLED телевизоры', to: '/catalog/qled' },
-    { label: '8K телевизоры', to: '/catalog/8k' },
-    { label: 'LED телевизоры', to: '/catalog/led' },
+    { label: 'Весь каталог', to: '/catalog' },
+    { label: 'Телевизоры', to: '/televisions' },
+    { label: 'Саундбары', to: '/soundbars' },
+    { label: 'Аксессуары', to: '/accessories' },
   ],
   Компания: [
     { label: 'О TELVORA', to: '/' },
     { label: 'Технологии', to: '/#tech' },
+    { label: 'Контакты', to: '/contacts' },
   ],
   Поддержка: [
-    { label: 'Доставка и оплата', to: '/delivery' },
+    { label: 'Центр поддержки', to: '/support' },
+    { label: 'Доставка', to: '/delivery' },
+    { label: 'Сервисные услуги', to: '/services' },
     { label: 'Гарантия', to: '/warranty' },
     { label: 'Возврат товара', to: '/returns' },
     { label: 'FAQ', to: '/support#faq' },
-    { label: 'Контакты', to: '/contacts' },
   ],
   'Правовая информация': [
     { label: 'Публичная оферта', to: '/offer' },
