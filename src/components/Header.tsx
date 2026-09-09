@@ -8,10 +8,13 @@ import {
   Tv,
   Sun,
   Moon,
+  Phone,
+  Mail,
 } from 'lucide-react';
 import { useCart } from '@/store/cart';
 import { useUI } from '@/store/ui';
 import { useTheme } from '@/store/theme';
+import { publicContacts } from '@/data/publicContacts';
 
 const navLinks = [
   { label: 'Каталог', to: '/catalog' },
@@ -75,14 +78,33 @@ export default function Header() {
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
           isLight
             ? scrolled
-              ? 'bg-white/90 backdrop-blur-2xl border-b border-graphite-200 py-3 shadow-sm'
-              : 'bg-white/95 backdrop-blur-xl py-5'
+              ? 'bg-white/90 backdrop-blur-2xl border-b border-graphite-200 shadow-sm'
+              : 'bg-white/95 backdrop-blur-xl'
             : scrolled
-              ? 'bg-graphite-900/90 backdrop-blur-2xl border-b border-graphite-700 py-3 shadow-lg'
-              : 'bg-graphite-900/95 backdrop-blur-xl py-5'
+              ? 'bg-graphite-900/90 backdrop-blur-2xl border-b border-graphite-700 shadow-lg'
+              : 'bg-graphite-900/95 backdrop-blur-xl'
         }`}
       >
-        <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className={`border-b ${isLight ? 'border-graphite-200/80' : 'border-white/10'}`}>
+          <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 h-8 flex items-center justify-between lg:justify-end gap-5 text-xs">
+            <a href={publicContacts.phoneLink} className={`inline-flex items-center gap-1.5 font-semibold transition-colors hover:text-accent-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 rounded ${isLight ? 'text-graphite-800' : 'text-white'}`}>
+              <Phone className="w-3.5 h-3.5 text-accent-500" />
+              {publicContacts.phoneDisplay}
+            </a>
+            <div className="hidden lg:flex items-center gap-5">
+              <a href={publicContacts.ordersMailto} className={`inline-flex items-center gap-1.5 transition-colors hover:text-accent-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 rounded ${isLight ? 'text-graphite-600' : 'text-graphite-300'}`}>
+                <Mail className="w-3.5 h-3.5 text-accent-500" />
+                Заказы: {publicContacts.ordersEmail}
+              </a>
+              <a href={publicContacts.supportMailto} className={`inline-flex items-center gap-1.5 transition-colors hover:text-accent-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 rounded ${isLight ? 'text-graphite-600' : 'text-graphite-300'}`}>
+                <Mail className="w-3.5 h-3.5 text-accent-500" />
+                Поддержка: {publicContacts.supportEmail}
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <div className={`max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 transition-all duration-500 ${scrolled ? 'py-2' : 'py-3'}`}>
           <div className="flex items-center justify-between gap-4">
             {/* LOGO */}
             <Link to="/" className="flex items-center gap-2 shrink-0 group">
@@ -304,6 +326,19 @@ export default function Header() {
                 </button>
               ))}
             </nav>
+
+            {/* MOBILE CONTACTS */}
+            <div className={`mt-6 pt-6 border-t ${isLight ? 'border-graphite-200' : 'border-graphite-700'}`}>
+              <div className={`px-4 mb-2 text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-graphite-500' : 'text-graphite-400'}`}>Контакты</div>
+              <a href={publicContacts.ordersMailto} className={`flex items-center gap-2 px-4 py-2.5 text-sm rounded-xl transition-colors ${isLight ? 'text-graphite-700 hover:bg-graphite-100' : 'text-graphite-200 hover:bg-white/10'}`}>
+                <Mail className="w-4 h-4 text-accent-500 shrink-0" />
+                <span><span className="font-medium">Заказы:</span> {publicContacts.ordersEmail}</span>
+              </a>
+              <a href={publicContacts.supportMailto} className={`flex items-center gap-2 px-4 py-2.5 text-sm rounded-xl transition-colors ${isLight ? 'text-graphite-700 hover:bg-graphite-100' : 'text-graphite-200 hover:bg-white/10'}`}>
+                <Mail className="w-4 h-4 text-accent-500 shrink-0" />
+                <span><span className="font-medium">Поддержка:</span> {publicContacts.supportEmail}</span>
+              </a>
+            </div>
 
             {/* MOBILE THEME SWITCH */}
             <div
