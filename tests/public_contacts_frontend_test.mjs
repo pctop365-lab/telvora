@@ -18,8 +18,9 @@ assert.match(footer, /publicContacts\.ordersMailto/);
 assert.match(footer, /publicContacts\.supportMailto/);
 assert.match(support, /contacts#callback/);
 assert.match(invoice, /public_contacts\.json/);
-assert.match(invoice, /Почта для заказов/);
-assert.match(invoice, /Почта поддержки/);
+assert.match(invoice, /<td class="label">Почта<\/td>/);
+assert.match(invoice, /h\(\$sellerOrdersEmail\) \. ' \/ ' \. h\(\$sellerSupportEmail\)/);
+assert.doesNotMatch(invoice, /Почта поддержки/);
 assert.match(invoice, /\$order\['customer_name'\]/, 'legacy customer data binding must remain');
 assert.match(invoice, /\$order\['phone'\]/, 'legacy order phone binding must remain');
 

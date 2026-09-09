@@ -489,13 +489,8 @@ table {
 </tr>
 
 <tr>
-    <td class="label">Почта для заказов</td>
-    <td>' . h($sellerOrdersEmail) . '</td>
-</tr>
-
-<tr>
-    <td class="label">Почта поддержки</td>
-    <td>' . h($sellerSupportEmail) . '</td>
+    <td class="label">Почта</td>
+    <td>' . h($sellerOrdersEmail) . ' / ' . h($sellerSupportEmail) . '</td>
 </tr>
 
 <tr>

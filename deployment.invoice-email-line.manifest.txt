@@ -1,0 +1,3 @@
+generate_invoice_pdf.php
+
+INSTALL: back up the current generate_invoice_pdf.php, verify its baseline hash, then replace only this file. PHP/PDF template only; no frontend assets, public_contacts.json, SQL, DB, Telegram, mail configuration, secrets, orders, prices, or business-logic changes.
