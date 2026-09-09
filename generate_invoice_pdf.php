@@ -200,10 +200,16 @@ $items = $itemStmt->fetchAll();
 |--------------------------------------------------------------------------
 */
 
+$publicContacts = json_decode((string)file_get_contents(__DIR__ . '/public_contacts.json'), true);
+if (!is_array($publicContacts)) {
+    throw new RuntimeException('Public contact configuration is unavailable.');
+}
+
 $sellerName = 'TELVORA';
 $sellerDetails = 'TELVORA';
-$sellerPhone = '8 926 202-01-19';
-$sellerEmail = 'telvora24@gmail.com';
+$sellerPhone = (string)($publicContacts['phoneDisplay'] ?? '');
+$sellerOrdersEmail = (string)($publicContacts['ordersEmail'] ?? '');
+$sellerSupportEmail = (string)($publicContacts['supportEmail'] ?? '');
 $sellerAddress = 'г. Москва, Багратионовский проезд';
 
 
@@ -483,8 +489,13 @@ table {
 </tr>
 
 <tr>
-    <td class="label">Email</td>
-    <td>' . h($sellerEmail) . '</td>
+    <td class="label">Почта для заказов</td>
+    <td>' . h($sellerOrdersEmail) . '</td>
+</tr>
+
+<tr>
+    <td class="label">Почта поддержки</td>
+    <td>' . h($sellerSupportEmail) . '</td>
 </tr>
 
 <tr>

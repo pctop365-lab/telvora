@@ -1,0 +1,10 @@
+public_contacts.json
+callback_request.php
+generate_invoice_pdf.php
+dist/assets/index-CcpL45I9.css
+dist/assets/index-DaJ729yE.js
+dist/index.html
+
+PREREQUISITE: set callback_mail_from to a verified sender address in the private telvora_secrets.php. Do not publish the callback form until the server mail transport and sender are verified without contacting real customers.
+
+INSTALL ORDER: back up current generate_invoice_pdf.php and index.html; install public_contacts.json before the PHP files; upload new hashed CSS and JS; publish index.html last. Keep all old hashed assets. Frontend plus callback/PDF only; no SQL, DB, order-data, Telegram, hosting, or public-secrets changes.
