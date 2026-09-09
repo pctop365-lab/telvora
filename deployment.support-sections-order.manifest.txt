@@ -1,0 +1,4 @@
+dist/assets/index-L0Fbef9-.js
+dist/index.html
+
+INSTALL ORDER: upload the new hashed JS first; publish index.html last. Frontend only; keep all existing assets, including baseline CSS asset index-Dqz7TdZ_.css (SHA256 49b3f67711cfc8fa85cbfbf2af0343e99701568eb0d18c6876ec314153534812). No PHP, SQL, DB, Telegram, mail configuration, secrets, orders, prices, or business-logic changes.

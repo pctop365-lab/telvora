@@ -69,6 +69,15 @@ export default function SupportPage() {
           <p className="text-graphite-600 dark:text-graphite-300 text-lg mt-4 leading-relaxed">Поможем с заказом, доставкой, гарантией и использованием техники.</p>
         </header>
 
+        <section className="mb-5 flex flex-col sm:flex-row sm:items-center gap-5 p-6 sm:p-8 bg-white dark:bg-graphite-900 rounded-3xl border border-graphite-200 dark:border-white/5 shadow-sm">
+          <div className="w-12 h-12 rounded-2xl bg-accent-500/10 flex items-center justify-center shrink-0"><Headphones className="w-6 h-6 text-accent-600 dark:text-accent-500" /></div>
+          <div>
+            <h2 className="font-display font-bold text-2xl">Нужна дополнительная помощь?</h2>
+            <p className="text-graphite-600 dark:text-graphite-400 mt-2 leading-relaxed">Подготовьте номер заказа и данные, указанные при оформлении. Это поможет службе поддержки быстрее разобраться в вопросе.</p>
+            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold"><a href={publicContacts.phoneLink} className="text-accent-600 hover:text-accent-700 dark:text-accent-500">{publicContacts.phoneDisplay}</a><a href={publicContacts.supportMailto} className="text-accent-600 hover:text-accent-700 dark:text-accent-500">{publicContacts.supportEmail}</a><Link to="/contacts#callback" className="text-accent-600 hover:text-accent-700 dark:text-accent-500">Заказать обратный звонок</Link></div>
+          </div>
+        </section>
+
         <section id="order-tracking" className="scroll-mt-24 mb-14 sm:mb-16">
           <div className="p-6 sm:p-8 bg-white dark:bg-graphite-900 rounded-3xl border border-graphite-200 dark:border-white/5 shadow-sm">
             <div className="flex items-start gap-4 mb-6">
@@ -157,14 +166,6 @@ export default function SupportPage() {
           </p>
         </section>
 
-        <section className="flex flex-col sm:flex-row sm:items-center gap-5 p-6 sm:p-8 bg-white dark:bg-graphite-900 rounded-3xl border border-graphite-200 dark:border-white/5 shadow-sm">
-          <div className="w-12 h-12 rounded-2xl bg-accent-500/10 flex items-center justify-center shrink-0"><Headphones className="w-6 h-6 text-accent-600 dark:text-accent-500" /></div>
-          <div>
-            <h2 className="font-display font-bold text-2xl">Нужна дополнительная помощь?</h2>
-            <p className="text-graphite-600 dark:text-graphite-400 mt-2 leading-relaxed">Подготовьте номер заказа и данные, указанные при оформлении. Это поможет службе поддержки быстрее разобраться в вопросе.</p>
-            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold"><a href={publicContacts.phoneLink} className="text-accent-600 hover:text-accent-700 dark:text-accent-500">{publicContacts.phoneDisplay}</a><a href={publicContacts.supportMailto} className="text-accent-600 hover:text-accent-700 dark:text-accent-500">{publicContacts.supportEmail}</a><Link to="/contacts#callback" className="text-accent-600 hover:text-accent-700 dark:text-accent-500">Заказать обратный звонок</Link></div>
-          </div>
-        </section>
       </div>
     </main>
   );
