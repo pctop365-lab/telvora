@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, Zap, Shield, Truck } from 'lucide-react';
+import { ArrowRight, Search, Truck, Wrench } from 'lucide-react';
 import { siteContent } from '@/data/siteContent';
 
 export default function Hero() {
@@ -75,32 +75,36 @@ export default function Hero() {
           </div>
 
           <div
-            className="mt-16 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl animate-fade-up"
+            className="mt-16 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl animate-fade-up"
             style={{ animationDelay: '0.4s', opacity: 0 }}
           >
             {[
               {
+                icon: Search,
+                title: 'Подобрать телевизор',
+                sub: 'Поможем выбрать модель под ваш бюджет',
+                to: '/support',
+              },
+              {
                 icon: Truck,
-                title: 'Курьерская доставка',
-                sub: 'Доставка за 1–2 дня',
+                title: 'Доставка и оплата',
+                sub: 'Тарифы по Москве и отправка в регионы',
+                to: '/delivery',
               },
               {
-                icon: Shield,
-                title: 'Официальная гарантия',
-                sub: 'Условия производителя',
-              },
-              {
-                icon: Zap,
-                title: 'Установка за 1 день',
-                sub: 'Профессиональный монтаж',
+                icon: Wrench,
+                title: 'Сервисные услуги',
+                sub: 'Монтаж, настройка и пиксельтест',
+                to: '/services',
               },
             ].map((f) => (
-              <div
+              <Link
                 key={f.title}
-                className="flex items-center gap-3 p-4 bg-white/70 dark:bg-white/5 backdrop-blur-md border border-graphite-200 dark:border-white/10 rounded-2xl"
+                to={f.to}
+                className="group flex cursor-pointer items-start gap-3 rounded-2xl border border-graphite-200 bg-white/70 p-4 backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:border-accent-500/50 hover:bg-white hover:shadow-lg hover:shadow-accent-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-white/10 dark:bg-white/5 dark:hover:border-accent-500/60 dark:hover:bg-white/10 dark:focus-visible:ring-offset-graphite-900"
               >
-                <div className="w-10 h-10 rounded-xl bg-accent-500/10 flex items-center justify-center shrink-0">
-                  <f.icon className="w-5 h-5 text-accent-500" />
+                <div className="w-10 h-10 rounded-xl bg-accent-500/10 flex items-center justify-center shrink-0 transition-colors group-hover:bg-accent-500/15">
+                  <f.icon className="w-5 h-5 text-accent-500 transition-transform group-hover:scale-105" />
                 </div>
 
                 <div>
@@ -112,7 +116,7 @@ export default function Hero() {
                     {f.sub}
                   </div>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
 
