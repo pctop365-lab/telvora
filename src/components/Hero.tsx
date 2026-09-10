@@ -6,17 +6,18 @@ export default function Hero() {
   const { image, badge, title, subtitle } = siteContent.hero;
 
   return (
-    <section className="relative min-h-screen flex items-center overflow-hidden bg-white dark:bg-graphite-900">
+    <section className="dark-content relative min-h-screen flex items-center overflow-hidden bg-graphite-950">
       <div className="absolute inset-0">
         <img
           src={image}
-          alt="TELVORA Vision OLED в современном интерьере"
-          className="w-full h-full object-cover opacity-50"
+          alt="Телевизор TELVORA в тёмной гостиной с домашним кинотеатром"
+          decoding="async"
+          className="w-full h-full object-cover object-[72%_center] sm:object-right"
         />
 
-        <div className="absolute inset-0 bg-gradient-to-r from-white via-white/85 to-white/30 dark:from-graphite-900 dark:via-graphite-900/80 dark:to-graphite-900/30" />
+        <div className="absolute inset-0 bg-gradient-to-r from-graphite-950/95 via-graphite-950/70 to-graphite-950/15" />
 
-        <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-white/60 dark:from-graphite-900 dark:via-transparent dark:to-graphite-900/60" />
+        <div className="absolute inset-0 bg-gradient-to-t from-graphite-950/55 via-transparent to-graphite-950/45" />
       </div>
 
       <div className="relative max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 pt-32 pb-20 w-full">
@@ -25,20 +26,20 @@ export default function Hero() {
           <div className="inline-flex items-center gap-2 px-4 py-2 mb-6 bg-white/70 dark:bg-white/5 backdrop-blur-md border border-graphite-200 dark:border-white/10 rounded-full animate-fade-up">
             <span className="w-2 h-2 bg-accent-500 rounded-full animate-pulse" />
 
-            <span className="text-sm font-medium text-graphite-700 dark:text-graphite-100">
+            <span className="text-sm font-medium text-graphite-100">
               {badge}
             </span>
           </div>
 
           <h1
-            className="font-display font-extrabold text-5xl sm:text-6xl lg:text-7xl text-graphite-900 dark:text-white leading-[1.05] tracking-tight text-balance animate-fade-up"
+            className="font-display font-extrabold text-5xl sm:text-6xl lg:text-7xl text-white leading-[1.05] tracking-tight text-balance animate-fade-up"
             style={{ animationDelay: '0.1s', opacity: 0 }}
           >
             {title}
           </h1>
 
           <p
-            className="mt-8 text-lg sm:text-xl text-graphite-600 dark:text-graphite-300 max-w-xl leading-relaxed animate-fade-up"
+            className="mt-8 text-lg sm:text-xl text-graphite-200 max-w-xl leading-relaxed animate-fade-up"
             style={{ animationDelay: '0.2s', opacity: 0 }}
           >
             {subtitle}

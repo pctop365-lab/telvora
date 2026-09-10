@@ -6,7 +6,7 @@
 
 export const siteContent = {
   hero: {
-    image: 'https://images.pexels.com/photos/28549934/pexels-photo-28549934.jpeg?auto=compress&cs=tinysrgb&w=1920',
+    image: '/images/telvora-hero-cinema.png',
     badge: 'Телевизоры TELVORA',
     title: 'Телевизор, который подходит именно вам',
     subtitle:

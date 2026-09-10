@@ -7,8 +7,12 @@ const content = readFileSync(new URL('../src/data/siteContent.ts', import.meta.u
 assert.match(content, /badge: 'Телевизоры TELVORA'/);
 assert.match(content, /title: 'Телевизор, который подходит именно вам'/);
 assert.match(content, /Подберём диагональ, технологию и модель под вашу комнату и бюджет\. Доставка и профессиональная установка\./);
+assert.match(content, /image: '\/images\/telvora-hero-cinema\.png'/);
+assert.doesNotMatch(content, /pexels-photo-28549934/);
 assert.match(hero, /\{title\}/);
-assert.doesNotMatch(hero, /titleParts|оживающая|гостиной/);
+assert.match(hero, /object-\[72%_center\] sm:object-right/);
+assert.match(hero, /dark-content relative min-h-screen/);
+assert.doesNotMatch(hero, /titleParts|оживающая/);
 
 for (const [title, subtitle, route] of [
   ['Подобрать телевизор', 'Поможем выбрать модель под ваш бюджет', '/support'],
