@@ -159,6 +159,10 @@ function prepareProduct(array $product): array
     $product['reviews'] = (int)($product['reviews'] ?? 0);
 
     $product['is_active'] = (bool)($product['is_active'] ?? false);
+    $homepagePosition = $product['homepage_position'] ?? null;
+    $product['homepage_position'] = $homepagePosition === null || $homepagePosition === ''
+        ? null
+        : (int)$homepagePosition;
 
     /*
      * JSON поля.
@@ -179,6 +183,40 @@ function prepareProduct(array $product): array
     );
 
     return $product;
+}
+
+function normalizeHomepagePosition(mixed $value): ?int
+{
+    if ($value === null || (is_string($value) && trim($value) === '')) {
+        return null;
+    }
+    if (is_int($value)) {
+        $position = $value;
+    } elseif (is_string($value) && preg_match('/\A[1-9]\z/', trim($value))) {
+        $position = (int)trim($value);
+    } else {
+        throw new InvalidArgumentException('Позиция на главной должна быть целым числом от 1 до 9 или пустой');
+    }
+    if ($position < 1 || $position > 9) {
+        throw new InvalidArgumentException('Позиция на главной должна быть целым числом от 1 до 9 или пустой');
+    }
+    return $position;
+}
+
+function assertHomepagePositionAvailable(PDO $pdo, ?int $position, ?int $productId = null): void
+{
+    if ($position === null) return;
+    $sql = 'SELECT id FROM products WHERE homepage_position = :position';
+    $params = [':position' => $position];
+    if ($productId !== null) {
+        $sql .= ' AND id <> :id';
+        $params[':id'] = $productId;
+    }
+    $stmt = $pdo->prepare($sql . ' LIMIT 1');
+    $stmt->execute($params);
+    if ($stmt->fetchColumn() !== false) {
+        throw new InvalidArgumentException("Позиция {$position} уже занята другим товаром.");
+    }
 }
 
 function attachStorefrontVariants(PDO $pdo, array $products): array
@@ -270,6 +308,7 @@ if ($action === '' || $action === 'list') {
                 specs,
                 highlights,
                 variants,
+                homepage_position,
                 is_active,
                 created_at,
                 updated_at
@@ -606,6 +645,7 @@ if ($action === 'admin_list') {
                 specs,
                 highlights,
                 variants,
+                homepage_position,
                 is_active,
                 created_at,
                 updated_at
@@ -698,6 +738,15 @@ if ($action === 'add') {
     $highlights = is_array($data['highlights'] ?? null)
         ? $data['highlights']
         : [];
+
+    try {
+        $homepagePosition = normalizeHomepagePosition($data['homepage_position'] ?? null);
+        assertHomepagePositionAvailable($pdo, $homepagePosition);
+    } catch (InvalidArgumentException $e) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
 
     $variants = is_array($data['variants'] ?? null)
         ? $data['variants']
@@ -802,6 +851,7 @@ if ($action === 'add') {
                 specs,
                 highlights,
                 variants,
+                homepage_position,
                 is_active
             )
             VALUES (
@@ -823,6 +873,7 @@ if ($action === 'add') {
                 :specs,
                 :highlights,
                 :variants,
+                :homepage_position,
                 0
             )
         ");
@@ -873,7 +924,8 @@ if ($action === 'add') {
             ':variants' => json_encode(
                 $canonicalVariants,
                 JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR
-            )
+            ),
+            ':homepage_position' => $homepagePosition
         ]);
 
         $productId = (int)$pdo->lastInsertId();
@@ -920,6 +972,7 @@ if ($action === 'add') {
         }
 
         $isDuplicateSlug = $transactionPhase === 'product' && $e instanceof PDOException && $e->getCode() === '23000';
+        $isHomepageConflict = $isDuplicateSlug && $homepagePosition !== null;
         http_response_code($isDuplicateSlug ? 409 : 400);
 
         echo json_encode([
@@ -927,9 +980,11 @@ if ($action === 'add') {
             'success' => false,
 
             'message' =>
-                $isDuplicateSlug
-                    ? 'Товар с таким slug уже существует'
-                    : 'Не удалось создать черновик товара'
+                $isHomepageConflict
+                    ? "Позиция {$homepagePosition} уже занята другим товаром."
+                    : ($isDuplicateSlug
+                        ? 'Товар с таким slug уже существует'
+                        : 'Не удалось создать черновик товара')
 
         ], JSON_UNESCAPED_UNICODE);
     }
@@ -984,6 +1039,21 @@ if ($action === 'update') {
     $params = [
         ':id' => $id
     ];
+
+    $homepagePosition = null;
+    $homepagePositionProvided = array_key_exists('homepage_position', $data);
+    if ($homepagePositionProvided) {
+        try {
+            $homepagePosition = normalizeHomepagePosition($data['homepage_position']);
+            assertHomepagePositionAvailable($pdo, $homepagePosition, $id);
+        } catch (InvalidArgumentException $e) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $fields[] = 'homepage_position = :homepage_position';
+        $params[':homepage_position'] = $homepagePosition;
+    }
 
     if (array_key_exists('brand', $data)) {
         if (!is_string($data['brand'])) {
@@ -1150,8 +1220,9 @@ if ($action === 'update') {
 
             'success' => false,
 
-            'message' =>
-                'Не удалось изменить товар'
+            'message' => $homepagePositionProvided && $e->getCode() === '23000'
+                ? "Позиция {$homepagePosition} уже занята другим товаром."
+                : 'Не удалось изменить товар'
 
         ], JSON_UNESCAPED_UNICODE);
 

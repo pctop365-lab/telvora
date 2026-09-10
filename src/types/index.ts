@@ -44,6 +44,7 @@ export type Product = {
   specs: Spec[];
   highlights: string[];
   variants?: ProductVariant[];
+  homepage_position?: number | null;
 };
 
 export type Category = {

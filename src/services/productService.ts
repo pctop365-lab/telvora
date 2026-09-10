@@ -31,6 +31,7 @@ type ApiProduct = {
   }>;
   highlights?: string[];
   is_active?: boolean | number;
+  homepage_position?: number | string | null;
   variants?: Array<{
     country?: string;
     price?: number | string;
@@ -118,6 +119,10 @@ function normalizeProduct(product: ApiProduct): Product {
           },
         }))
       : [],
+    homepage_position:
+      product.homepage_position === null || product.homepage_position === undefined || product.homepage_position === ''
+        ? null
+        : Number(product.homepage_position),
   };
 }
 

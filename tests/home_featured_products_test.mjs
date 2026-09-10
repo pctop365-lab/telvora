@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 
 const home = readFileSync('src/pages/HomePage.tsx', 'utf8');
 const grid = readFileSync('src/components/ProductGrid.tsx', 'utf8');
-assert.match(home, /useProducts\(\{ sort: 'rating' \}\)/);
+assert.match(home, /useProducts\(\)/);
+assert.match(home, /homepage_position !== null/);
+assert.match(home, /homepage_position as number/);
 assert.match(home, /products\.slice\(0, 9\)/);
 assert.doesNotMatch(home, /products\.slice\(0, 3\)/);
 assert.match(home, /<TelegramBanner \/>/);

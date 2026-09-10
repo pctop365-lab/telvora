@@ -96,6 +96,7 @@ type AdminProduct = {
   highlights: string[];
   variants: ProductVariant[];
   is_active: boolean;
+  homepage_position: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -539,6 +540,7 @@ const emptyProductForm = {
   reviews: '0',
   description: '',
   is_active: false,
+  homepage_position: '',
 };
 
 const productSlugTransliteration: Record<string, string> = {
@@ -2501,6 +2503,7 @@ if (!response.ok || !data.success || !data.image) {
       reviews: String(product.reviews ?? 0),
       description: product.description || '',
       is_active: Boolean(product.is_active),
+      homepage_position: product.homepage_position == null ? '' : String(product.homepage_position),
     });
     setGalleryImages(product.images?.length ? product.images : [product.image].filter(Boolean));
     setGalleryFiles([]);
@@ -2673,6 +2676,7 @@ if (!response.ok || !data.success || !data.image) {
         specs,
         highlights,
         is_active: productForm.is_active,
+        homepage_position: productForm.homepage_position === '' ? null : Number(productForm.homepage_position),
       };
 
       if (editingProductId) {
@@ -3690,6 +3694,11 @@ const toggleProductStatus = async (product: AdminProduct) => {
                                   <div className="mt-1 inline-flex rounded-full bg-accent-50 px-2 py-0.5 text-xs font-medium text-accent-700">
                                     {(product.brand || '').trim() || 'Без бренда'}
                                   </div>
+                                  {product.homepage_position !== null && product.homepage_position !== undefined && (
+                                    <div className="mt-1 inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700">
+                                      Главная {product.homepage_position}
+                                    </div>
+                                  )}
 
                                   <div className="text-xs text-gray-500 mt-1">
                                     {product.series || 'Без серии'}
@@ -5539,6 +5548,24 @@ const toggleProductStatus = async (product: AdminProduct) => {
                         className="admin-input"
                         placeholder="Хит продаж"
                       />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-2" htmlFor="homepage-position">
+                        Позиция на главной
+                      </label>
+                      <select
+                        id="homepage-position"
+                        value={productForm.homepage_position}
+                        onChange={(event) => setProductForm((current) => ({ ...current, homepage_position: event.target.value }))}
+                        className="admin-input"
+                      >
+                        <option value="">Не показывать</option>
+                        {Array.from({ length: 9 }, (_, index) => String(index + 1)).map((position) => (
+                          <option key={position} value={position}>{position}</option>
+                        ))}
+                      </select>
+                      <p className="mt-2 text-xs text-graphite-400">Определяет порядок товара в блоке Популярные модели.</p>
                     </div>
 
                     {editingProductId ? (

@@ -8,8 +8,11 @@ import { ArrowRight } from 'lucide-react';
 import TelegramBanner from '@/components/TelegramBanner';
 
 export default function HomePage() {
-  const { products, loading, error } = useProducts({ sort: 'rating' });
-  const featured = products.slice(0, 9);
+  const { products, loading, error } = useProducts();
+  const featured = products
+    .filter((product) => product.homepage_position !== null && product.homepage_position !== undefined)
+    .sort((a, b) => (a.homepage_position as number) - (b.homepage_position as number))
+    .slice(0, 9);
 
   return (
     <>
