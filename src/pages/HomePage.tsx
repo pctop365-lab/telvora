@@ -5,6 +5,7 @@ import { useProducts } from '@/hooks/useProducts';
 import ProductGrid from '@/components/ProductGrid';
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
+import TelegramBanner from '@/components/TelegramBanner';
 
 export default function HomePage() {
   const { products, loading, error } = useProducts({ sort: 'rating' });
@@ -41,6 +42,8 @@ export default function HomePage() {
           <ProductGrid products={featured} loading={loading} error={error} />
         </div>
       </section>
+
+      <TelegramBanner />
 
       <TechSection />
       <DeliverySection />

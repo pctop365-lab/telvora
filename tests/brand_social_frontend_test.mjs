@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+const read = (path) => readFileSync(path, 'utf8');
+const header = read('src/components/Header.tsx'); const footer = read('src/components/Footer.tsx');
+const home = read('src/pages/HomePage.tsx'); const brand = read('src/components/BrandLogo.tsx');
+const banner = read('src/components/TelegramBanner.tsx'); const links = read('src/data/publicLinks.ts');
+const index = read('index.html'); const favicon = read('public/favicon.svg');
+assert.match(header, /<BrandLogo priority/); assert.match(header, /to="\/" aria-label="TELVORA — на главную"/);
+assert.match(footer, /<BrandLogo/); assert.match(footer, /to="\/" aria-label="TELVORA — на главную"/);
+assert.match(brand, /telvora-logo-dark\.svg/); assert.match(brand, /telvora-logo-white\.svg/);
+assert.match(index, /href="\/favicon\.svg"/); assert.match(favicon, /#FF6A00/); assert.doesNotMatch(favicon, />T<\/text>/);
+assert.ok(home.indexOf('<TelegramBanner />') > home.indexOf('<ProductGrid')); assert.ok(home.indexOf('<TelegramBanner />') < home.indexOf('<TechSection'));
+assert.match(links, /https:\/\/t\.me\/telvora_store/); assert.match(links, /https:\/\/t\.me\/telvora_reviews/);
+assert.equal((banner.match(/target="_blank"/g) ?? []).length, 2); assert.equal((banner.match(/rel="noopener noreferrer"/g) ?? []).length, 2);
+console.log('Brand/logo, favicon and Telegram frontend contract: PASS');

@@ -1,11 +1,1 @@
-﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#111111"/>
-  <text
-    x="32"
-    y="42"
-    text-anchor="middle"
-    font-family="Arial, Helvetica, sans-serif"
-    font-size="28"
-    font-weight="700"
-    fill="#ffffff">T</text>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="8 0 144 114" role="img" aria-labelledby="title"><title id="title">TELVORA</title><rect x="18" y="10" width="124" height="82" rx="12" fill="#0B0D10" stroke="#0B0D10" stroke-width="8"/><path d="M48 34H112L98 48H62L48 34Z" fill="#FFFFFF"/><path d="M94 31C103 31 111 36 111 43C111 50 105 56 98 61L72 82C66 87 57 84 55 77C54 72 56 68 60 65L88 42C91 40 90 37 86 37H74L94 31Z" fill="#FF6A00"/><path d="M68 96H92L88 104H72L68 96Z" fill="#0B0D10"/><path d="M58 104H102" stroke="#0B0D10" stroke-width="6" stroke-linecap="round"/></svg>
