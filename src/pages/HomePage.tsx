@@ -1,6 +1,5 @@
 import Hero from '@/components/Hero';
 import TechSection from '@/components/TechSection';
-import DeliverySection from '@/components/DeliverySection';
 import { useProducts } from '@/hooks/useProducts';
 import ProductGrid from '@/components/ProductGrid';
 import { Link } from 'react-router-dom';
@@ -49,7 +48,6 @@ export default function HomePage() {
       <TelegramBanner />
 
       <TechSection />
-      <DeliverySection />
     </>
   );
 }

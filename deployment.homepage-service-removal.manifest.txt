@@ -1,0 +1,11 @@
+# TELVORA homepage service promo removal — frontend-only deployment
+# Upload assets first; install index.html last. Do not delete old hashed assets.
+
+dist/assets/index-BfIOYgTz.css
+SHA256 E81F8C93D5B22A8D1C1600E6DCCB47FFCAC89CFE545B19A4CE47AB2ED70FBB6E
+
+dist/assets/index-BBrSPYpP.js
+SHA256 C3118025E68477D22572E629D3D2A4C57ED4E06EDB7DB4D5EF6489A842E7F81C
+
+dist/index.html
+SHA256 75F3DBC65747D2650BCC8C7B5981D6A0C073688BE274E7639AED0C8F585DA450
