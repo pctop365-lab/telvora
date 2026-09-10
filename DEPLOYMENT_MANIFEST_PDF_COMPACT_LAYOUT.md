@@ -1,6 +1,6 @@
 # PDF compact layout deployment manifest
 
-Release scope: presentation-only PDF change. No database migration, API, Telegram, frontend or order mutation.
+Release scope: presentation-only PDF change, including a centered 50mm footer logo with a 10mm top margin. No database migration, API, Telegram, frontend or order mutation.
 
 ## Deploy
 

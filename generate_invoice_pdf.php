@@ -461,12 +461,12 @@ table {
 }
 
 .footer {
-    margin-top: 12px;
+    margin-top: 10mm;
     text-align: center;
 }
 
 .footer-logo {
-    width: 36mm;
+    width: 50mm;
     height: auto;
 }
 
