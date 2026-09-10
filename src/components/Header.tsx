@@ -108,7 +108,7 @@ export default function Header() {
           <div className="flex items-center justify-between gap-4">
             {/* LOGO */}
             <Link to="/" aria-label="TELVORA — на главную" className="shrink-0 rounded-lg transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500">
-              <BrandLogo variant="header" priority className="h-[34px] w-[138px] sm:h-[36px] sm:w-[148px]" />
+              <BrandLogo priority className="h-9 w-12" />
             </Link>
 
             {/* DESKTOP NAVIGATION */}
