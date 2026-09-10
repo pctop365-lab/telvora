@@ -10,6 +10,11 @@ assert.match(content, /Подберём диагональ, технологию
 assert.match(content, /image: '\/images\/telvora-hero-cinema\.png'/);
 assert.doesNotMatch(content, /pexels-photo-28549934/);
 assert.match(hero, /\{title\}/);
+assert.match(hero, /const lightImage = '\/images\/telvora-hero-light\.png'/);
+assert.match(hero, /src=\{lightImage\}[\s\S]+dark:hidden/);
+assert.match(hero, /src=\{image\}[\s\S]+dark:block/);
+assert.match(hero, /rgba\(15,17,21,0\.76\)[\s\S]+dark:hidden/);
+assert.match(hero, /rgba\(15,17,21,0\.90\)[\s\S]+dark:block/);
 assert.match(hero, /object-\[72%_center\] sm:object-right/);
 assert.match(hero, /dark-content relative min-h-screen/);
 assert.doesNotMatch(hero, /titleParts|оживающая/);

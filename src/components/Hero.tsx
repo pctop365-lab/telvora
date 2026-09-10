@@ -4,20 +4,30 @@ import { siteContent } from '@/data/siteContent';
 
 export default function Hero() {
   const { image, badge, title, subtitle } = siteContent.hero;
+  const lightImage = '/images/telvora-hero-light.png';
 
   return (
     <section className="dark-content relative min-h-screen flex items-center overflow-hidden bg-graphite-950">
       <div className="absolute inset-0">
         <img
+          src={lightImage}
+          alt="Телевизор TELVORA в светлой гостиной"
+          decoding="async"
+          className="h-full w-full object-cover object-[72%_center] sm:object-right dark:hidden"
+        />
+
+        <img
           src={image}
           alt="Телевизор TELVORA в тёмной гостиной с домашним кинотеатром"
           decoding="async"
-          className="w-full h-full object-cover object-[72%_center] sm:object-right"
+          className="hidden h-full w-full object-cover object-[72%_center] sm:object-right dark:block"
         />
 
-        <div className="absolute inset-0 bg-gradient-to-r from-graphite-950/95 via-graphite-950/70 to-graphite-950/15" />
+        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(15,17,21,0.76)_0%,rgba(15,17,21,0.60)_32%,rgba(15,17,21,0.30)_58%,rgba(15,17,21,0.08)_82%,rgba(15,17,21,0.02)_100%)] dark:hidden" />
+        <div className="absolute inset-0 bg-[linear-gradient(0deg,rgba(15,17,21,0.24)_0%,rgba(15,17,21,0.04)_48%,rgba(15,17,21,0.20)_100%)] dark:hidden" />
 
-        <div className="absolute inset-0 bg-gradient-to-t from-graphite-950/55 via-transparent to-graphite-950/45" />
+        <div className="absolute inset-0 hidden bg-[linear-gradient(90deg,rgba(15,17,21,0.90)_0%,rgba(15,17,21,0.78)_28%,rgba(15,17,21,0.52)_52%,rgba(15,17,21,0.25)_73%,rgba(15,17,21,0.10)_100%)] dark:block" />
+        <div className="absolute inset-0 hidden bg-[linear-gradient(0deg,rgba(15,17,21,0.48)_0%,rgba(15,17,21,0.04)_52%,rgba(15,17,21,0.34)_100%)] dark:block" />
       </div>
 
       <div className="relative max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 pt-32 pb-20 w-full">
