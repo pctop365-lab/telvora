@@ -6,6 +6,7 @@ Status: locally accepted with user-confirmed tariff boundaries and prices. Produ
 
 1. Back up the application database and deployed files.
 2. Run `database/migrations/preflight_20260909_011_service_catalog.sql`; stop if it returns any `migration_blocker` row.
+   The preflight requires `orders.id` and `order_items.id` to be `INT UNSIGNED`, matching migration 011 foreign keys.
 3. Run `database/migrations/20260909_011_service_catalog.sql` once.
 4. Run `database/migrations/verify_20260909_011_service_catalog.sql`; the overlap query must return zero rows.
 5. Deploy backend files, then the frontend build.

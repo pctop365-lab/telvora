@@ -22,8 +22,8 @@ CREATE TABLE service_catalog (
 
 CREATE TABLE order_services (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-    order_id INT NOT NULL,
-    order_item_id INT NOT NULL,
+    order_id INT UNSIGNED NOT NULL,
+    order_item_id INT UNSIGNED NOT NULL,
     service_id BIGINT UNSIGNED NULL,
     service_key VARCHAR(80) NOT NULL,
     service_name VARCHAR(180) NOT NULL,

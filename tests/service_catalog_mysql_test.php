@@ -10,14 +10,18 @@ function ok(string $name,bool $condition):void{if(!$condition)throw new RuntimeE
 $password=trim((string)file_get_contents(SERVICE_PASSWORD_FILE));
 $pdo=new PDO(SERVICE_DSN,SERVICE_USER,$password,[PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION,PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC]);
 $pdo->exec('SET FOREIGN_KEY_CHECKS=0; DROP TABLE IF EXISTS order_services; DROP TABLE IF EXISTS service_catalog; DROP TABLE IF EXISTS order_items; DROP TABLE IF EXISTS orders; SET FOREIGN_KEY_CHECKS=1');
-$pdo->exec('CREATE TABLE orders(id INT NOT NULL AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB');
-$pdo->exec('CREATE TABLE order_items(id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,order_id INT NOT NULL,CONSTRAINT fk_test_item_order FOREIGN KEY(order_id) REFERENCES orders(id)) ENGINE=InnoDB');
+$pdo->exec('CREATE TABLE orders(id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB');
+$pdo->exec('CREATE TABLE order_items(id INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,order_id INT UNSIGNED NOT NULL,CONSTRAINT fk_test_item_order FOREIGN KEY(order_id) REFERENCES orders(id)) ENGINE=InnoDB');
 $preflight=(string)file_get_contents(dirname(__DIR__).'/database/migrations/preflight_20260909_011_service_catalog.sql');
 foreach(array_filter(array_map('trim',explode(';',$preflight))) as $query)ok('migration preflight has no blocker',$pdo->query($query)->fetchAll()===[]);
 $migration=(string)file_get_contents(dirname(__DIR__).'/database/migrations/20260909_011_service_catalog.sql');
 $pdo->exec($migration);
 
 $catalog=serviceCatalogList($pdo);
+$fkColumns=$pdo->query("SELECT column_name,column_type FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='order_services' AND column_name IN ('order_id','order_item_id','service_id')")->fetchAll(PDO::FETCH_KEY_PAIR);
+ok('service FK column types match parents',$fkColumns===['order_id'=>'int unsigned','order_item_id'=>'int unsigned','service_id'=>'bigint unsigned']);
+$foreignKeys=(int)$pdo->query("SELECT COUNT(*) FROM information_schema.key_column_usage WHERE table_schema=DATABASE() AND table_name='order_services' AND referenced_table_name IS NOT NULL")->fetchColumn();
+ok('all three service foreign keys created',$foreignKeys===3);
 ok('separate service catalog has 13 entries',count($catalog)===13);
 ok('quote-required setup has no fixed price',count(array_filter($catalog,fn($s)=>$s['service_key']==='tv-setup'&&$s['price']===null))===1);
 $overlaps=$pdo->query('SELECT a.id FROM service_catalog a JOIN service_catalog b ON a.category=b.category AND a.id<b.id AND a.min_screen_size<=b.max_screen_size AND b.min_screen_size<=a.max_screen_size')->fetchAll();

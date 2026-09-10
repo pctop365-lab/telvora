@@ -2,3 +2,5 @@ SELECT table_name, engine FROM information_schema.tables WHERE table_schema=DATA
 SELECT category, COUNT(*) tariff_count, MIN(min_screen_size) min_size, MAX(max_screen_size) max_size FROM service_catalog WHERE price IS NOT NULL GROUP BY category ORDER BY category;
 SELECT a.service_key left_key,b.service_key right_key FROM service_catalog a JOIN service_catalog b ON a.category=b.category AND a.id<b.id AND a.min_screen_size<=b.max_screen_size AND b.min_screen_size<=a.max_screen_size;
 SELECT COUNT(*) unconfirmed_fixed_tariffs FROM service_catalog WHERE is_active=1 AND price IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.pricing_status'))<>'confirmed';
+SELECT table_name,column_name,column_type FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='order_services' AND column_name IN ('order_id','order_item_id','service_id') ORDER BY ordinal_position;
+SELECT constraint_name,table_name,column_name,referenced_table_name,referenced_column_name FROM information_schema.key_column_usage WHERE table_schema=DATABASE() AND table_name='order_services' AND referenced_table_name IS NOT NULL ORDER BY constraint_name;
