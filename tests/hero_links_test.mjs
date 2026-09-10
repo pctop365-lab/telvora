@@ -2,6 +2,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const hero = readFileSync(new URL('../src/components/Hero.tsx', import.meta.url), 'utf8');
+const content = readFileSync(new URL('../src/data/siteContent.ts', import.meta.url), 'utf8');
+
+assert.match(content, /badge: 'Телевизоры TELVORA'/);
+assert.match(content, /title: 'Телевизор, который подходит именно вам'/);
+assert.match(content, /Подберём диагональ, технологию и модель под вашу комнату и бюджет\. Доставка и профессиональная установка\./);
+assert.match(hero, /\{title\}/);
+assert.doesNotMatch(hero, /titleParts|оживающая|гостиной/);
 
 for (const [title, subtitle, route] of [
   ['Подобрать телевизор', 'Поможем выбрать модель под ваш бюджет', '/support'],

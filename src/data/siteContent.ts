@@ -7,10 +7,10 @@
 export const siteContent = {
   hero: {
     image: 'https://images.pexels.com/photos/28549934/pexels-photo-28549934.jpeg?auto=compress&cs=tinysrgb&w=1920',
-    badge: 'Новая коллекция 2026',
-    title: 'Картинка, оживающая в вашей гостиной',
+    badge: 'Телевизоры TELVORA',
+    title: 'Телевизор, который подходит именно вам',
     subtitle:
-      'Премиальные OLED, QLED и 8K телевизоры TELVORA. Безупречный чёрный, миллиарды оттенков, звук кинематографического уровня.',
+      'Подберём диагональ, технологию и модель под вашу комнату и бюджет. Доставка и профессиональная установка.',
   },
   tech: {
     cinemaImage: 'https://images.pexels.com/photos/7991486/pexels-photo-7991486.jpeg?auto=compress&cs=tinysrgb&w=1600',

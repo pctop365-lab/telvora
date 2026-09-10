@@ -5,8 +5,6 @@ import { siteContent } from '@/data/siteContent';
 export default function Hero() {
   const { image, badge, title, subtitle } = siteContent.hero;
 
-  const titleParts = title.split(',');
-
   return (
     <section className="relative min-h-screen flex items-center overflow-hidden bg-white dark:bg-graphite-900">
       <div className="absolute inset-0">
@@ -33,17 +31,10 @@ export default function Hero() {
           </div>
 
           <h1
-            className="font-display font-extrabold text-5xl sm:text-6xl lg:text-8xl text-graphite-900 dark:text-white leading-[1.05] tracking-tight text-balance animate-fade-up"
+            className="font-display font-extrabold text-5xl sm:text-6xl lg:text-7xl text-graphite-900 dark:text-white leading-[1.05] tracking-tight text-balance animate-fade-up"
             style={{ animationDelay: '0.1s', opacity: 0 }}
           >
-            {titleParts[0]},
-            <br />
-            <span className="text-graphite-900 dark:text-white">
-              оживающая
-            </span>{' '}
-            в вашей
-            <br />
-            гостиной
+            {title}
           </h1>
 
           <p
