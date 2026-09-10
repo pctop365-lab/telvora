@@ -5,6 +5,7 @@ import {
   ShoppingCart,
   Menu,
   X,
+  Tv,
   Sun,
   Moon,
   Phone,
@@ -14,7 +15,6 @@ import { useCart } from '@/store/cart';
 import { useUI } from '@/store/ui';
 import { useTheme } from '@/store/theme';
 import { publicContacts } from '@/data/publicContacts';
-import BrandLogo from '@/components/BrandLogo';
 
 const navLinks = [
   { label: 'Каталог', to: '/catalog' },
@@ -107,8 +107,10 @@ export default function Header() {
         <div className={`max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 transition-all duration-500 ${scrolled ? 'py-2' : 'py-3'}`}>
           <div className="flex items-center justify-between gap-4">
             {/* LOGO */}
-            <Link to="/" aria-label="TELVORA — на главную" className="shrink-0 rounded-lg transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500">
-              <BrandLogo priority className="h-9 w-12" />
+            <Link to="/" aria-label="TELVORA — на главную" className="shrink-0 rounded-xl group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-accent-500 to-accent-700 flex items-center justify-center shadow-lg shadow-accent-500/20 group-hover:scale-105 transition-transform">
+                <Tv className="w-5 h-5 text-white" strokeWidth={2.5} />
+              </div>
             </Link>
 
             {/* DESKTOP NAVIGATION */}

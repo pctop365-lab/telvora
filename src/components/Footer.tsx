@@ -1,7 +1,6 @@
-import { ArrowUp } from 'lucide-react';
+import { ArrowUp, Tv } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { publicContacts } from '@/data/publicContacts';
-import BrandLogo from '@/components/BrandLogo';
 
 const footerLinks = {
   Каталог: [
@@ -40,7 +39,9 @@ export default function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-8 mb-12">
           <div className="col-span-2 lg:col-span-2">
             <Link to="/" aria-label="TELVORA — на главную" className="mb-4 inline-block rounded-lg transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500">
-              <BrandLogo className="h-[60px] w-20" />
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-accent-500 to-accent-700 flex items-center justify-center">
+                <Tv className="w-7 h-7 text-white" strokeWidth={2.5} />
+              </div>
             </Link>
             <p className="text-sm text-graphite-600 dark:text-graphite-400 max-w-xs leading-relaxed">
               TELVORA — новый взгляд на технику и онлайн-покупки. Современно, понятно и без лишнего.

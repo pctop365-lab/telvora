@@ -14,14 +14,15 @@ for (const theme of ['light', 'dark'] as const) {
       await page.addInitScript((value) => localStorage.setItem('telvora-theme', value), theme);
       await page.goto('/');
 
-      const headerLogo = page.locator('header a[aria-label="TELVORA — на главную"] img');
-      const footerLogo = page.locator('footer a[aria-label="TELVORA — на главную"] img');
+      const headerLogo = page.locator('header a[aria-label="TELVORA — на главную"] .lucide-tv');
+      const footerLogo = page.locator('footer a[aria-label="TELVORA — на главную"] .lucide-tv');
       await expect(headerLogo).toBeVisible();
-      await expect(headerLogo).toHaveAttribute('src', '/telvora-mark.svg');
-      await expect(footerLogo).toHaveAttribute('src', '/telvora-mark.svg');
+      await expect(footerLogo).toBeAttached();
 
-      expect(await headerLogo.evaluate((image) => ({ width: image.clientWidth, height: image.clientHeight }))).toEqual({ width: 48, height: 36 });
-      expect(await footerLogo.evaluate((image) => ({ width: image.clientWidth, height: image.clientHeight }))).toEqual({ width: 80, height: 60 });
+      expect(await headerLogo.evaluate((icon) => ({ width: icon.clientWidth, height: icon.clientHeight }))).toEqual({ width: 20, height: 20 });
+      expect(await footerLogo.evaluate((icon) => ({ width: icon.clientWidth, height: icon.clientHeight }))).toEqual({ width: 28, height: 28 });
+      await expect(page.locator('header a[aria-label="TELVORA — на главную"]')).not.toContainText('TELVORA');
+      await expect(page.locator('footer a[aria-label="TELVORA — на главную"]')).not.toContainText('TELVORA');
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
 
       await footerLogo.scrollIntoViewIfNeeded();
