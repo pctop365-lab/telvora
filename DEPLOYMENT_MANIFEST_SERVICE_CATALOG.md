@@ -1,6 +1,6 @@
 # Service catalog deployment manifest
 
-Status: local acceptance only. Do not deploy until the DRAFT tariff boundaries and prices in migration 011 are explicitly approved.
+Status: locally accepted with user-confirmed tariff boundaries and prices. Production is unchanged until this commit is explicitly deployed.
 
 ## Order
 
