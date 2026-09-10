@@ -40,7 +40,7 @@ export default function Footer() {
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-8 mb-12">
           <div className="col-span-2 lg:col-span-2">
             <Link to="/" aria-label="TELVORA — на главную" className="mb-4 inline-block rounded-lg transition-opacity hover:opacity-85 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500">
-              <BrandLogo className="h-[52px] w-[208px]" />
+              <BrandLogo variant="footer" className="h-[52px] w-[208px]" />
             </Link>
             <p className="text-sm text-graphite-600 dark:text-graphite-400 max-w-xs leading-relaxed">
               TELVORA — новый взгляд на технику и онлайн-покупки. Современно, понятно и без лишнего.

@@ -5,9 +5,10 @@ const header = read('src/components/Header.tsx'); const footer = read('src/compo
 const home = read('src/pages/HomePage.tsx'); const brand = read('src/components/BrandLogo.tsx');
 const banner = read('src/components/TelegramBanner.tsx'); const links = read('src/data/publicLinks.ts');
 const index = read('index.html'); const favicon = read('public/favicon.svg'); const logo = read('public/telvora-logo.svg');
-assert.match(header, /<BrandLogo priority/); assert.match(header, /to="\/" aria-label="TELVORA — на главную"/);
-assert.match(footer, /<BrandLogo/); assert.match(footer, /to="\/" aria-label="TELVORA — на главную"/);
-assert.match(brand, /telvora-logo\.svg/); assert.doesNotMatch(brand, /telvora-logo-white\.svg/);
+assert.match(header, /<BrandLogo variant="header" priority/); assert.match(header, /to="\/" aria-label="TELVORA — на главную"/);
+assert.match(footer, /<BrandLogo variant="footer"/); assert.match(footer, /to="\/" aria-label="TELVORA — на главную"/);
+assert.match(brand, /telvora-logo\.svg/); assert.match(brand, /telvora-mark\.svg/); assert.match(brand, /variant\?: 'header' \| 'footer'/);
+assert.doesNotMatch(brand, /telvora-logo-white\.svg/);
 assert.match(logo, /viewBox="0 0 520 130"/); assert.match(logo, /ПРЕМИАЛЬНЫЕ ТЕЛЕВИЗОРЫ И ЭЛЕКТРОНИКА/);
 assert.match(logo, /fill="#FF6A00"/); assert.doesNotMatch(logo, /clip-path|overflow="hidden"/);
 assert.match(index, /href="\/favicon\.svg"/); assert.match(favicon, /#FF6A00/); assert.doesNotMatch(favicon, />T<\/text>/);
