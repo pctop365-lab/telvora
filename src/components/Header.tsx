@@ -201,6 +201,7 @@ export default function Header() {
             {/* CART */}
             <button
               onClick={openCart}
+              aria-label="Корзина"
               className={`relative flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all group shadow-sm ${
                 isLight
                   ? 'bg-white hover:bg-graphite-50 border-graphite-200'

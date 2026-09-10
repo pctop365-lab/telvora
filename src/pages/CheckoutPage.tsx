@@ -64,7 +64,7 @@ const paymentOptions = [
 ];
 
 export default function CheckoutPage() {
-  const { items, subtotal, clearCart, replaceAfterValidation } = useCart();
+  const { items, subtotal, services, servicesTotal, clearCart, replaceAfterValidation } = useCart();
   const navigate = useNavigate();
 
   const [submitting, setSubmitting] = useState(false);
@@ -133,7 +133,7 @@ comment: '',
     outsideMkad,
     outsideMkadKm ? Number(outsideMkadKm) : undefined
   );
-  const total = deliveryQuote.price === null ? null : subtotal + deliveryQuote.price;
+  const total = deliveryQuote.price === null ? null : subtotal + servicesTotal + deliveryQuote.price;
 
   const errors: Record<string, string> = {};
 
@@ -204,7 +204,7 @@ comment: '',
           outsideMkad: form.deliveryMethod === 'courier' && outsideMkad,
           outsideMkadKm: outsideMkadKm ? Number(outsideMkadKm) : undefined,
         } as CheckoutFormData,
-        items
+        items, services
       );
 
       clearCart();
@@ -213,6 +213,8 @@ comment: '',
           orderSummary: {
             items: order.items,
             subtotal: order.subtotal,
+            services: order.services,
+            servicesTotal: order.servicesTotal,
             delivery: order.delivery,
             deliveryStatus: order.deliveryStatus,
             deliveryEstimate: order.deliveryEstimate,
@@ -482,6 +484,7 @@ comment: '',
 
                   </label>
                 ))}
+                {services.map(service => <div key={service.id} className="flex justify-between gap-3 rounded-xl bg-accent-500/5 p-3"><div><div className="text-sm font-semibold">{service.name}</div><div className="text-xs text-graphite-500">{service.televisionName} · {service.screenSize}″</div></div><div className="text-sm font-bold">{formatPrice(service.price)}</div></div>)}
 
                 {form.deliveryMethod === 'courier' && (
                   <div className="rounded-2xl border border-graphite-200 dark:border-white/10 bg-white dark:bg-graphite-900 p-4 space-y-3">
@@ -664,6 +667,7 @@ comment: '',
                     {formatPrice(subtotal)}
                   </span>
                 </div>
+                {services.length > 0 && <div className="flex justify-between text-sm"><span className="text-graphite-600 dark:text-graphite-400">Сервисные услуги</span><span className="font-medium">{formatPrice(servicesTotal)}</span></div>}
 
                 <div className="flex justify-between text-sm">
 

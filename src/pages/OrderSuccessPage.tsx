@@ -1,11 +1,13 @@
 import { Link, useLocation, useParams } from 'react-router-dom';
 import { ArrowRight, CheckCircle2, Package } from 'lucide-react';
-import type { OrderItem } from '@/types';
+import type { OrderItem, CartServiceItem } from '@/types';
 import { formatPrice } from '@/lib/format';
 
 type OrderSummary = {
   items: OrderItem[];
   subtotal: number;
+  services?: CartServiceItem[];
+  servicesTotal?: number;
   delivery: number | null;
   deliveryStatus: 'confirmed' | 'pending';
   deliveryEstimate?: number | null;
@@ -70,8 +72,10 @@ export default function OrderSuccessPage() {
                   </div>
                 ))}
               </div>
+              {!!summary.services?.length && <div className="mb-6"><h2 className="mb-3 text-sm font-semibold">Сервисные услуги</h2>{summary.services.map(service=><div key={service.id} className="mb-2 flex justify-between gap-4 rounded-xl bg-accent-500/5 p-3"><div><div className="text-sm font-semibold">{service.name}</div><div className="text-xs text-graphite-500">{service.televisionName} · {service.screenSize}″</div></div><div className="font-bold">{formatPrice(service.price*service.quantity)}</div></div>)}</div>}
               <div className="space-y-2 pt-6 border-t border-graphite-200 dark:border-white/10">
                 <div className="flex justify-between text-sm"><span className="text-graphite-500 dark:text-graphite-400">Товары</span><span className="font-medium">{formatPrice(summary.subtotal)}</span></div>
+                {!!summary.servicesTotal && <div className="flex justify-between text-sm"><span className="text-graphite-500 dark:text-graphite-400">Сервисные услуги</span><span className="font-medium">{formatPrice(summary.servicesTotal)}</span></div>}
                 <div className="flex justify-between gap-4 text-sm"><span className="text-graphite-500 dark:text-graphite-400">Доставка</span><span className="font-medium text-right">{summary.deliveryStatus === 'pending' ? (summary.deliveryEstimate ? `Ориентировочно ${formatPrice(summary.deliveryEstimate)} · подтвердит менеджер` : 'Стоимость согласовывается') : summary.delivery === 0 ? 'Без доплаты' : formatPrice(summary.delivery ?? 0)}</span></div>
                 <div className="flex justify-between items-center gap-4 pt-3 border-t border-graphite-200 dark:border-white/10"><span className="font-semibold">Итого</span><span className="text-xl sm:text-2xl font-bold text-right">{summary.total === null ? 'После согласования доставки' : formatPrice(summary.total)}</span></div>
               </div>

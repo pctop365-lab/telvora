@@ -20,6 +20,7 @@ export default function CartDrawer() {
     subtotal,
     updateQuantity,
     removeFromCart,
+    services, servicesTotal, removeService,
   } = useCart();
 
   const navigate = useNavigate();
@@ -151,6 +152,7 @@ export default function CartDrawer() {
                   </div>
                 </div>
               ))}
+              {services.length > 0 && <section className="pt-2"><h4 className="mb-3 font-semibold text-graphite-900 dark:text-white">Сервисные услуги</h4>{services.map(service => <div key={service.id} className="mb-2 rounded-xl border border-accent-500/20 bg-accent-500/5 p-3"><div className="flex justify-between gap-3"><div><div className="text-sm font-semibold">{service.name}</div><div className="text-xs text-graphite-500">{service.televisionName} · {service.screenSize}″</div><div className="mt-1 text-sm font-bold">{formatPrice(service.price)}</div></div><button aria-label={`Удалить ${service.name}`} onClick={() => removeService(service.id)} className="text-red-500"><Trash2 className="w-4 h-4" /></button></div></div>)}</section>}
             </div>
 
             <div className="border-t border-graphite-200 dark:border-white/10 p-6 space-y-3">
@@ -163,6 +165,7 @@ export default function CartDrawer() {
                   {formatPrice(subtotal)}
                 </span>
               </div>
+              {services.length > 0 && <div className="flex justify-between text-sm"><span className="text-graphite-600 dark:text-graphite-400">Сервисные услуги</span><span className="font-medium">{formatPrice(servicesTotal)}</span></div>}
 
               <div className="flex justify-between text-sm">
                 <span className="text-graphite-600 dark:text-graphite-400">
@@ -176,11 +179,11 @@ export default function CartDrawer() {
 
               <div className="flex justify-between items-center pt-3 border-t border-graphite-200 dark:border-white/10">
                 <span className="text-base font-semibold text-graphite-900 dark:text-white">
-                  Товары
+                  Итого без доставки
                 </span>
 
                 <span className="text-2xl font-bold text-graphite-900 dark:text-white">
-                  {formatPrice(subtotal)}
+                  {formatPrice(subtotal + servicesTotal)}
                 </span>
               </div>
 

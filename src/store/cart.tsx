@@ -1,7 +1,10 @@
-import { createContext, useContext, useReducer, useCallback, useMemo, useEffect, type ReactNode } from 'react';
-import type { CartItem, Product, ProductVariant } from '@/types';
+import { createContext, useContext, useReducer, useCallback, useMemo, useEffect, useState, type ReactNode } from 'react';
+import type { CartItem, CartServiceItem, Product, ProductVariant, ServiceCatalogItem } from '@/types';
 
 const CART_STORAGE_KEY = 'telvora_cart';
+const SERVICE_STORAGE_KEY = 'telvora_cart_services';
+const screenNumber = (value:string) => Number(value.match(/\d{2,3}/)?.[0] ?? 0);
+function loadServices():CartServiceItem[]{try{const v=JSON.parse(localStorage.getItem(SERVICE_STORAGE_KEY)||'[]');return Array.isArray(v)?v:[]}catch{return[]}}
 
 function loadCartFromStorage(): CartItem[] {
   try {
@@ -108,6 +111,10 @@ type CartContextValue = {
   setQuantity: (id: string, quantity: number) => void;
   clearCart: () => void;
   replaceAfterValidation: (items: CartItem[]) => void;
+  services: CartServiceItem[];
+  servicesTotal: number;
+  addService: (service:ServiceCatalogItem,target:CartItem)=>boolean;
+  removeService: (id:string)=>void;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -116,6 +123,7 @@ const CartContext = createContext<CartContextValue | null>(null);
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, dispatch] = useReducer(cartReducer, undefined, loadCartFromStorage);
+  const [services,setServices]=useState<CartServiceItem[]>(loadServices);
 
   useEffect(() => {
     try {
@@ -124,6 +132,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
       // storage may be full or unavailable — silently ignore
     }
   }, [items]);
+  useEffect(()=>{localStorage.setItem(SERVICE_STORAGE_KEY,JSON.stringify(services))},[services]);
+  useEffect(()=>{setServices(current=>current.filter(service=>items.some(item=>item.id===service.targetCartItemId)))},[items]);
 
   const addToCart = useCallback(
     (
@@ -150,6 +160,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const clearCart = useCallback(() => {
     dispatch({ type: 'CLEAR' });
+    setServices([]);
   }, []);
 
   const replaceAfterValidation = useCallback((items: CartItem[]) => {
@@ -160,12 +171,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
     const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const count = items.reduce((sum, item) => sum + item.quantity, 0);
     const delivery = 0;
+    const servicesTotal=services.reduce((sum,item)=>sum+item.price*item.quantity,0);
+    const addService=(service:ServiceCatalogItem,target:CartItem)=>{const size=screenNumber(target.screenSize);if(service.price===null||(service.min_screen_size!==null&&size<service.min_screen_size)||(service.max_screen_size!==null&&size>service.max_screen_size))return false;setServices(current=>current.some(item=>item.serviceId===service.id&&item.targetCartItemId===target.id)?current:[...current,{id:`${service.id}__${target.id}`,serviceId:service.id,serviceKey:service.service_key,category:service.category,name:service.name,price:service.price!,quantity:1,targetCartItemId:target.id,televisionName:target.name,screenSize:size}]);return true};
+    const removeService=(id:string)=>setServices(current=>current.filter(item=>item.id!==id));
     return {
       items,
       count,
       subtotal,
       delivery,
-      total: subtotal + delivery,
+      total: subtotal + servicesTotal + delivery,
+      services,servicesTotal,addService,removeService,
       addToCart,
       removeFromCart,
       updateQuantity,
@@ -173,7 +188,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       clearCart,
       replaceAfterValidation,
     };
-  }, [items, addToCart, removeFromCart, updateQuantity, setQuantity, clearCart, replaceAfterValidation]);
+  }, [items, services, addToCart, removeFromCart, updateQuantity, setQuantity, clearCart, replaceAfterValidation]);
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

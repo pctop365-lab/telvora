@@ -1,0 +1,3 @@
+SELECT 'service_catalog already exists' AS migration_blocker FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='service_catalog';
+SELECT 'order_services already exists' AS migration_blocker FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name='order_services';
+SELECT 'orders/order_items must exist and use InnoDB' AS migration_blocker WHERE 2 <> (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN ('orders','order_items') AND engine='InnoDB');

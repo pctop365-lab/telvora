@@ -2862,9 +2862,27 @@ if ($action === 'supplier_import_profile_set_active') {
     }
 }
 
-/*
- * Получение списка заказов
- */
+if ($action === 'service_catalog_list') {
+    require_once __DIR__ . '/service_catalog_service.php';
+    sendManagerJson(200, ['success'=>true,'services'=>serviceCatalogList($pdo,true)]);
+}
+
+if ($action === 'service_catalog_update') {
+    requireManagerMethod('POST');
+    $id=filter_var($data['id']??null,FILTER_VALIDATE_INT,['options'=>['min_range'=>1]]);
+    $min=($data['min_screen_size']??null)===null?null:filter_var($data['min_screen_size'],FILTER_VALIDATE_INT,['options'=>['min_range'=>1,'max_range'=>200]]);
+    $max=($data['max_screen_size']??null)===null?null:filter_var($data['max_screen_size'],FILTER_VALIDATE_INT,['options'=>['min_range'=>1,'max_range'=>200]]);
+    $price=($data['price']??null)===''?null:filter_var($data['price']??null,FILTER_VALIDATE_FLOAT);
+    $name=trim((string)($data['name']??''));$description=trim((string)($data['description']??''));$sort=(int)($data['sort_order']??0);$active=($data['is_active']??false)===true?1:0;
+    $invalidRange=($min===null)!==($max===null)||$min===false||$max===false||($min!==null&&$max!==null&&$min>$max);
+    if($id===false||$invalidRange||($price!==null&&($price===false||$price<0))||$name===''||mb_strlen($name)>180||$description===''||mb_strlen($description)>500){sendManagerJson(400,['success'=>false,'message'=>'Некорректные данные услуги']);}
+    if($min!==null&&$max!==null){$overlap=$pdo->prepare('SELECT id FROM service_catalog WHERE id<>:id AND category=(SELECT category FROM service_catalog WHERE id=:id2) AND min_screen_size IS NOT NULL AND max_screen_size IS NOT NULL AND :min<=max_screen_size AND :max>=min_screen_size LIMIT 1');$overlap->execute([':id'=>$id,':id2'=>$id,':min'=>$min,':max'=>$max]);if($overlap->fetch())sendManagerJson(409,['success'=>false,'message'=>'Диапазон пересекается с другим тарифом']);}
+    $stmt=$pdo->prepare('UPDATE service_catalog SET name=:name,description=:description,min_screen_size=:min,max_screen_size=:max,price=:price,is_active=:active,sort_order=:sort WHERE id=:id');
+    $stmt->execute([':name'=>$name,':description'=>$description,':min'=>$min,':max'=>$max,':price'=>$price,':active'=>$active,':sort'=>$sort,':id'=>$id]);
+    sendManagerJson(200,['success'=>true]);
+}
+
+/* Получение списка заказов */
 if ($action === 'orders') {
 
     $stmt = $pdo->query("
@@ -2907,6 +2925,9 @@ if ($action === 'orders') {
         ]);
 
         $order['items'] = $itemStmt->fetchAll();
+        $serviceStmt=$pdo->prepare('SELECT service_key,service_name,service_category,television_name,screen_size,unit_price,quantity,total FROM order_services WHERE order_id=:order_id ORDER BY id');
+        $serviceStmt->execute([':order_id'=>$order['id']]);
+        $order['services']=$serviceStmt->fetchAll();
     }
 
     echo json_encode([

@@ -1,0 +1,4 @@
+SELECT table_name, engine FROM information_schema.tables WHERE table_schema=DATABASE() AND table_name IN ('service_catalog','order_services') ORDER BY table_name;
+SELECT category, COUNT(*) tariff_count, MIN(min_screen_size) min_size, MAX(max_screen_size) max_size FROM service_catalog WHERE price IS NOT NULL GROUP BY category ORDER BY category;
+SELECT a.service_key left_key,b.service_key right_key FROM service_catalog a JOIN service_catalog b ON a.category=b.category AND a.id<b.id AND a.min_screen_size<=b.max_screen_size AND b.min_screen_size<=a.max_screen_size;
+SELECT COUNT(*) active_draft_tariffs FROM service_catalog WHERE is_active=1 AND JSON_UNQUOTE(JSON_EXTRACT(metadata,'$.pricing_status'))='draft_reference';

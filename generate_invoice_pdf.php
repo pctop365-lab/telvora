@@ -193,6 +193,9 @@ $itemStmt->execute([
 ]);
 
 $items = $itemStmt->fetchAll();
+$serviceStmt=$pdo->prepare('SELECT service_name,television_name,screen_size,unit_price,quantity,total FROM order_services WHERE order_id=:order_id ORDER BY id');
+$serviceStmt->execute([':order_id'=>$orderId]);
+$services=$serviceStmt->fetchAll();
 
 /*
 |--------------------------------------------------------------------------
@@ -590,6 +593,9 @@ $deliveryText = $isDeliveryPending
     ? 'Стоимость согласовывается'
     : (($order['delivery_price'] ?? null) !== null ? money($order['delivery_price']) : 'Включена в итог legacy-заказа');
 $totalText = $isDeliveryPending ? 'После согласования доставки' : money($order['total']);
+$servicesTotal = array_reduce($services, static fn(float $sum,array $service):float=>$sum+(float)$service['total'],0.0);
+$serviceHtml='';
+if($services){$serviceHtml='<h3>Сервисные услуги</h3><table class="products"><thead><tr><th>Услуга</th><th>Телевизор / диагональ</th><th>Кол-во</th><th>Цена</th><th>Сумма</th></tr></thead><tbody>';foreach($services as $service){$serviceHtml.='<tr><td>'.h($service['service_name']).'</td><td>'.h($service['television_name']).' / '.h($service['screen_size']).'″</td><td class="center">'.h($service['quantity']).'</td><td class="right">'.money($service['unit_price']).'</td><td class="right">'.money($service['total']).'</td></tr>';}$serviceHtml.='</tbody></table>';}
 
 $html .= '
 
@@ -597,9 +603,12 @@ $html .= '
 
 </table>
 
+' . $serviceHtml . '
+
 <table class="total-table">
 
 <tr><td style="width:75%; text-align:left;">ТОВАРЫ:</td><td style="width:25%; text-align:right;">' . money($order['subtotal'] ?? $itemsSubtotal) . '</td></tr>
+' . ($services ? '<tr><td style="width:75%; text-align:left;">СЕРВИСНЫЕ УСЛУГИ:</td><td style="width:25%; text-align:right;">'.money($servicesTotal).'</td></tr>' : '') . '
 <tr><td style="width:75%; text-align:left;">ДОСТАВКА:</td><td style="width:25%; text-align:right;">' . h($deliveryText) . '</td></tr>
 
 <tr>

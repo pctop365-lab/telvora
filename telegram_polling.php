@@ -268,6 +268,10 @@ function orderDeliveryText(array $order): string
     return 'Включена в итог legacy-заказа';
 }
 
+function orderServicesText(PDO $pdo,int $orderId): string {
+    $stmt=$pdo->prepare('SELECT service_name,television_name,screen_size,quantity,total FROM order_services WHERE order_id=:order_id ORDER BY id');$stmt->execute([':order_id'=>$orderId]);$rows=$stmt->fetchAll();if(!$rows)return 'Нет';$lines=[];foreach($rows as $row)$lines[]='• '.h($row['service_name']).' — '.h($row['television_name']).' / '.h($row['screen_size']).'″ × '.h($row['quantity']).' — '.money($row['total']);return implode("\n",$lines);
+}
+
 function editStateFile(): string
 {
     return dirname(__DIR__, 2) . '/telvora_runtime/telegram_edit_state.json';
@@ -1417,6 +1421,7 @@ function sendOrderCard(int $chatId, int $orderId): void
             "🚚 Стоимость: " . h(orderDeliveryText($order)) . "\n" .
             "💳 " . h($order['payment_method'] ?: '—') . "\n" .
             "💬 " . h($order['comment'] ?: '—') . "\n" .
+            "🛠 <b>Сервисные услуги:</b>\n" . orderServicesText($pdo,$orderId) . "\n" .
             "💰 " . h(orderTotalText($order)) . "\n" .
             "📌 " . h($order['status']) . "\n" .
             "📅 " . h($order['created_at']);

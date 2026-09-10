@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { canStartVariantMutation, isCurrentVariantMutation, isVariantDraft, shouldConfirmVariantDisable, variantMutationErrorMessage, type VariantMutationAction } from './adminVariantManagement';
 import { convertProductImageForUpload } from './productImageConversion';
+import ServiceCatalogAdmin from '@/components/admin/ServiceCatalogAdmin';
 
 type Spec = {
   label: string;
@@ -63,6 +64,7 @@ type Order = {
   status: string;
   created_at: string;
   items: OrderItem[];
+  services?: Array<{service_key:string;service_name:string;service_category:string;television_name:string;screen_size:number;unit_price:number;quantity:number;total:number}>;
 };
 
 type ProductVariant = {
@@ -644,7 +646,7 @@ export default function AdminPage() {
   const [expanded, setExpanded] = useState<number | null>(null);
 
   const [activeTab, setActiveTab] = useState<
-    'orders' | 'products' | 'suppliers'
+    'orders' | 'products' | 'suppliers' | 'services'
   >(
     'orders'
   );
@@ -3176,9 +3178,10 @@ const toggleProductStatus = async (product: AdminProduct) => {
           >
             Поставщики
           </button>
+          <button onClick={() => setActiveTab('services')} className={`px-5 py-2.5 rounded-xl text-sm font-medium border transition ${activeTab==='services'?'bg-accent-50 border-accent-200 text-accent-600':'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>Сервисные услуги</button>
         </div>
 
-        {activeTab === 'orders' ? (
+        {activeTab === 'services' ? <ServiceCatalogAdmin /> : activeTab === 'orders' ? (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
               <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
@@ -3281,6 +3284,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                           <div className="text-sm text-gray-500 mt-2">
                             {formatDate(order.created_at)}
                           </div>
+                          {!!order.services?.length && <div className="mt-4"><div className="mb-2 text-sm font-semibold">Сервисные услуги</div>{order.services.map(service=><div key={`${order.id}-${service.service_key}-${service.television_name}`} className="mb-2 flex justify-between gap-4 rounded-xl border border-accent-200 bg-accent-50 p-3"><div><div>{service.service_name}</div><div className="text-xs text-gray-500">{service.television_name} · {service.screen_size}″ · {service.quantity} шт.</div></div><div className="font-semibold">{formatPrice(service.total)}</div></div>)}</div>}
                         </div>
 
                         <div className="flex items-center gap-6">

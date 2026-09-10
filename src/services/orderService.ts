@@ -36,7 +36,7 @@ export async function validateCart(items: CartItem[]): Promise<{ allOrderable: b
 
 export async function createOrder(
   formData: CheckoutFormData,
-  cartItems: CartItem[]
+  cartItems: CartItem[], services: import('@/types').CartServiceItem[] = []
 ): Promise<Order> {
   if (cartItems.length === 0) {
     throw new Error('Корзина пуста — невозможно оформить заказ');
@@ -61,6 +61,8 @@ export async function createOrder(
 
     customer: formData,
     subtotal: 0,
+    services,
+    servicesTotal: 0,
     delivery: 0,
     deliveryStatus: 'confirmed',
     total: 0,
@@ -90,6 +92,7 @@ export async function createOrder(
         product_id: Number(item.productId), product_variant_id: item.productVariantId,
         slug: item.slug, quantity: item.quantity, assembly_country: item.assemblyCountry ?? '',
       })),
+      services: services.map(service=>({service_id:service.serviceId,target_item_index:cartItems.findIndex(item=>item.id===service.targetCartItemId),quantity:service.quantity})),
     }),
   });
 
@@ -100,6 +103,8 @@ export async function createOrder(
     message?: string;
     code?: string;
     subtotal?: number;
+    services_total?: number;
+    services?: any[];
     delivery?: number | null;
     delivery_status?: 'confirmed' | 'pending';
     delivery_estimate?: number | null;
@@ -133,6 +138,8 @@ export async function createOrder(
 
   order.orderNumber = result.order_number;
   order.subtotal = result.subtotal;
+  order.servicesTotal = result.services_total ?? 0;
+  order.services = (result.services ?? services).map((service:any)=>({...service,id:service.id??`${service.service_id}__${service.target_item_index}`,serviceId:service.serviceId??service.service_id,serviceKey:service.serviceKey??service.service_key,price:service.price??service.unit_price,targetCartItemId:cartItems[service.target_item_index]?.id??service.targetCartItemId,televisionName:service.televisionName??service.television_name,screenSize:service.screenSize??service.screen_size}));
   order.delivery = result.delivery ?? null;
   order.deliveryStatus = result.delivery_status!;
   order.deliveryEstimate = result.delivery_estimate;

@@ -4,6 +4,7 @@ header('Content-Type: application/json; charset=utf-8');
 
 require_once __DIR__ . '/storefront_cart_service.php';
 require_once __DIR__ . '/delivery_quote_service.php';
+require_once __DIR__ . '/service_catalog_service.php';
 
 function telvoraApiSecretsFile(): string
 {
@@ -292,6 +293,7 @@ $comment = trim($data['comment'] ?? '');
 $outsideMkad = ($data['outside_mkad'] ?? false) === true;
 $requestedOutsideMkadKm = $data['outside_mkad_km'] ?? null;
 $items = $data['items'] ?? [];
+$requestedServices = is_array($data['services'] ?? null) ? $data['services'] : [];
 
 if ($customerName === '') {
     http_response_code(400);
@@ -353,9 +355,11 @@ try {
     unset($serverItem);
 
     $subtotal = round($subtotal, 2);
+    $serverServices = serviceCatalogResolve($pdo, $requestedServices, $serverItems);
+    $servicesTotal = serviceCatalogTotal($serverServices);
     $deliveryQuote = telvoraDeliveryQuote($deliveryMethod, $serverItems, $outsideMkad, $requestedOutsideMkadKm);
     $delivery = $deliveryQuote['price'];
-    $total = round($subtotal + ($delivery ?? 0.0), 2);
+    $total = round($subtotal + $servicesTotal + ($delivery ?? 0.0), 2);
     $rateLimit = consumeApiOrderRateLimit();
 
     if ($rateLimit['status'] === 'state_error') {
@@ -389,9 +393,11 @@ try {
     unset($serverItem);
     $subtotal = round(array_reduce($serverItems, static fn(float $sum, array $item): float =>
         $sum + ($item['price'] * $item['quantity']), 0.0), 2);
+    $serverServices = serviceCatalogResolve($pdo, $requestedServices, $serverItems, true);
+    $servicesTotal = serviceCatalogTotal($serverServices);
     $deliveryQuote = telvoraDeliveryQuote($deliveryMethod, $serverItems, $outsideMkad, $requestedOutsideMkadKm);
     $delivery = $deliveryQuote['price'];
-    $total = round($subtotal + ($delivery ?? 0.0), 2);
+    $total = round($subtotal + $servicesTotal + ($delivery ?? 0.0), 2);
 
 
     $stmt = $pdo->prepare("
@@ -512,7 +518,8 @@ $itemStmt = $pdo->prepare("
         )
     ");
 
-    foreach ($serverItems as $item) {
+    $orderItemIds = [];
+    foreach ($serverItems as $itemIndex => $item) {
 
         $productName = $item['name'];
         $quantity = $item['quantity'];
@@ -529,6 +536,12 @@ $itemStmt = $pdo->prepare("
             ':quantity' => $quantity,
             ':price' => $price
         ]);
+        $orderItemIds[$itemIndex] = (int)$pdo->lastInsertId();
+    }
+
+    $serviceStmt=$pdo->prepare('INSERT INTO order_services(order_id,order_item_id,service_id,service_key,service_name,service_category,television_name,screen_size,unit_price,quantity,total,metadata) VALUES(:order_id,:order_item_id,:service_id,:service_key,:service_name,:service_category,:television_name,:screen_size,:unit_price,:quantity,:total,:metadata)');
+    foreach($serverServices as $service){
+        $serviceStmt->execute([':order_id'=>$orderId,':order_item_id'=>$orderItemIds[$service['target_item_index']],':service_id'=>$service['service_id'],':service_key'=>$service['service_key'],':service_name'=>$service['name'],':service_category'=>$service['category'],':television_name'=>$service['television_name'],':screen_size'=>$service['screen_size'],':unit_price'=>$service['unit_price'],':quantity'=>$service['quantity'],':total'=>$service['total'],':metadata'=>$service['metadata']]);
     }
 
     $pdo->commit();
@@ -547,18 +560,28 @@ foreach ($serverItems as $item) {
         ' — ' . number_format($price, 0, ',', ' ') . " ₽\n";
 }
 
+$servicesText = '';
+foreach ($serverServices as $service) {
+    $servicesText .= '• ' . htmlspecialchars($service['name'], ENT_QUOTES, 'UTF-8') .
+        ' — ' . htmlspecialchars($service['television_name'], ENT_QUOTES, 'UTF-8') .
+        ' / ' . $service['screen_size'] . '″ × ' . $service['quantity'] .
+        ' — ' . number_format($service['total'], 0, ',', ' ') . " ₽\n";
+}
+
 $telegramMessage =
     "🆕 <b>Новый заказ</b>\n\n" .
     "🧾 <b>Заказ:</b> {$orderNumber}\n" .
     "👤 <b>Покупатель:</b> " . htmlspecialchars($customerName, ENT_QUOTES, 'UTF-8') . "\n" .
     "💰 <b>Товары:</b> " . number_format($subtotal, 0, ',', ' ') . " ₽\n" .
+    "🛠 <b>Услуги:</b> " . number_format($servicesTotal, 0, ',', ' ') . " ₽\n" .
     "🚚 <b>Стоимость доставки:</b> " . ($deliveryQuote['status'] === TELVORA_DELIVERY_QUOTE_CONFIRMED ? number_format((float)$delivery, 0, ',', ' ') . ' ₽' : 'согласовывается') . "\n" .
     "💰 <b>Итог:</b> " . ($deliveryQuote['status'] === TELVORA_DELIVERY_QUOTE_CONFIRMED ? number_format($total, 0, ',', ' ') . ' ₽' : 'после согласования доставки') . "\n" .
     "🚚 <b>Доставка:</b> " .
     htmlspecialchars($deliveryMethod, ENT_QUOTES, 'UTF-8') . "\n" .
     "📌 <b>Статус:</b> Новый\n\n" .
     "📦 <b>Товары:</b>\n" .
-    $itemsText;
+    $itemsText .
+    ($servicesText !== '' ? "\n🛠 <b>Сервисные услуги:</b>\n" . $servicesText : '');
 
 sendTelegramMessage(
     $telegramBotToken,
@@ -571,6 +594,7 @@ echo json_encode([
     'order_id' => $orderId,
     'order_number' => $orderNumber,
     'subtotal' => $subtotal,
+    'services_total' => $servicesTotal,
     'delivery' => $delivery,
     'delivery_status' => $deliveryQuote['status'],
     'delivery_estimate' => $deliveryQuote['estimate'],
@@ -585,9 +609,14 @@ echo json_encode([
         'quantity' => $item['quantity'],
         'price' => $item['price']
     ], $serverItems),
+    'services' => $serverServices,
     'message' => 'Заказ успешно сохранён'
 ], JSON_UNESCAPED_UNICODE);
 
+} catch (ServiceCatalogException $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    http_response_code(400);
+    echo json_encode(['success'=>false,'code'=>'INVALID_SERVICE','message'=>'Некорректная или недоступная сервисная услуга'],JSON_UNESCAPED_UNICODE);
 } catch (AvailabilityChangedException $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
     http_response_code(409);

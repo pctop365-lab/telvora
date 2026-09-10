@@ -68,6 +68,10 @@ export type CartItem = {
   validationError?: string;
 };
 
+export type ServiceCategory = 'mounting' | 'pixel_test' | 'other';
+export type ServiceCatalogItem = { id:number; service_key:string; category:ServiceCategory; name:string; description:string; min_screen_size:number|null; max_screen_size:number|null; price:number|null; is_active:boolean; sort_order:number; requires_tv:boolean; metadata?:Record<string,unknown>|null };
+export type CartServiceItem = { id:string; serviceId:number; serviceKey:string; category:ServiceCategory; name:string; price:number; quantity:number; targetCartItemId:string; televisionName:string; screenSize:number };
+
 export type SortKey = 'default' | 'price-asc' | 'price-desc' | 'rating';
 
 export type DeliveryMethod = 'courier' | 'pickup' | 'post';
@@ -105,6 +109,8 @@ export type Order = {
   items: OrderItem[];
   customer: CheckoutFormData;
   subtotal: number;
+  services?: CartServiceItem[];
+  servicesTotal?: number;
   delivery: number | null;
   deliveryStatus?: 'confirmed' | 'pending';
   deliveryEstimate?: number | null;

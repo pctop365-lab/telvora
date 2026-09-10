@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const read=file=>fs.readFileSync(new URL(`../${file}`,import.meta.url),'utf8');
+const api=read('api.php'),cart=read('src/store/cart.tsx'),checkout=read('src/pages/CheckoutPage.tsx');
+assert.match(api,/serviceCatalogResolve\(\$pdo, \$requestedServices, \$serverItems, true\)/);
+assert.match(api,/\$subtotal \+ \$servicesTotal \+ \(\$delivery/);
+assert.match(api,/INSERT INTO order_services/);
+assert.match(cart,/removeService/);
+assert.match(cart,/targetCartItemId/);
+assert.match(checkout,/items, services/);
+for(const file of ['src/pages/ServicesPage.tsx','src/components/CartDrawer.tsx','src/pages/CheckoutPage.tsx','src/pages/OrderSuccessPage.tsx','src/pages/AdminPage.tsx','telegram_polling.php','generate_invoice_pdf.php'])assert.match(read(file),/Сервисные услуги|Сервисные услуги:/,file);
+console.log('SERVICE INTEGRATION CONTRACT PASSED');
