@@ -193,7 +193,7 @@ $itemStmt->execute([
 ]);
 
 $items = $itemStmt->fetchAll();
-$serviceStmt=$pdo->prepare('SELECT service_name,television_name,screen_size,unit_price,quantity,total FROM order_services WHERE order_id=:order_id ORDER BY id');
+$serviceStmt=$pdo->prepare('SELECT service_name,television_name,screen_size,unit_price,quantity,total,metadata FROM order_services WHERE order_id=:order_id ORDER BY id');
 $serviceStmt->execute([':order_id'=>$orderId]);
 $services=$serviceStmt->fetchAll();
 
@@ -326,7 +326,7 @@ body {
 
 .header {
     text-align: center;
-    margin-bottom: 18px;
+    margin-bottom: 14px;
 }
 
 .logo {
@@ -344,7 +344,7 @@ body {
 .title {
     font-size: 18px;
     font-weight: bold;
-    margin-top: 18px;
+    margin-top: 14px;
 }
 
 .order-number {
@@ -358,12 +358,12 @@ table {
 }
 
 .info-table {
-    margin-top: 12px;
+    margin-top: 9px;
 }
 
 .info-table td {
     border: 1px solid #222;
-    padding: 7px;
+    padding: 5.5px 6px;
     vertical-align: top;
 }
 
@@ -374,19 +374,28 @@ table {
 }
 
 .products {
-    margin-top: 16px;
+    margin-top: 12px;
 }
 
 .products th,
 .products td {
     border: 1px solid #222;
-    padding: 7px;
+    padding: 5.5px 6px;
 }
 
 .products th {
     background: #e9e9e9;
     font-weight: bold;
     text-align: center;
+}
+
+.products thead {
+    display: table-header-group;
+}
+
+.products tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
 }
 
 .center {
@@ -398,12 +407,12 @@ table {
 }
 
 .total-table {
-    margin-top: 10px;
+    margin-top: 8px;
 }
 
 .total-table td {
     border: 1px solid #222;
-    padding: 8px;
+    padding: 6px;
     font-size: 12px;
     font-weight: bold;
 }
@@ -413,19 +422,19 @@ table {
 }
 
 .notice {
-    margin-top: 18px;
+    margin-top: 13px;
     font-size: 8.5px;
     line-height: 1.4;
 }
 
 .confirmation {
-    margin-top: 10px;
+    margin-top: 8px;
     font-size: 8.5px;
     line-height: 1.4;
 }
 
 .signatures {
-    margin-top: 25px;
+    margin-top: 18px;
 }
 
 .signatures td {
@@ -435,7 +444,7 @@ table {
 }
 
 .signature-line {
-    margin-top: 30px;
+    margin-top: 22px;
     border-bottom: 1px solid #222;
     height: 20px;
 }
@@ -446,16 +455,18 @@ table {
     font-size: 8px;
 }
 
+.final-block {
+    page-break-inside: avoid;
+    break-inside: avoid;
+}
+
 .footer {
-    position: fixed;
-    bottom: 4mm;
-    left: 0;
-    right: 0;
+    margin-top: 12px;
     text-align: center;
 }
 
 .footer-logo {
-    width: 44mm;
+    width: 36mm;
     height: auto;
 }
 
@@ -493,7 +504,7 @@ table {
 
 <tr>
     <td class="label">Почта</td>
-    <td>' . h($sellerOrdersEmail) . ' / ' . h($sellerSupportEmail) . '</td>
+    <td><a href="mailto:' . h($sellerOrdersEmail) . '">' . h($sellerOrdersEmail) . '</a> / <a href="mailto:' . h($sellerSupportEmail) . '">' . h($sellerSupportEmail) . '</a></td>
 </tr>
 
 <tr>
@@ -538,8 +549,8 @@ table {
 
 <tr>
     <th style="width:7%;">№</th>
-    <th>Наименование товара</th>
-    <th style="width:12%;">Количество</th>
+    <th>Наименование</th>
+    <th style="width:12%;">Кол-во</th>
     <th style="width:17%;">Цена</th>
     <th style="width:18%;">Сумма</th>
 </tr>
@@ -589,13 +600,35 @@ foreach ($items as $item) {
 }
 
 $isDeliveryPending = ($order['delivery_quote_status'] ?? null) === 'pending';
-$deliveryText = $isDeliveryPending
-    ? 'Стоимость согласовывается'
-    : (($order['delivery_price'] ?? null) !== null ? money($order['delivery_price']) : 'Включена в итог legacy-заказа');
 $totalText = $isDeliveryPending ? 'После согласования доставки' : money($order['total']);
-$servicesTotal = array_reduce($services, static fn(float $sum,array $service):float=>$sum+(float)$service['total'],0.0);
-$serviceHtml='';
-if($services){$serviceHtml='<h3>Сервисные услуги</h3><table class="products"><thead><tr><th>Услуга</th><th>Телевизор / диагональ</th><th>Кол-во</th><th>Цена</th><th>Сумма</th></tr></thead><tbody>';foreach($services as $service){$serviceHtml.='<tr><td>'.h($service['service_name']).'</td><td>'.h($service['television_name']).' / '.h($service['screen_size']).'″</td><td class="center">'.h($service['quantity']).'</td><td class="right">'.money($service['unit_price']).'</td><td class="right">'.money($service['total']).'</td></tr>';}$serviceHtml.='</tbody></table>';}
+
+foreach ($services as $service) {
+    $metadata = json_decode((string)($service['metadata'] ?? ''), true);
+    $minScreenSize = is_array($metadata) ? ($metadata['min_screen_size'] ?? null) : null;
+    $maxScreenSize = is_array($metadata) ? ($metadata['max_screen_size'] ?? null) : null;
+    $range = is_numeric($minScreenSize) && is_numeric($maxScreenSize)
+        ? ' ' . (int)$minScreenSize . '–' . (int)$maxScreenSize . '″'
+        : ' ' . (int)$service['screen_size'] . '″';
+    $html .= '<tr><td class="center">' . $rowNumber . '</td><td>' .
+        h($service['service_name']) . h($range) .
+        '</td><td class="center">' . (int)$service['quantity'] .
+        '</td><td class="right">' . money($service['unit_price']) .
+        '</td><td class="right">' . money($service['total']) . '</td></tr>';
+    $rowNumber++;
+}
+
+if ($isDeliveryPending) {
+    $html .= '<tr><td class="center">' . $rowNumber . '</td><td>Доставка — стоимость согласовывается</td>' .
+        '<td class="center">1</td><td class="right">—</td><td class="right">—</td></tr>';
+    $rowNumber++;
+} elseif (($order['delivery_price'] ?? null) !== null && is_numeric($order['delivery_price'])) {
+    $deliveryPrice = (float)$order['delivery_price'];
+    $html .= '<tr><td class="center">' . $rowNumber . '</td><td>Доставка — ' .
+        h(translateDeliveryMethod($order['delivery_method'])) .
+        '</td><td class="center">1</td><td class="right">' . money($deliveryPrice) .
+        '</td><td class="right">' . money($deliveryPrice) . '</td></tr>';
+    $rowNumber++;
+}
 
 $html .= '
 
@@ -603,13 +636,8 @@ $html .= '
 
 </table>
 
-' . $serviceHtml . '
-
+<div class="final-block">
 <table class="total-table">
-
-<tr><td style="width:75%; text-align:left;">ТОВАРЫ:</td><td style="width:25%; text-align:right;">' . money($order['subtotal'] ?? $itemsSubtotal) . '</td></tr>
-' . ($services ? '<tr><td style="width:75%; text-align:left;">СЕРВИСНЫЕ УСЛУГИ:</td><td style="width:25%; text-align:right;">'.money($servicesTotal).'</td></tr>' : '') . '
-<tr><td style="width:75%; text-align:left;">ДОСТАВКА:</td><td style="width:25%; text-align:right;">' . h($deliveryText) . '</td></tr>
 
 <tr>
 
@@ -701,6 +729,8 @@ $html .= '
 
 <div class="footer">
     <img class="footer-logo" src="' . $logoData . '" alt="TELVORA">
+</div>
+
 </div>
 
 </body>

@@ -14,7 +14,8 @@ $root = dirname(__DIR__);
 $source = file_get_contents($root . '/generate_invoice_pdf.php');
 invoiceFixtureCheck(is_string($source), 'invoice generator is unavailable');
 invoiceFixtureCheck(str_contains($source, '<td class="label">Почта</td>'), 'combined email label is missing');
-invoiceFixtureCheck(str_contains($source, "h(\$sellerOrdersEmail) . ' / ' . h(\$sellerSupportEmail)"), 'emails are not combined');
+invoiceFixtureCheck(str_contains($source, 'mailto:' . "' . h(\$sellerOrdersEmail)"), 'orders email link is missing');
+invoiceFixtureCheck(str_contains($source, 'mailto:' . "' . h(\$sellerSupportEmail)"), 'support email link is missing');
 invoiceFixtureCheck(!str_contains($source, 'Почта поддержки'), 'separate support email row remains');
 
 $contacts = json_decode((string)file_get_contents($root . '/public_contacts.json'), true, flags: JSON_THROW_ON_ERROR);
