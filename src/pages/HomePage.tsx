@@ -9,7 +9,7 @@ import TelegramBanner from '@/components/TelegramBanner';
 
 export default function HomePage() {
   const { products, loading, error } = useProducts({ sort: 'rating' });
-  const featured = products.slice(0, 3);
+  const featured = products.slice(0, 9);
 
   return (
     <>

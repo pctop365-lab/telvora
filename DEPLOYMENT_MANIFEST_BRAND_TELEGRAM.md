@@ -15,7 +15,7 @@ Upload these files first:
 | Local file | Production path | SHA-256 |
 | --- | --- | --- |
 | `dist/assets/index-D_xYGheo.css` | `assets/index-D_xYGheo.css` | `ed6a0c0074e30f4f1040a60c9b22167d2419b3f2f9e03877cff4906276d71652` |
-| `dist/assets/index-Cy3XY7EO.js` | `assets/index-Cy3XY7EO.js` | `3081669270b65ab86c97f7c3030aa7fd531de44464fceba4afb989453d465be0` |
+| `dist/assets/index-DyHX_EF9.js` | `assets/index-DyHX_EF9.js` | `2f829fc4626e5ebb1eee260ec54c6a53db38d72701aaebc4f7199c43fcba5040` |
 | `dist/telvora-logo.svg` | `telvora-logo.svg` | `73ee6591600bd6ac21d532525f3f8382553d8c4c5ba24eb98043d743dd245a1a` |
 | `dist/telvora-mark.svg` | `telvora-mark.svg` | `f38dea75ac0a3c13075e9073341597bccc2a354b5527a50e35ad2da1b7c513aa` |
 | `dist/favicon.svg` | `favicon.svg` | `574e1a94017314059d8001321dfc6740acf28fc5b6c7cf90b0c0289fd11128af` |
@@ -24,7 +24,7 @@ Publish this file last:
 
 | Local file | Production path | SHA-256 |
 | --- | --- | --- |
-| `dist/index.html` | `index.html` | `79d9992f3ef0626365cf1446f073fdaa326121283fd16c798379b41ecc49a155` |
+| `dist/index.html` | `index.html` | `99557e751ae9f5e484ed52ee631fa2e70814d2084dda7d1e3c990ff468776b35` |
 
 ## Exclusions
 
