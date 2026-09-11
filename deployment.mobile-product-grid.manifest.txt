@@ -1,0 +1,11 @@
+# TELVORA compact two-column mobile ProductGrid — frontend-only deployment
+# Upload hashed assets first; install index.html last. Do not delete old hashed assets.
+
+dist/assets/index-pVb_I884.css
+SHA256 63391B7D74A7DBD2746840D2D2B9A077DA028021ED5730C8473C6415979ACAB2
+
+dist/assets/index-BeS-d8rl.js
+SHA256 3F1EE203A40EED4947E2E792E4A7561C03305E55D623F668C48A1D33CEB8AF91
+
+dist/index.html
+SHA256 27710A1EC744DC49E994C57D1FFF1046116FEF79F4ED891125911082A4EC9F7C

@@ -79,26 +79,26 @@ const minVariantOldPrice =
   return (
     <Link
       to={productUrl}
-      className="group relative bg-graphite-100 dark:bg-graphite-800 rounded-3xl overflow-hidden border border-white/5 hover:border-white/10 transition-all duration-500 hover:-translate-y-1 hover:shadow-2xl hover:shadow-black/40 animate-fade-up flex flex-col"
+      className="group relative bg-graphite-100 dark:bg-graphite-800 rounded-2xl sm:rounded-3xl overflow-hidden border border-white/5 hover:border-white/10 transition-all duration-500 hover:-translate-y-1 hover:shadow-2xl hover:shadow-black/40 animate-fade-up flex flex-col min-w-0"
       style={{
         animationDelay: `${delay}s`,
         opacity: 0,
       }}
     >
-      <div className="relative aspect-[4/3] overflow-hidden bg-white dark:bg-graphite-900">
+      <div className="relative aspect-square sm:aspect-[4/3] overflow-hidden bg-white dark:bg-graphite-900">
         <img
           src={product.image}
           alt={product.name}
           loading="lazy"
-          className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+          className="w-full h-full object-contain sm:object-cover transition-transform duration-700 group-hover:scale-105"
         />
 
         <div className="absolute inset-0 bg-gradient-to-t from-graphite-800 via-transparent to-transparent opacity-60" />
 
-        <div className="absolute top-4 left-4 flex flex-col gap-2">
+        <div className="absolute top-2 left-2 sm:top-4 sm:left-4 flex flex-col gap-1 sm:gap-2">
           {product.badge && (
             <span
-              className={`px-3 py-1.5 text-xs font-bold rounded-lg backdrop-blur-md ${
+              className={`max-w-[7.5rem] truncate px-2 py-1 text-[10px] font-bold rounded-md backdrop-blur-md sm:max-w-none sm:overflow-visible sm:text-clip sm:whitespace-normal sm:px-3 sm:py-1.5 sm:text-xs sm:rounded-lg ${
                 product.badge.includes('%')
                   ? 'bg-accent-500 text-white'
                   : product.badge === 'Новинка'
@@ -111,53 +111,53 @@ const minVariantOldPrice =
           )}
 
           {discount > 0 && !product.badge?.includes('%') && (
-            <span className="px-3 py-1.5 text-xs font-bold rounded-lg bg-accent-500 text-white">
+            <span className="px-2 py-1 text-[10px] font-bold rounded-md bg-accent-500 text-white sm:px-3 sm:py-1.5 sm:text-xs sm:rounded-lg">
               −{discount}%
             </span>
           )}
         </div>
 
-        <span className="absolute bottom-4 left-4 px-3 py-1 bg-black/40 backdrop-blur-md text-xs font-medium text-graphite-100 rounded-lg border border-white/10">
+        <span className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] truncate px-2 py-1 bg-black/40 backdrop-blur-md text-[10px] font-medium text-graphite-100 rounded-md border border-white/10 sm:bottom-4 sm:left-4 sm:max-w-none sm:overflow-visible sm:text-clip sm:whitespace-normal sm:px-3 sm:text-xs sm:rounded-lg">
           {product.category} · {product.screenSize}
         </span>
       </div>
 
-      <div className="p-5 flex flex-col flex-1">
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <div>
-            <span className="text-xs font-medium text-accent-500 uppercase tracking-wider">
+      <div className="p-3 sm:p-5 flex flex-col flex-1 min-w-0">
+        <div className="flex flex-col items-start gap-1 mb-2 sm:flex-row sm:justify-between sm:gap-2">
+          <div className="min-w-0 w-full">
+            <span className="block truncate text-[10px] font-medium text-accent-500 uppercase tracking-wider sm:overflow-visible sm:text-clip sm:whitespace-normal sm:text-xs">
               {product.series}
             </span>
 
-            <h3 className="font-display font-bold text-lg text-white leading-tight mt-0.5">
+            <h3 className="font-display font-bold text-sm text-white leading-tight mt-0.5 line-clamp-2 min-h-[2.5rem] sm:line-clamp-none sm:min-h-0 sm:text-lg">
               {product.name}
             </h3>
           </div>
 
           <div className="flex items-center gap-1 shrink-0">
-            <Star className="w-4 h-4 fill-accent-500 text-accent-500" />
-            <span className="text-sm font-semibold text-white">
+            <Star className="w-3.5 h-3.5 fill-accent-500 text-accent-500 sm:w-4 sm:h-4" />
+            <span className="text-xs font-semibold text-white sm:text-sm">
               {product.rating}
             </span>
           </div>
         </div>
 
-        <p className="text-sm text-graphite-400 line-clamp-2 mb-4 flex-1">
+        <p className="text-xs text-graphite-400 line-clamp-2 mb-3 flex-1 sm:text-sm sm:mb-4">
           {product.description}
         </p>
 
-        <div className="flex items-end justify-between gap-3 mt-auto">
-          <div>
+        <div className="flex flex-col items-stretch gap-2 mt-auto sm:flex-row sm:items-end sm:justify-between sm:gap-3">
+          <div className="min-w-0">
             {minVariantOldPrice &&
               minVariantOldPrice > minVariantPrice && (
-                <div className="text-sm text-graphite-500 line-through">
+                <div className="text-xs text-graphite-500 line-through whitespace-nowrap sm:text-sm">
                   {formatPrice(minVariantOldPrice)}
                 </div>
               )}
 
-            <div className="text-xl font-bold text-white">
+            <div className="text-base font-bold text-white whitespace-nowrap sm:text-xl">
               {hasVariants && (
-                <span className="text-sm font-medium text-graphite-400 mr-1">
+                <span className="text-xs font-medium text-graphite-400 mr-1 sm:text-sm">
                   от
                 </span>
               )}
@@ -169,7 +169,7 @@ const minVariantOldPrice =
           <button
             onClick={handleAdd}
             disabled={!cardAvailability?.orderable}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all shrink-0 ${
+            className={`flex min-h-10 w-full items-center justify-center gap-1 px-2 py-2 rounded-lg text-xs font-semibold transition-all shrink-0 sm:min-h-0 sm:w-auto sm:gap-2 sm:px-4 sm:py-2.5 sm:rounded-xl sm:text-sm ${
               added
                 ? 'bg-green-500 text-white'
                 : cardAvailability?.orderable
@@ -179,19 +179,19 @@ const minVariantOldPrice =
           >
             {added ? (
               <>
-                <Check className="w-4 h-4" />
+                <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 Добавлено
               </>
             ) : (
               <>
-                <ShoppingBag className="w-4 h-4" />
+                <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 В корзину
               </>
             )}
           </button>
         </div>
-        <div className="mt-3">
-          {cardAvailability ? <AvailabilityStatus availability={cardAvailability} compact /> : <span className="text-sm text-graphite-500">Выберите вариант, чтобы проверить наличие</span>}
+        <div className="mt-2 min-w-0 text-xs sm:mt-3 sm:text-sm [&>div]:text-xs sm:[&>div]:text-sm">
+          {cardAvailability ? <AvailabilityStatus availability={cardAvailability} compact /> : <span className="line-clamp-2 text-xs text-graphite-500 sm:text-sm">Выберите вариант, чтобы проверить наличие</span>}
         </div>
       </div>
     </Link>
