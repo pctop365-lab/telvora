@@ -7,6 +7,22 @@ export default function TelegramBanner() {
       aria-labelledby="telegram-heading"
       className="relative overflow-hidden rounded-4xl border border-accent-500/20 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-graphite-800 dark:shadow-none sm:p-8"
     >
+      <img
+        src="/images/tech-telegram-light.png"
+        alt=""
+        loading="lazy"
+        decoding="async"
+        className="absolute inset-0 h-full w-full object-cover object-center dark:hidden"
+      />
+      <img
+        src="/images/tech-telegram-dark.png"
+        alt=""
+        loading="lazy"
+        decoding="async"
+        className="absolute inset-0 hidden h-full w-full object-cover object-center dark:block"
+      />
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.96)_0%,rgba(255,251,247,0.82)_50%,rgba(255,255,255,0.16)_80%,rgba(255,255,255,0.02)_100%)] dark:hidden" />
+      <div className="absolute inset-0 hidden bg-[linear-gradient(90deg,rgba(11,13,16,0.94)_0%,rgba(11,13,16,0.76)_50%,rgba(11,13,16,0.18)_80%,rgba(11,13,16,0.03)_100%)] dark:block" />
       <div aria-hidden="true" className="absolute -right-12 -top-16 h-48 w-48 rounded-full bg-accent-500/10 blur-3xl" />
 
       <div className="relative flex items-start gap-4">
@@ -18,7 +34,7 @@ export default function TelegramBanner() {
           <h3 id="telegram-heading" className="font-display text-2xl font-bold tracking-tight text-graphite-900 dark:text-white">
             TELVORA в Telegram
           </h3>
-          <p className="mt-2 text-sm leading-relaxed text-graphite-600 dark:text-graphite-300">
+          <p className="mt-2 text-sm leading-relaxed text-graphite-700 dark:text-graphite-300">
             Новинки, сравнения телевизоров, акции, промокоды и розыгрыши — всё самое интересное в нашем канале.
           </p>
         </div>

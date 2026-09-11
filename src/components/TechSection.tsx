@@ -29,7 +29,7 @@ export default function TechSection() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Link
             to="/catalog"
-            className="dark-content group relative min-h-[360px] p-8 sm:p-10 rounded-4xl bg-graphite-950 border border-white/10 shadow-sm dark:shadow-none hover:border-accent-500/40 transition-all duration-300 overflow-hidden"
+            className="group relative min-h-[360px] p-8 sm:p-10 rounded-4xl bg-white dark:bg-graphite-950 border border-graphite-200 dark:border-white/10 shadow-sm dark:shadow-none hover:border-accent-500/40 transition-all duration-300 overflow-hidden"
           >
             <img
               src="/images/tech-home-cinema-light.png"
@@ -45,12 +45,14 @@ export default function TechSection() {
               decoding="async"
               className="absolute inset-0 hidden h-full w-full object-cover object-[62%_center] transition-transform duration-700 group-hover:scale-[1.02] sm:object-center dark:block"
             />
-            <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(15,17,21,0.96)_0%,rgba(15,17,21,0.88)_38%,rgba(15,17,21,0.58)_68%,rgba(15,17,21,0.28)_100%)]" />
-            <div className="absolute inset-0 bg-gradient-to-t from-graphite-950/55 via-transparent to-graphite-950/20" />
+            <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.96)_0%,rgba(255,255,255,0.82)_42%,rgba(255,255,255,0.32)_72%,rgba(255,255,255,0.06)_100%)] dark:hidden" />
+            <div className="absolute inset-0 bg-gradient-to-t from-white/45 via-transparent to-white/10 dark:hidden" />
+            <div className="absolute inset-0 hidden bg-[linear-gradient(90deg,rgba(15,17,21,0.96)_0%,rgba(15,17,21,0.88)_38%,rgba(15,17,21,0.58)_68%,rgba(15,17,21,0.28)_100%)] dark:block" />
+            <div className="absolute inset-0 hidden bg-gradient-to-t from-graphite-950/55 via-transparent to-graphite-950/20 dark:block" />
 
             <div className="relative flex flex-col h-full justify-between">
               <div>
-                <div className="w-14 h-14 rounded-2xl bg-black/30 border border-white/10 backdrop-blur-sm flex items-center justify-center mb-8">
+                <div className="w-14 h-14 rounded-2xl bg-white/70 dark:bg-black/30 border border-graphite-200/80 dark:border-white/10 backdrop-blur-sm flex items-center justify-center mb-8">
                   <Film className="w-7 h-7 text-accent-500" />
                 </div>
 
@@ -58,11 +60,11 @@ export default function TechSection() {
                   Домашний кинотеатр
                 </span>
 
-                <h3 className="font-display font-extrabold text-3xl sm:text-4xl text-white mt-3 leading-tight">
+                <h3 className="font-display font-extrabold text-3xl sm:text-4xl text-graphite-900 dark:text-white mt-3 leading-tight">
                   Кинотеатр у вас дома
                 </h3>
 
-                <p className="text-graphite-200 mt-4 text-lg max-w-lg leading-relaxed">
+                <p className="text-graphite-700 dark:text-graphite-200 mt-4 text-lg max-w-lg leading-relaxed">
                   Создайте атмосферу настоящего кинотеатра у себя дома —
                   комфортный просмотр, любимые фильмы и яркие впечатления каждый день.
                 </p>
@@ -81,8 +83,23 @@ export default function TechSection() {
               to="/support"
               className="group relative overflow-hidden p-8 rounded-4xl bg-white dark:bg-graphite-900 border border-graphite-200 dark:border-white/5 shadow-sm dark:shadow-none hover:border-accent-500/40 transition-all"
             >
+              <img
+                src="/images/tech-support-light.png"
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="absolute inset-0 h-full w-full object-cover object-center dark:hidden"
+              />
+              <img
+                src="/images/tech-support-dark.png"
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="absolute inset-0 hidden h-full w-full object-cover object-center dark:block"
+              />
+              <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.96)_0%,rgba(255,251,247,0.82)_48%,rgba(255,255,255,0.18)_78%,rgba(255,255,255,0.02)_100%)] dark:hidden" />
+              <div className="absolute inset-0 hidden bg-[linear-gradient(90deg,rgba(11,13,16,0.94)_0%,rgba(11,13,16,0.76)_48%,rgba(11,13,16,0.20)_78%,rgba(11,13,16,0.04)_100%)] dark:block" />
               <div className="absolute -right-16 -top-20 h-48 w-48 rounded-full bg-accent-500/10 blur-3xl transition-colors group-hover:bg-accent-500/15" />
-              <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-accent-500/[0.04]" />
 
               <div className="relative flex items-start gap-5">
                 <div className="w-12 h-12 rounded-2xl bg-accent-500/10 flex items-center justify-center shrink-0">
@@ -94,7 +111,7 @@ export default function TechSection() {
                     Поддержка
                   </h3>
 
-                  <p className="text-graphite-600 dark:text-graphite-300 mt-2 leading-relaxed">
+                  <p className="text-graphite-700 dark:text-graphite-300 mt-2 leading-relaxed">
                     Помощь по вопросам выбора, покупки и использования
                     продукции TELVORA.
                   </p>
