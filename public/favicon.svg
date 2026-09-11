@@ -1,1 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="8 0 144 114" role="img" aria-labelledby="title"><title id="title">TELVORA</title><rect x="18" y="10" width="124" height="82" rx="12" fill="#0B0D10" stroke="#0B0D10" stroke-width="8"/><path d="M48 34H112L98 48H62L48 34Z" fill="#FFFFFF"/><path d="M94 31C103 31 111 36 111 43C111 50 105 56 98 61L72 82C66 87 57 84 55 77C54 72 56 68 60 65L88 42C91 40 90 37 86 37H74L94 31Z" fill="#FF6A00"/><path d="M68 96H92L88 104H72L68 96Z" fill="#0B0D10"/><path d="M58 104H102" stroke="#0B0D10" stroke-width="6" stroke-linecap="round"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">TELVORA</title>
+  <defs>
+    <linearGradient id="telvora-orange" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF5A1F" />
+      <stop offset="1" stop-color="#C03A0A" />
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="15" fill="url(#telvora-orange)" />
+  <g transform="translate(15 15) scale(1.4166667)" fill="none" stroke="#FFFFFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <rect width="20" height="15" x="2" y="7" rx="2" ry="2" />
+    <polyline points="17 2 12 7 7 2" />
+  </g>
+</svg>
