@@ -1,5 +1,6 @@
-import { Film, Sparkles, ShieldCheck, Headphones } from 'lucide-react';
+import { Film, Headphones } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import TelegramBanner from '@/components/TelegramBanner';
 
 export default function TechSection() {
   return (
@@ -74,47 +75,7 @@ export default function TechSection() {
           </Link>
 
           <div className="grid grid-cols-1 gap-6">
-            <Link
-              to="/catalog"
-              className="dark-content group relative overflow-hidden p-8 rounded-4xl bg-graphite-950 border border-white/10 shadow-sm dark:shadow-none hover:border-accent-500/40 transition-all"
-            >
-              <img
-                src="/images/tech-design-lounge-light.png"
-                alt="Телевизор TELVORA в современном интерьере"
-                loading="lazy"
-                decoding="async"
-                className="absolute inset-0 h-full w-full object-cover object-[68%_center] transition-transform duration-700 group-hover:scale-[1.02] sm:object-center dark:hidden"
-              />
-              <img
-                src="/images/tech-design-lounge.png"
-                alt=""
-                loading="lazy"
-                decoding="async"
-                className="absolute inset-0 hidden h-full w-full object-cover object-[68%_center] transition-transform duration-700 group-hover:scale-[1.02] sm:object-center dark:block"
-              />
-              <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(15,17,21,0.96)_0%,rgba(15,17,21,0.88)_42%,rgba(15,17,21,0.52)_72%,rgba(15,17,21,0.28)_100%)]" />
-
-              <div className="relative flex items-start gap-5">
-                <div className="w-12 h-12 rounded-2xl bg-black/30 border border-white/10 backdrop-blur-sm flex items-center justify-center shrink-0">
-                  <Sparkles className="w-6 h-6 text-accent-500" />
-                </div>
-
-                <div>
-                  <h3 className="font-display font-bold text-2xl text-white">
-                    Дизайн без границ
-                  </h3>
-
-                  <p className="text-graphite-200 mt-2 leading-relaxed">
-                    Минималистичный внешний вид, который гармонично
-                    вписывается в современный интерьер.
-                  </p>
-
-                  <span className="inline-block mt-4 text-sm font-semibold text-accent-500 group-hover:text-white transition-colors">
-                    Смотреть модели →
-                  </span>
-                </div>
-              </div>
-            </Link>
+            <TelegramBanner />
 
             <Link
               to="/support"

@@ -1,0 +1,11 @@
+# TELVORA TechSection Telegram placement — frontend-only deployment
+# Upload hashed assets first; install index.html last. Do not delete old hashed assets.
+
+dist/assets/index-CLbAwuS-.css
+SHA256 72BA3692F7E5934302CA7865CF91A62A203570ED14923CB6315850278F35D7E9
+
+dist/assets/index-C6xdqudz.js
+SHA256 EF690EAD2D1E4CB44D10206914DD608BA83139A266C9CA12E7027F6690232ED3
+
+dist/index.html
+SHA256 F5D2F13128D9E7715820712573ECD44973DF09A76C306E3963BEB85CA7712D5D
