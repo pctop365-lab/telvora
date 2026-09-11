@@ -31,11 +31,18 @@ export default function TechSection() {
             className="dark-content group relative min-h-[360px] p-8 sm:p-10 rounded-4xl bg-graphite-950 border border-white/10 shadow-sm dark:shadow-none hover:border-accent-500/40 transition-all duration-300 overflow-hidden"
           >
             <img
-              src="/images/tech-home-cinema.png"
+              src="/images/tech-home-cinema-light.png"
               alt="Домашний кинотеатр TELVORA в премиальной гостиной"
               loading="lazy"
               decoding="async"
-              className="absolute inset-0 h-full w-full object-cover object-[62%_center] transition-transform duration-700 group-hover:scale-[1.02] sm:object-center"
+              className="absolute inset-0 h-full w-full object-cover object-[62%_center] transition-transform duration-700 group-hover:scale-[1.02] sm:object-center dark:hidden"
+            />
+            <img
+              src="/images/tech-home-cinema.png"
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 hidden h-full w-full object-cover object-[62%_center] transition-transform duration-700 group-hover:scale-[1.02] sm:object-center dark:block"
             />
             <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(15,17,21,0.96)_0%,rgba(15,17,21,0.88)_38%,rgba(15,17,21,0.58)_68%,rgba(15,17,21,0.28)_100%)]" />
             <div className="absolute inset-0 bg-gradient-to-t from-graphite-950/55 via-transparent to-graphite-950/20" />
@@ -72,11 +79,18 @@ export default function TechSection() {
               className="dark-content group relative overflow-hidden p-8 rounded-4xl bg-graphite-950 border border-white/10 shadow-sm dark:shadow-none hover:border-accent-500/40 transition-all"
             >
               <img
-                src="/images/tech-design-lounge.png"
+                src="/images/tech-design-lounge-light.png"
                 alt="Телевизор TELVORA в современном интерьере"
                 loading="lazy"
                 decoding="async"
-                className="absolute inset-0 h-full w-full object-cover object-[68%_center] transition-transform duration-700 group-hover:scale-[1.02] sm:object-center"
+                className="absolute inset-0 h-full w-full object-cover object-[68%_center] transition-transform duration-700 group-hover:scale-[1.02] sm:object-center dark:hidden"
+              />
+              <img
+                src="/images/tech-design-lounge.png"
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="absolute inset-0 hidden h-full w-full object-cover object-[68%_center] transition-transform duration-700 group-hover:scale-[1.02] sm:object-center dark:block"
               />
               <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(15,17,21,0.96)_0%,rgba(15,17,21,0.88)_42%,rgba(15,17,21,0.52)_72%,rgba(15,17,21,0.28)_100%)]" />
 

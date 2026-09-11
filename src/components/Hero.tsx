@@ -28,6 +28,8 @@ export default function Hero() {
 
         <div className="absolute inset-0 hidden bg-[linear-gradient(90deg,rgba(15,17,21,0.90)_0%,rgba(15,17,21,0.78)_28%,rgba(15,17,21,0.52)_52%,rgba(15,17,21,0.25)_73%,rgba(15,17,21,0.10)_100%)] dark:block" />
         <div className="absolute inset-0 hidden bg-[linear-gradient(0deg,rgba(15,17,21,0.48)_0%,rgba(15,17,21,0.04)_52%,rgba(15,17,21,0.34)_100%)] dark:block" />
+
+        <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-b from-transparent to-white dark:to-graphite-900" />
       </div>
 
       <div className="relative max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 pt-32 pb-20 w-full">
