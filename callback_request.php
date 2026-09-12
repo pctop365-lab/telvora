@@ -7,7 +7,7 @@ require_once __DIR__ . '/runtime_config.php';
 function telvoraPublicContacts(): array
 {
     $contacts = json_decode((string)file_get_contents(__DIR__ . '/public_contacts.json'), true);
-    if (!is_array($contacts) || !is_string($contacts['supportEmail'] ?? null) || trim($contacts['supportEmail']) === '') {
+    if (!is_array($contacts) || !filter_var($contacts['supportEmail'] ?? '', FILTER_VALIDATE_EMAIL)) {
         throw new RuntimeException('Public contact configuration is unavailable.');
     }
     return $contacts;

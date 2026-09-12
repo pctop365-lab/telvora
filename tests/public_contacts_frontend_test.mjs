@@ -9,7 +9,7 @@ const invoice = readFileSync(new URL('../generate_invoice_pdf.php', import.meta.
 
 assert.equal(contacts.sellerFullName, 'Индивидуальный предприниматель Помякшев Иван Владимирович');
 assert.equal(contacts.inn, '500907422390'); assert.equal(contacts.ogrnip, '326508100533649');
-assert.equal(contacts.ordersEmail, 'telvora24gmail.com'); assert.equal(contacts.supportEmail, 'telvorasupport24gmail.com');
+assert.equal(contacts.ordersEmail, 'telvora24@gmail.com'); assert.equal(contacts.supportEmail, 'telvorasupport24@gmail.com');
 assert.equal(contacts.phoneDisplay, '+7 (926) 202-01-19'); assert.equal(contacts.phoneHref, '+79262020119');
 assert.match(form, /useState\(false\)/, 'consent must not be preselected');
 assert.match(form, /\/personal-data-consent/);
