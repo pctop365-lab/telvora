@@ -32,6 +32,7 @@ import CookiesPage from '@/pages/CookiesPage';
 import OfferPage from '@/pages/OfferPage';
 import ReturnsPage from '@/pages/ReturnsPage';
 import ContactsPage from '@/pages/ContactsPage';
+import RequisitesPage from '@/pages/RequisitesPage';
 
 export default function App() {
   return (
@@ -132,6 +133,7 @@ const isAdmin = location.pathname.startsWith('/admin');
           <Route path="/offer" element={<OfferPage />} />
           <Route path="/returns" element={<ReturnsPage />} />
           <Route path="/contacts" element={<ContactsPage />} />
+          <Route path="/requisites" element={<RequisitesPage />} />
 
           <Route path="*" element={<NotFoundPage />} />
         </Routes>

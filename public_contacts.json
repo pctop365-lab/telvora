@@ -1,6 +1,20 @@
 {
-  "ordersEmail": "telvora24@gmail.com",
-  "supportEmail": "telvorasupport24@gmail.com",
+  "brand": "TELVORA",
+  "site": "telvora.ru",
+  "sellerFullName": "Индивидуальный предприниматель Помякшев Иван Владимирович",
+  "sellerShortName": "ИП Помякшев Иван Владимирович",
+  "inn": "500907422390",
+  "ogrnip": "326508100533649",
+  "registrationDate": "09.09.2026",
+  "registrationAuthority": "Межрайонная инспекция Федеральной налоговой службы №23 по Московской области",
+  "taxSystem": "УСН Доходы, 6%",
+  "vatNotice": "НДС не предъявляется в связи с освобождением от исполнения обязанностей налогоплательщика НДС в соответствии со ст. 145 НК РФ.",
+  "bankAccount": "40802810640070063020",
+  "bankName": "ПАО Сбербанк",
+  "bik": "044525225",
+  "correspondentAccount": "30101810400000000225",
+  "ordersEmail": "telvora24gmail.com",
+  "supportEmail": "telvorasupport24gmail.com",
   "phoneDisplay": "+7 (926) 202-01-19",
   "phoneHref": "+79262020119"
 }

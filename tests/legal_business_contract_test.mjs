@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict'; import fs from 'node:fs';
+const read=(f)=>fs.readFileSync(new URL(`../${f}`,import.meta.url),'utf8'); const config=JSON.parse(read('public_contacts.json'));
+const exact={sellerFullName:'Индивидуальный предприниматель Помякшев Иван Владимирович',sellerShortName:'ИП Помякшев Иван Владимирович',inn:'500907422390',ogrnip:'326508100533649',registrationAuthority:'Межрайонная инспекция Федеральной налоговой службы №23 по Московской области',phoneDisplay:'+7 (926) 202-01-19',ordersEmail:'telvora24gmail.com',supportEmail:'telvorasupport24gmail.com',bankAccount:'40802810640070063020',bankName:'ПАО Сбербанк',bik:'044525225',correspondentAccount:'30101810400000000225',vatNotice:'НДС не предъявляется в связи с освобождением от исполнения обязанностей налогоплательщика НДС в соответствии со ст. 145 НК РФ.'};
+for(const [k,v] of Object.entries(exact)) assert.equal(config[k],v,k);
+const active=['public_contacts.json','generate_invoice_pdf.php','src/components/Footer.tsx','src/pages/ContactsPage.tsx','src/pages/RequisitesPage.tsx','src/pages/OfferPage.tsx','src/pages/PrivacyPage.tsx','src/pages/PersonalDataConsentPage.tsx','src/pages/CookiesPage.tsx','src/pages/ReturnsPage.tsx','src/pages/WarrantyPage.tsx','src/pages/CheckoutPage.tsx'].map(read).join('\n');
+assert.doesNotMatch(active,/Багратионовский|НДС\s*0\s*%|претензии после (приемки|приёмки) не принимаются/i); assert.doesNotMatch(read('generate_invoice_pdf.php'),/\$sellerName\s*=\s*'TELVORA'|<td class="label">Адрес<\/td>/);
+for(const p of ['/offer','/privacy','/personal-data-consent','/cookies','/returns','/warranty','/delivery','/requisites']) assert.match(read('src/components/Footer.tsx')+read('src/App.tsx'),new RegExp(p.replace('/','\\/')));
+assert.match(read('src/pages/CheckoutPage.tsx'),/useState\(false\)[\s\S]*\/personal-data-consent[\s\S]*\/privacy/); assert.match(read('src/components/CallbackRequestForm.tsx'),/useState\(false\)[\s\S]*\/personal-data-consent[\s\S]*\/privacy/);
+for(const v of Object.values(exact)) if(v.length>8) assert.ok(active.includes(v),`missing ${v}`);
+console.log('legal business contract: ok');

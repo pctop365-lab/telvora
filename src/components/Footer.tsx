@@ -27,6 +27,7 @@ const footerLinks = {
     { label: 'Политика обработки персональных данных', to: '/privacy' },
     { label: 'Согласие на обработку персональных данных', to: '/personal-data-consent' },
     { label: 'Политика Cookies', to: '/cookies' },
+    { label: 'Реквизиты', to: '/requisites' },
   ],
 };
 
@@ -50,6 +51,11 @@ export default function Footer() {
               <a href={publicContacts.phoneLink} className="block text-graphite-700 transition-colors hover:text-accent-600 dark:text-graphite-300 dark:hover:text-accent-500">{publicContacts.phoneDisplay}</a>
               <a href={publicContacts.ordersMailto} className="block break-all text-graphite-600 transition-colors hover:text-accent-600 dark:text-graphite-400 dark:hover:text-accent-500">Заказы: {publicContacts.ordersEmail}</a>
               <a href={publicContacts.supportMailto} className="block break-all text-graphite-600 transition-colors hover:text-accent-600 dark:text-graphite-400 dark:hover:text-accent-500">Поддержка: {publicContacts.supportEmail}</a>
+            </div>
+            <div className="mt-5 border-t border-graphite-200 pt-4 text-xs leading-relaxed text-graphite-600 dark:border-white/10 dark:text-graphite-400">
+              <p>Продавец: {publicContacts.sellerShortName}</p>
+              <p>ИНН {publicContacts.inn} · ОГРНИП {publicContacts.ogrnip}</p>
+              <Link to="/requisites" className="mt-2 inline-block font-semibold text-accent-600 hover:text-accent-700 dark:text-accent-500">Реквизиты</Link>
             </div>
           </div>
 

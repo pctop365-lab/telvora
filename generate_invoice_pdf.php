@@ -208,12 +208,17 @@ if (!is_array($publicContacts)) {
     throw new RuntimeException('Public contact configuration is unavailable.');
 }
 
-$sellerName = 'TELVORA';
-$sellerDetails = 'TELVORA';
+$sellerName = (string)($publicContacts['sellerShortName'] ?? '');
+$sellerDetails = $sellerName . ' · ИНН ' . (string)($publicContacts['inn'] ?? '') . ' · ОГРНИП ' . (string)($publicContacts['ogrnip'] ?? '');
+$sellerRegistrationDate = (string)($publicContacts['registrationDate'] ?? '');
+$sellerBank = (string)($publicContacts['bankName'] ?? '');
+$sellerBankAccount = (string)($publicContacts['bankAccount'] ?? '');
+$sellerBik = (string)($publicContacts['bik'] ?? '');
+$sellerCorrespondentAccount = (string)($publicContacts['correspondentAccount'] ?? '');
+$sellerVatNotice = (string)($publicContacts['vatNotice'] ?? '');
 $sellerPhone = (string)($publicContacts['phoneDisplay'] ?? '');
 $sellerOrdersEmail = (string)($publicContacts['ordersEmail'] ?? '');
 $sellerSupportEmail = (string)($publicContacts['supportEmail'] ?? '');
-$sellerAddress = 'г. Москва, Багратионовский проезд';
 
 
 
@@ -246,6 +251,7 @@ function money($value): string
 function translatePaymentMethod($value): string
 {
     $map = [
+        'sbp' => 'СБП — после согласования',
         'cash' => 'Наличными',
         'card' => 'Банковской картой',
         'online' => 'Онлайн',
@@ -366,6 +372,7 @@ table {
     padding: 5.5px 6px;
     vertical-align: top;
 }
+.seller-details { font-size: 8.5px; line-height: 1.3; }
 
 .label {
     width: 32%;
@@ -494,7 +501,7 @@ table {
 
 <tr>
     <td class="label">Продавец / ИНН / Реквизиты</td>
-    <td>' . h($sellerDetails) . '</td>
+    <td class="seller-details">' . h($sellerDetails) . '<br>Дата регистрации: ' . h($sellerRegistrationDate) . '<br>' . h($sellerBank) . ' · р/с ' . h($sellerBankAccount) . ' · БИК ' . h($sellerBik) . ' · к/с ' . h($sellerCorrespondentAccount) . '</td>
 </tr>
 
 <tr>
@@ -507,10 +514,7 @@ table {
     <td><a href="mailto:' . h($sellerOrdersEmail) . '">' . h($sellerOrdersEmail) . '</a> / <a href="mailto:' . h($sellerSupportEmail) . '">' . h($sellerSupportEmail) . '</a></td>
 </tr>
 
-<tr>
-    <td class="label">Адрес</td>
-    <td>' . h($sellerAddress) . '</td>
-</tr>
+<tr><td class="label">НДС</td><td class="seller-details">' . h($sellerVatNotice) . '</td></tr>
 
 </table>
 
@@ -602,6 +606,7 @@ foreach ($items as $item) {
 $isDeliveryPending = ($order['delivery_quote_status'] ?? null) === 'pending';
 $totalText = $isDeliveryPending ? 'После согласования доставки' : money($order['total']);
 
+// Сервисные услуги остаются строками общей таблицы товаров, без отдельной таблицы.
 foreach ($services as $service) {
     $metadata = json_decode((string)($service['metadata'] ?? ''), true);
     $minScreenSize = is_array($metadata) ? ($metadata['min_screen_size'] ?? null) : null;
@@ -682,8 +687,7 @@ $html .= '
 
 <div class="confirmation">
 
-Товар проверен. Претензий к внешнему виду не имею.
-С условиями работы интернет-магазина ознакомлен(а) и согласен(а).
+Покупателю рекомендуется проверить внешний вид, комплектность и отсутствие видимых повреждений при получении; такая проверка не ограничивает права покупателя, предусмотренные законодательством РФ.
 
 </div>
 

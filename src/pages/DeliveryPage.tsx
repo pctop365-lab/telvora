@@ -1,10 +1,11 @@
 import type { ReactNode } from 'react';
 import { deliveryTariffs } from '@/lib/deliveryQuote';
+import LegalMetadata from '@/components/LegalMetadata';
 
 const carriers = ['DPD', 'Байкал Сервис', 'Деловые Линии', 'ЖелДорЭкспедиция', 'ПЭК', 'СДЭК', 'Возовоз'];
 
 export default function DeliveryPage() {
-  return <main className="min-h-screen bg-graphite-50 dark:bg-graphite-950 py-24 sm:py-32"><div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+  return <><LegalMetadata title="Доставка и оплата — TELVORA" description="Тарифы и порядок согласования доставки и оплаты заказов TELVORA." path="/delivery" /><main className="min-h-screen bg-graphite-50 dark:bg-graphite-950 py-24 sm:py-32"><div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
     <header className="max-w-3xl"><span className="text-sm font-semibold uppercase tracking-widest text-accent-500">Получение заказа</span><h1 className="mt-3 font-display text-4xl sm:text-5xl font-extrabold">Доставка</h1><p className="mt-5 text-lg text-graphite-600 dark:text-graphite-300">Стоимость зависит от диагонали, состава заказа и адреса. Окончательные условия нестандартной доставки подтверждает менеджер.</p></header>
     <section className="rounded-3xl border border-graphite-200 dark:border-white/10 bg-white dark:bg-graphite-900 overflow-hidden"><div className="p-6 sm:p-8"><h2 className="font-display text-2xl font-bold">Тарифы по Москве</h2><p className="mt-2 text-graphite-600 dark:text-graphite-300">Для одного телевизора в пределах МКАД.</p></div><div className="overflow-x-auto"><table className="w-full text-left"><thead className="bg-graphite-100 dark:bg-white/5"><tr><th className="px-6 py-4">Диагональ</th><th className="px-6 py-4">Стоимость</th></tr></thead><tbody>{deliveryTariffs.map((tariff)=><tr key={tariff.label} className="border-t border-graphite-200 dark:border-white/10"><td className="px-6 py-4 font-medium">{tariff.label}</td><td className="px-6 py-4 text-accent-500 font-bold">{tariff.price.toLocaleString('ru-RU')} ₽</td></tr>)}</tbody></table></div><p className="p-6 sm:px-8 text-sm text-graphite-600 dark:text-graphite-300">Для отсутствующих в таблице диагоналей, нескольких телевизоров и нестандартных условий стоимость согласовывается индивидуально. За МКАД: базовый тариф + 60 ₽ за каждый согласованный километр.</p></section>
     <div className="grid md:grid-cols-2 gap-6">
@@ -13,7 +14,7 @@ export default function DeliveryPage() {
       <Info title="Транспортные компании"><p>Возможна отправка через: {carriers.join(', ')}. Перечень носит информационный характер и не означает наличия действующих договоров. Перевозчик, условия и итоговая стоимость согласовываются менеджером.</p></Info>
       <Info title="Приёмка товара"><p>При получении осмотрите упаковку и товар, проверьте комплектность. Видимые повреждения зафиксируйте в документах перевозчика и на фото, затем свяжитесь с продавцом. Эти рекомендации не ограничивают права покупателя, предусмотренные Законом РФ «О защите прав потребителей».</p></Info>
     </div>
-  </div></main>;
+  </div></main></>;
 }
 
 function Info({title, children}:{title:string; children:ReactNode}) { return <section className="rounded-3xl border border-graphite-200 dark:border-white/10 bg-white dark:bg-graphite-900 p-6 sm:p-8"><h2 className="font-display text-xl font-bold mb-4">{title}</h2><div className="space-y-3 text-graphite-600 dark:text-graphite-300 leading-relaxed [&_ul]:list-disc [&_ul]:pl-5 [&_li]:mb-2">{children}</div></section>; }

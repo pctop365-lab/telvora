@@ -6,3 +6,5 @@ export const publicContacts = {
   supportMailto: `mailto:${contacts.supportEmail}`,
   phoneLink: `tel:${contacts.phoneHref}`,
 } as const;
+
+export const businessDetails = publicContacts;

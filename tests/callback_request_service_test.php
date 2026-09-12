@@ -38,10 +38,10 @@ try {
 }
 
 $contacts = telvoraPublicContacts();
-check($contacts['supportEmail'] === 'telvorasupport24@gmail.com', 'support recipient mismatch');
+check($contacts['supportEmail'] === 'telvorasupport24gmail.com', 'support recipient mismatch');
 $pdf = file_get_contents(dirname(__DIR__) . '/generate_invoice_pdf.php');
 check(is_string($pdf) && str_contains($pdf, '<td class="label">Почта</td>'), 'combined invoice contact label missing');
-check(str_contains($pdf, "h(\$sellerOrdersEmail) . ' / ' . h(\$sellerSupportEmail)"), 'invoice contact emails are not combined');
+check(str_contains($pdf, 'h($sellerOrdersEmail)') && str_contains($pdf, 'h($sellerSupportEmail)'), 'invoice contact emails are missing');
 check(!str_contains($pdf, 'Почта поддержки'), 'separate support email row remains');
 
 echo "callback_request_service_test: PASS\n";

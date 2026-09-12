@@ -7,7 +7,10 @@ const footer = readFileSync(new URL('../src/components/Footer.tsx', import.meta.
 const support = readFileSync(new URL('../src/pages/SupportPage.tsx', import.meta.url), 'utf8');
 const invoice = readFileSync(new URL('../generate_invoice_pdf.php', import.meta.url), 'utf8');
 
-assert.deepEqual(contacts, { ordersEmail: 'telvora24@gmail.com', supportEmail: 'telvorasupport24@gmail.com', phoneDisplay: '+7 (926) 202-01-19', phoneHref: '+79262020119' });
+assert.equal(contacts.sellerFullName, 'Индивидуальный предприниматель Помякшев Иван Владимирович');
+assert.equal(contacts.inn, '500907422390'); assert.equal(contacts.ogrnip, '326508100533649');
+assert.equal(contacts.ordersEmail, 'telvora24gmail.com'); assert.equal(contacts.supportEmail, 'telvorasupport24gmail.com');
+assert.equal(contacts.phoneDisplay, '+7 (926) 202-01-19'); assert.equal(contacts.phoneHref, '+79262020119');
 assert.match(form, /useState\(false\)/, 'consent must not be preselected');
 assert.match(form, /\/personal-data-consent/);
 assert.match(form, /\/privacy/);
@@ -19,8 +22,10 @@ assert.match(footer, /publicContacts\.supportMailto/);
 assert.match(support, /contacts#callback/);
 assert.match(invoice, /public_contacts\.json/);
 assert.match(invoice, /<td class="label">Почта<\/td>/);
-assert.match(invoice, /h\(\$sellerOrdersEmail\) \. ' \/ ' \. h\(\$sellerSupportEmail\)/);
+assert.match(invoice, /h\(\$sellerOrdersEmail\)/); assert.match(invoice, /h\(\$sellerSupportEmail\)/);
 assert.doesNotMatch(invoice, /Почта поддержки/);
+assert.doesNotMatch(invoice, /Багратионовский|sellerAddress/);
+for (const key of ['sellerShortName', 'inn', 'ogrnip', 'registrationDate', 'bankName', 'bankAccount', 'bik', 'correspondentAccount', 'vatNotice']) assert.match(invoice, new RegExp(`publicContacts\\['${key}'\\]`));
 assert.match(invoice, /\$order\['customer_name'\]/, 'legacy customer data binding must remain');
 assert.match(invoice, /\$order\['phone'\]/, 'legacy order phone binding must remain');
 

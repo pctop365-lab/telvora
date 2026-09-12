@@ -6,8 +6,6 @@ export type LegalSection = {
   content: ReactNode;
 };
 
-export const sellerPlaceholder = 'Будет заполнено после регистрации продавца';
-
 export default function LegalDocumentPage({
   eyebrow = 'Правовая информация',
   title,
