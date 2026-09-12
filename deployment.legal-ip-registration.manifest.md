@@ -5,6 +5,8 @@ Deployment не выполнен. Push не выполнен.
 ## Release identity
 
 - Base legal commit: `0ad7c826df50c738aad3a8857c3d5f432de25f71`.
+- Email-corrected legal commit: `7adfd92cc424d95793423f42c0e23407606c388a`.
+- Checkout hotfix: empty carts skip `validate_cart`; the server-side HTTP 400 guard remains unchanged.
 - Release HEAD: точный commit, содержащий эту версию manifest; перед deployment сверить `git rev-parse HEAD` с переданным release hash.
 - Manifest и artifacts должны передаваться из одного чистого working tree.
 
@@ -17,7 +19,7 @@ Deployment не выполнен. Push не выполнен.
 
 ## Files
 
-`public_contacts.json`, `generate_invoice_pdf.php`, `callback_request.php`, `public/sitemap.xml`, `src/App.tsx`, `src/components/Footer.tsx`, `src/components/LegalDocumentPage.tsx`, `src/components/LegalMetadata.tsx`, `src/data/publicContacts.ts`, `src/pages/ContactsPage.tsx`, `src/pages/RequisitesPage.tsx`, `src/pages/OfferPage.tsx`, `src/pages/PrivacyPage.tsx`, `src/pages/PersonalDataConsentPage.tsx`, `src/pages/CookiesPage.tsx`, `src/pages/ReturnsPage.tsx`, `src/pages/WarrantyPage.tsx`, `src/pages/DeliveryPage.tsx`, `src/pages/CheckoutPage.tsx`, `tests/legal_business_contract_test.mjs`, `tests/public_contacts_frontend_test.mjs`, `tests/callback_request_service_test.php`, `tests/invoice_contacts_pdf_fixture_test.php`, `tests/invoice_compact_layout_fixture_test.php`, `tests/browser/legal-pages.spec.ts` and `LEGAL_OPEN_ITEMS.md`.
+`public_contacts.json`, `generate_invoice_pdf.php`, `callback_request.php`, `public/sitemap.xml`, `src/App.tsx`, `src/components/Footer.tsx`, `src/components/LegalDocumentPage.tsx`, `src/components/LegalMetadata.tsx`, `src/data/publicContacts.ts`, `src/pages/ContactsPage.tsx`, `src/pages/RequisitesPage.tsx`, `src/pages/OfferPage.tsx`, `src/pages/PrivacyPage.tsx`, `src/pages/PersonalDataConsentPage.tsx`, `src/pages/CookiesPage.tsx`, `src/pages/ReturnsPage.tsx`, `src/pages/WarrantyPage.tsx`, `src/pages/DeliveryPage.tsx`, `src/pages/CheckoutPage.tsx`, `tests/legal_business_contract_test.mjs`, `tests/public_contacts_frontend_test.mjs`, `tests/callback_request_service_test.php`, `tests/invoice_contacts_pdf_fixture_test.php`, `tests/invoice_compact_layout_fixture_test.php`, `tests/browser/legal-pages.spec.ts`, `tests/browser/checkout-empty.spec.ts` and `LEGAL_OPEN_ITEMS.md`.
 
 ## Pre-deploy gates
 
@@ -42,9 +44,9 @@ public_contacts.json                         55109146919F5BF9A9D7A291FCE4F8750CE
 callback_request.php                         F481B7911FB705000AEBB3408A972F5E715B03C29F558D6EBE2CB6FDF3BFF375
 generate_invoice_pdf.php                     EC8602B4D1FC3F3FA9EF87E71192F900A948CF911BC041442C9102BFA94B96C3
 public/sitemap.xml                            EF4A8FF1343554AE9BDC1A12A822499DF66A9198E1BE6A58006DCBD71D0C4324
-dist/index.html                               2F839A85FD7CEAE358452E05C3D98FE632084C8064B157E0098F5899304A8348
+dist/index.html                               2554DB54E77D0929EB136D2261C20EDBAA77CC23637F40F0DE80FDB36C294ECE
 dist/assets/index-D4ag5NG-.css                F48E53DBFE9BA7FFE432862B213007B683B435E8980E5D4928ED526657328945
-dist/assets/index-_h_IhUz8.js                 37B9E6014452E3256448CF07E550ABF1E2328C4440487CAFE6D1F6A2E6F056E0
+dist/assets/index-C6zeYA55.js                 764D5EB926CF42FD686CFC0D1F76BB46A2A77C449D78C9052C63FE2C411599B2
 ```
 
 ## Rollback

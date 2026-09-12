@@ -92,6 +92,12 @@ comment: '',
   const [touched, setTouched] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
+    if (items.length === 0 && services.length === 0) {
+      setValidatingCart(false);
+      setCartOrderable(false);
+      return;
+    }
+
     let cancelled = false;
     setValidatingCart(true);
     validateCart(items).then((result) => {
