@@ -12,6 +12,8 @@ export default function Hero() {
         <img
           src={lightImage}
           alt="Телевизор TELVORA в светлой гостиной"
+          width="1672"
+          height="941"
           decoding="async"
           className="h-full w-full object-cover object-[72%_center] sm:object-right dark:hidden"
         />
@@ -19,6 +21,8 @@ export default function Hero() {
         <img
           src={image}
           alt="Телевизор TELVORA в тёмной гостиной с домашним кинотеатром"
+          width="1672"
+          height="941"
           decoding="async"
           className="hidden h-full w-full object-cover object-[72%_center] sm:object-right dark:block"
         />

@@ -6,9 +6,10 @@ import { useCart } from '@/store/cart';
 import { useUI } from '@/store/ui';
 import { getCategorySlugForProduct } from '@/services/productService';
 import { useState } from 'react';
-import { Helmet } from 'react-helmet-async';
 import AvailabilityStatus from './AvailabilityStatus';
 import ProductGallery from './ProductGallery';
+import SeoMetadata from './SeoMetadata';
+import { absoluteTelvoraUrl } from '@/lib/seo';
 
 type ProductDetailProps = {
   product: Product;
@@ -45,15 +46,50 @@ const currentOldPrice = selectedVariant?.oldPrice
       )
     : 0;
   const categorySlug = getCategorySlugForProduct(product);
-const seoTitle = `${product.name} — купить ${product.category} | TELVORA`;
-
-const seoDescription =
-  `${product.name} — ${product.screenSize}, ${product.resolution}. ` +
-  `${product.description} Купить в интернет-магазине TELVORA. ` +
-  `Официальная гарантия, доставка и профессиональная установка.`;
+const seoTitle = `${product.name} — купить в TELVORA`;
+const detailTokens = [product.screenSize, product.series, product.resolution].filter(Boolean).join(', ');
+const descriptionText = product.description.trim();
+const priceText = currentPrice > 0 ? ` Цена: ${formatPrice(currentPrice)}.` : '';
+const seoDescription = `${product.name}${detailTokens ? ` — ${detailTokens}` : ''}.${priceText} ${descriptionText}`.trim().slice(0, 300);
 
 const productUrl =
   `https://telvora.ru/catalog/${categorySlug}/${product.slug}`;
+  const schemaAvailability = currentAvailability?.status === 'in_stock' && currentAvailability.orderable
+    ? 'https://schema.org/InStock'
+    : currentAvailability?.status === 'expected' && currentAvailability.orderable
+      ? 'https://schema.org/PreOrder'
+      : currentAvailability?.status === 'out_of_stock'
+        ? 'https://schema.org/OutOfStock'
+        : undefined;
+  const productJsonLd: Record<string, unknown> = {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    name: product.name,
+    image: (product.images?.length ? product.images : [product.image]).filter(Boolean).map(absoluteTelvoraUrl),
+    description: descriptionText || seoDescription,
+    sku: product.id,
+    url: productUrl,
+    ...(product.brand ? { brand: { '@type': 'Brand', name: product.brand } } : {}),
+    ...(currentPrice > 0 && schemaAvailability ? {
+      offers: {
+        '@type': 'Offer',
+        url: productUrl,
+        priceCurrency: 'RUB',
+        price: currentPrice,
+        availability: schemaAvailability,
+      },
+    } : {}),
+  };
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      { '@type': 'ListItem', position: 1, name: 'Главная', item: 'https://telvora.ru/' },
+      { '@type': 'ListItem', position: 2, name: 'Каталог', item: 'https://telvora.ru/catalog' },
+      { '@type': 'ListItem', position: 3, name: product.category, item: `https://telvora.ru/catalog/${categorySlug}` },
+      { '@type': 'ListItem', position: 4, name: product.name, item: productUrl },
+    ],
+  };
 
   const handleAdd = () => {
   if (!selectedVariant || !currentAvailability?.orderable) return;
@@ -70,21 +106,7 @@ const productUrl =
 
   return (
   <>
-    <Helmet>
-      <title>{seoTitle}</title>
-      <meta name="description" content={seoDescription} />
-      <link rel="canonical" href={productUrl} />
-
-      <meta property="og:type" content="product" />
-      <meta property="og:title" content={seoTitle} />
-      <meta property="og:description" content={seoDescription} />
-      <meta property="og:url" content={productUrl} />
-      <meta property="og:site_name" content="TELVORA" />
-
-      <meta name="twitter:card" content="summary_large_image" />
-      <meta name="twitter:title" content={seoTitle} />
-      <meta name="twitter:description" content={seoDescription} />
-    </Helmet>
+    <SeoMetadata title={seoTitle} description={seoDescription} path={`/catalog/${categorySlug}/${product.slug}`} type="product" image={product.image || undefined} jsonLd={[productJsonLd, breadcrumbJsonLd]} />
 
     <div className="pt-24 pb-20 bg-white dark:bg-graphite-900 min-h-screen">
       <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">

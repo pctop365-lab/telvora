@@ -1,30 +1,21 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://telvora.ru/</loc>
-  </url>
-  <url>
-    <loc>https://telvora.ru/catalog</loc>
-  </url>
-  <url>
-    <loc>https://telvora.ru/warranty</loc>
-  </url>
-  <url>
-    <loc>https://telvora.ru/support</loc>
-  </url>
-  <url>
-    <loc>https://telvora.ru/delivery</loc>
-  </url>
-  <url>
-    <loc>https://telvora.ru/soundbars</loc>
-  </url>
-  <url>
-    <loc>https://telvora.ru/accessories</loc>
-  </url>
+  <url><loc>https://telvora.ru/</loc></url>
+  <url><loc>https://telvora.ru/catalog</loc></url>
+  <url><loc>https://telvora.ru/catalog/oled</loc></url>
+  <url><loc>https://telvora.ru/catalog/qled</loc></url>
+  <url><loc>https://telvora.ru/catalog/led</loc></url>
+  <url><loc>https://telvora.ru/catalog/8k</loc></url>
+  <url><loc>https://telvora.ru/catalog/oled/lg-oled77c5rla</loc></url>
+  <url><loc>https://telvora.ru/delivery</loc></url>
+  <url><loc>https://telvora.ru/services</loc></url>
+  <url><loc>https://telvora.ru/warranty</loc></url>
+  <url><loc>https://telvora.ru/returns</loc></url>
+  <url><loc>https://telvora.ru/support</loc></url>
+  <url><loc>https://telvora.ru/contacts</loc></url>
   <url><loc>https://telvora.ru/requisites</loc></url>
   <url><loc>https://telvora.ru/offer</loc></url>
   <url><loc>https://telvora.ru/privacy</loc></url>
   <url><loc>https://telvora.ru/personal-data-consent</loc></url>
   <url><loc>https://telvora.ru/cookies</loc></url>
-  <url><loc>https://telvora.ru/returns</loc></url>
 </urlset>

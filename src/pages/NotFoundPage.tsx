@@ -1,9 +1,11 @@
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Tv } from 'lucide-react';
+import SeoMetadata from '@/components/SeoMetadata';
 
 export default function NotFoundPage() {
+  const location = useLocation();
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-white dark:bg-graphite-900 px-4 text-center">
+    <><SeoMetadata title="Страница не найдена — TELVORA" description="Запрошенная страница TELVORA не найдена." path={location.pathname} robots="noindex, follow" /><div className="min-h-screen flex flex-col items-center justify-center bg-white dark:bg-graphite-900 px-4 text-center">
       <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-accent-500 to-accent-700 flex items-center justify-center mb-6">
         <Tv className="w-8 h-8 text-white" strokeWidth={2.5} />
       </div>
@@ -17,6 +19,6 @@ export default function NotFoundPage() {
       >
         На главную
       </Link>
-    </div>
+    </div></>
   );
 }

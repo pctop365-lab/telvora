@@ -1,10 +1,12 @@
-import { useParams } from 'react-router-dom';
+import { useLocation, useParams } from 'react-router-dom';
 import { useProduct } from '@/hooks/useProduct';
 import ProductDetail from '@/components/ProductDetail';
 import { Loader2 } from 'lucide-react';
+import SeoMetadata from '@/components/SeoMetadata';
 
 export default function ProductPage() {
   const { productSlug } = useParams<{ productSlug: string }>();
+  const location = useLocation();
   const { product, loading, error } = useProduct(productSlug);
 
   if (loading) {
@@ -17,20 +19,20 @@ export default function ProductPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white dark:bg-graphite-900">
+      <><SeoMetadata title="Товар не найден — TELVORA" description="Запрошенный товар не найден в каталоге TELVORA." path={location.pathname} robots="noindex, follow" /><div className="min-h-screen flex items-center justify-center bg-white dark:bg-graphite-900">
         <p className="text-graphite-400 text-lg">{error}</p>
-      </div>
+      </div></>
     );
   }
 
   if (!product) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-white dark:bg-graphite-900 gap-4">
+      <><SeoMetadata title="Товар не найден — TELVORA" description="Запрошенный товар не найден в каталоге TELVORA." path={location.pathname} robots="noindex, follow" /><div className="min-h-screen flex flex-col items-center justify-center bg-white dark:bg-graphite-900 gap-4">
         <p className="text-graphite-400 text-lg">Товар не найден</p>
         <a href="/catalog" className="px-6 py-3 bg-accent-500 hover:bg-accent-600 text-white font-semibold rounded-xl transition-colors">
           В каталог
         </a>
-      </div>
+      </div></>
     );
   }
 

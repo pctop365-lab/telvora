@@ -5,11 +5,12 @@ import { useProducts } from '@/hooks/useProducts';
 import { useUI } from '@/store/ui';
 import ProductGrid from '@/components/ProductGrid';
 import { filterCatalogProducts, getFilterOptions, getModelGroups, getTechnology } from './catalogModelFilters';
+import SeoMetadata from '@/components/SeoMetadata';
 
-type Props = { initialTechnology?: string; initialResolutionToken?: string };
+type Props = { initialTechnology?: string; initialResolutionToken?: string; categorySlug?: string };
 const toggleValue = (value: string, values: string[], setValues: (next: string[])=>void) => setValues(values.includes(value)?values.filter(item=>item!==value):[...values,value]);
 
-export default function CatalogPage({ initialTechnology, initialResolutionToken }: Props) {
+export default function CatalogPage({ initialTechnology, initialResolutionToken, categorySlug }: Props) {
   const { searchQuery } = useUI();
   const { products, loading, error } = useProducts({ search: searchQuery || undefined });
   const [filtersOpen,setFiltersOpen]=useState(false);
@@ -34,7 +35,14 @@ export default function CatalogPage({ initialTechnology, initialResolutionToken 
 
   const choices=(title:string,options:string[],selected:string[],setter:(next:string[])=>void)=><div><h3 className="mb-3 text-sm font-semibold text-white">{title}</h3><div className="flex flex-wrap gap-2">{options.map(value=><button key={value} type="button" onClick={()=>toggleValue(value,selected,setter)} className={`rounded-xl border px-3 py-2 text-sm ${selected.includes(value)?'border-white bg-white text-graphite-900':'border-white/10 bg-white/5 text-graphite-300'}`}>{value}</button>)}</div></div>;
 
-  return <section className="min-h-screen bg-white pb-20 pt-24 dark:bg-graphite-900"><div className="mx-auto max-w-8xl px-4 sm:px-6 lg:px-8">
+  const categoryLabel = initialTechnology || (initialResolutionToken ? '8K' : '');
+  const seoTitle = categoryLabel ? `Телевизоры ${categoryLabel} — каталог TELVORA` : 'Телевизоры — каталог TELVORA';
+  const seoDescription = categoryLabel
+    ? `Телевизоры ${categoryLabel} в каталоге TELVORA: актуальные модели, характеристики, цены, доставка и профессиональная установка.`
+    : 'Каталог телевизоров TELVORA: актуальные модели, характеристики, цены, доставка и профессиональная установка.';
+  const seoPath = categorySlug ? `/catalog/${categorySlug}` : '/catalog';
+
+  return <><SeoMetadata title={seoTitle} description={seoDescription} path={seoPath} /><section className="min-h-screen bg-white pb-20 pt-24 dark:bg-graphite-900"><div className="mx-auto max-w-8xl px-4 sm:px-6 lg:px-8">
     <div className="mb-8 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between"><div><span className="text-sm font-semibold uppercase tracking-widest text-accent-500">Телевизоры</span><h1 className="mt-2 font-display text-4xl font-extrabold tracking-tight text-white sm:text-5xl">Каталог по модельным рядам</h1><p className="mt-3 max-w-2xl text-graphite-400">Выберите модельный ряд, затем уточните технологию экрана, разрешение, бренд, диагональ и цену.</p></div><div className="flex flex-wrap gap-3"><button type="button" onClick={()=>setFiltersOpen(true)} className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white"><SlidersHorizontal className="h-4 w-4"/>Фильтры{activeCount>0&&<span className="flex h-5 w-5 items-center justify-center rounded-full bg-accent-500 text-xs font-bold">{activeCount}</span>}</button><select value={sort} onChange={e=>setSort(e.target.value as SortKey)} className="rounded-xl border border-white/10 bg-graphite-800 px-4 py-2.5 text-sm text-white"><option value="default">По умолчанию</option><option value="price-asc">Сначала дешевле</option><option value="price-desc">Сначала дороже</option><option value="rating">По рейтингу</option></select></div></div>
 
     <div className="mb-8 rounded-2xl border border-white/10 bg-white/[0.03] p-4"><div className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-graphite-400">Модельные ряды</div><div className="flex flex-wrap gap-2"><button type="button" onClick={()=>setModelKey('')} className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${!modelKey?'bg-white text-graphite-900':'border border-white/10 bg-white/5 text-white'}`}>Все модели <span className="opacity-60">{products.length}</span></button>{modelGroups.map(group=><button type="button" key={group.key} onClick={()=>setModelKey(group.key)} className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${modelKey===group.key?'bg-accent-500 text-white':'border border-white/10 bg-white/5 text-graphite-200 hover:bg-white/10'}`}>{group.label} <span className="opacity-60">{group.count}</span></button>)}</div></div>
@@ -50,5 +58,5 @@ export default function CatalogPage({ initialTechnology, initialResolutionToken 
       <div><h3 className="mb-3 text-sm font-semibold text-white">Цена, ₽</h3><div className="grid grid-cols-2 gap-3"><input type="number" min="0" placeholder="От" value={minPrice} onChange={e=>setMinPrice(e.target.value)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-white"/><input type="number" min="0" placeholder="До" value={maxPrice} onChange={e=>setMaxPrice(e.target.value)} className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-white"/></div></div>
       <div className="flex gap-3 pb-6"><button type="button" onClick={resetFilters} className="flex-1 rounded-xl border border-white/10 px-4 py-3 text-white">Сбросить</button><button type="button" onClick={()=>setFiltersOpen(false)} className="flex-1 rounded-xl bg-accent-500 px-4 py-3 font-semibold text-white">Показать {filtered.length}</button></div>
     </div></aside></div>}
-  </div></section>;
+  </div></section></>;
 }

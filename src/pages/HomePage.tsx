@@ -4,6 +4,8 @@ import { useProducts } from '@/hooks/useProducts';
 import ProductGrid from '@/components/ProductGrid';
 import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
+import SeoMetadata from '@/components/SeoMetadata';
+import { publicContacts } from '@/data/publicContacts';
 
 export default function HomePage() {
   const { products, loading, error } = useProducts();
@@ -14,6 +16,23 @@ export default function HomePage() {
 
   return (
     <>
+      <SeoMetadata
+        title="TELVORA — телевизоры с доставкой и установкой"
+        description="Интернет-магазин телевизоров TELVORA. Подбор модели и диагонали, доставка, профессиональная установка и сервис."
+        path="/"
+        image="/images/telvora-hero-cinema.png"
+        jsonLd={{
+          '@context': 'https://schema.org',
+          '@type': 'Organization',
+          name: publicContacts.brand,
+          legalName: publicContacts.sellerFullName,
+          url: 'https://telvora.ru/',
+          logo: 'https://telvora.ru/telvora-logo.svg',
+          telephone: publicContacts.phoneDisplay,
+          email: publicContacts.ordersEmail,
+          sameAs: ['https://t.me/telvora_store'],
+        }}
+      />
       <Hero />
 
       {/* Featured products preview */}

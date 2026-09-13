@@ -33,6 +33,7 @@ import OfferPage from '@/pages/OfferPage';
 import ReturnsPage from '@/pages/ReturnsPage';
 import ContactsPage from '@/pages/ContactsPage';
 import RequisitesPage from '@/pages/RequisitesPage';
+import SeoMetadata from '@/components/SeoMetadata';
 
 export default function App() {
   return (
@@ -113,26 +114,26 @@ const isAdmin = location.pathname.startsWith('/admin');
             element={<ProductPage />}
           />
 
-          <Route path="/checkout" element={<CheckoutPage />} />
-          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/checkout" element={<><SeoMetadata title="Оформление заказа — TELVORA" description="Оформление заказа TELVORA." path="/checkout" robots="noindex, follow" /><CheckoutPage /></>} />
+          <Route path="/admin" element={<><SeoMetadata title="Управление TELVORA" description="Служебная область TELVORA." path="/admin" robots="noindex, nofollow" /><AdminPage /></>} />
 
           <Route
             path="/order-success/:orderNumber"
-            element={<OrderSuccessPage />}
+            element={<><SeoMetadata title="Заказ оформлен — TELVORA" description="Информация об оформленном заказе TELVORA." path="/order-success" robots="noindex, follow" /><OrderSuccessPage /></>}
           />
 
           <Route path="/warranty" element={<WarrantyPage />} />
-          <Route path="/support" element={<SupportPage />} />
+          <Route path="/support" element={<><SeoMetadata title="Поддержка покупателей — TELVORA" description="Помощь по заказам, доставке, гарантии и использованию техники TELVORA." path="/support" /><SupportPage /></>} />
           <Route path="/delivery" element={<DeliveryPage />} />
-          <Route path="/services" element={<ServicesPage />} />
-          <Route path="/soundbars" element={<SoundbarsPage />} />
-          <Route path="/accessories" element={<AccessoriesPage />} />
+          <Route path="/services" element={<><SeoMetadata title="Сервисные услуги — TELVORA" description="Профессиональная установка, настройка и связанные сервисные услуги TELVORA." path="/services" /><ServicesPage /></>} />
+          <Route path="/soundbars" element={<><SeoMetadata title="Саундбары — TELVORA" description="Раздел саундбаров TELVORA готовится к запуску." path="/soundbars" robots="noindex, follow" /><SoundbarsPage /></>} />
+          <Route path="/accessories" element={<><SeoMetadata title="Аксессуары — TELVORA" description="Раздел аксессуаров TELVORA готовится к запуску." path="/accessories" robots="noindex, follow" /><AccessoriesPage /></>} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/personal-data-consent" element={<PersonalDataConsentPage />} />
           <Route path="/cookies" element={<CookiesPage />} />
           <Route path="/offer" element={<OfferPage />} />
           <Route path="/returns" element={<ReturnsPage />} />
-          <Route path="/contacts" element={<ContactsPage />} />
+          <Route path="/contacts" element={<><SeoMetadata title="Контакты TELVORA" description="Контакты TELVORA для заказов, доставки, сервиса и поддержки покупателей." path="/contacts" /><ContactsPage /></>} />
           <Route path="/requisites" element={<RequisitesPage />} />
 
           <Route path="*" element={<NotFoundPage />} />

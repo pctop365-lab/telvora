@@ -1,9 +1,16 @@
-﻿User-agent: *
+User-agent: *
 Allow: /
 
 Disallow: /admin
-Disallow: /checkout
-Disallow: /order-success
-Disallow: /cart
+Disallow: /api.php
+Disallow: /manager.php
+Disallow: /callback_request.php
+Disallow: /generate_invoice_pdf.php
+Disallow: /services.php
+Disallow: /products.php
+Disallow: /install
+Disallow: /debug
+Disallow: /test
+Disallow: /check
 
 Sitemap: https://telvora.ru/sitemap.xml
