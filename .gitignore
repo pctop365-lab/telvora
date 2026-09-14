@@ -121,3 +121,8 @@ pdf/dompdf/vendor/
 prepare_invoice_template.py
 read_invoice.py
 /templates/
+
+# Local SEO build and release verification output
+/.seo-build/
+/seo-artifacts/
+/test-results/

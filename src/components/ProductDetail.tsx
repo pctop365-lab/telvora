@@ -25,9 +25,9 @@ export default function ProductDetail({ product }: ProductDetailProps) {
       variant.isActive !== false
   );
 
-  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | undefined>(
-    activeVariants[0]
-  );
+  // Keep only the choice, so API revalidation cannot leave a stale price/availability object.
+  const [selectedVariantId, setSelectedVariantId] = useState<number | undefined>(activeVariants[0]?.productVariantId);
+  const selectedVariant = activeVariants.find(variant => variant.productVariantId === selectedVariantId) ?? activeVariants[0];
 
   const currentPrice = selectedVariant
   ? Number(selectedVariant.price)
@@ -234,7 +234,7 @@ const productUrl =
                       (item) => item.country === e.target.value
                     );
 
-                    setSelectedVariant(variant);
+                    setSelectedVariantId(variant?.productVariantId);
                   }}
                   className="w-full px-4 py-3 rounded-xl bg-graphite-900 border border-white/10 text-white outline-none focus:border-accent-500/50"
                 >

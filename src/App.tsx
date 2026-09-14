@@ -1,5 +1,4 @@
 import {
-  BrowserRouter,
   Routes,
   Route,
   useParams,
@@ -38,13 +37,11 @@ import SeoMetadata from '@/components/SeoMetadata';
 export default function App() {
   return (
     <ThemeProvider>
-      <BrowserRouter>
         <CartProvider>
           <UIProvider>
             <AppContent />
           </UIProvider>
         </CartProvider>
-      </BrowserRouter>
     </ThemeProvider>
   );
 }

@@ -1,6 +1,8 @@
 import { createContext, useContext, useReducer, useCallback, useMemo, useEffect, useState, type ReactNode } from 'react';
 import type { CartItem, CartServiceItem, Product, ProductVariant, ServiceCatalogItem } from '@/types';
 
+import { usePrerender } from './prerender';
+
 const CART_STORAGE_KEY = 'telvora_cart';
 const SERVICE_STORAGE_KEY = 'telvora_cart_services';
 const screenNumber = (value:string) => Number(value.match(/\d{2,3}/)?.[0] ?? 0);
@@ -122,18 +124,27 @@ const CartContext = createContext<CartContextValue | null>(null);
 // ---------- Provider ----------
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, dispatch] = useReducer(cartReducer, undefined, loadCartFromStorage);
-  const [services,setServices]=useState<CartServiceItem[]>(loadServices);
+  const snapshot = usePrerender();
+  const [restored, setRestored] = useState(!snapshot);
+  const [items, dispatch] = useReducer(cartReducer, undefined, () => snapshot ? [] : loadCartFromStorage());
+  const [services,setServices]=useState<CartServiceItem[]>(() => snapshot ? [] : loadServices());
+  useEffect(() => {
+    if (!snapshot) return;
+    dispatch({ type: 'REVALIDATE', items: loadCartFromStorage() });
+    setServices(loadServices());
+    setRestored(true);
+  }, []);
 
   useEffect(() => {
+    if (!restored) return;
     try {
       localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
     } catch {
       // storage may be full or unavailable — silently ignore
     }
-  }, [items]);
-  useEffect(()=>{localStorage.setItem(SERVICE_STORAGE_KEY,JSON.stringify(services))},[services]);
-  useEffect(()=>{setServices(current=>current.filter(service=>items.some(item=>item.id===service.targetCartItemId)))},[items]);
+  }, [items, restored]);
+  useEffect(()=>{if(restored)localStorage.setItem(SERVICE_STORAGE_KEY,JSON.stringify(services))},[services,restored]);
+  useEffect(()=>{if(restored)setServices(current=>current.filter(service=>items.some(item=>item.id===service.targetCartItemId)))},[items,restored]);
 
   const addToCart = useCallback(
     (

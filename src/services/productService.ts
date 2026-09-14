@@ -61,7 +61,7 @@ type ProductsResponse = {
   message?: string;
 };
 
-function normalizeProduct(product: ApiProduct): Product {
+export function normalizeProduct(product: ApiProduct): Product {
   return {
     id: String(product.id),
     slug: String(product.slug || ''),

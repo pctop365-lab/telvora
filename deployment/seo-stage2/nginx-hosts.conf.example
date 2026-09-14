@@ -1,0 +1,28 @@
+# Integrate into the EXISTING edge vhosts, do not install duplicate listeners/vhosts.
+# This affects only these two Latin hosts. Keep the Russian redirect domain untouched.
+server {
+    listen 80;
+    server_name telvora.ru www.telvora.ru;
+    # Retain the provider's ACME challenge location if renewal uses HTTP-01.
+    location / { return 301 https://telvora.ru$request_uri; }
+}
+server {
+    listen 443 ssl;
+    server_name www.telvora.ru;
+    # Use the existing provider-managed certificate/key covering www.telvora.ru.
+    # ssl_certificate /CONFIRMED/PROVIDER/FULLCHAIN;
+    # ssl_certificate_key /CONFIRMED/PROVIDER/PRIVATEKEY;
+    return 301 https://telvora.ru$request_uri;
+}
+# In the existing canonical HTTPS telvora.ru vhost:
+# - keep root, TLS, PHP/FastCGI, security denies, uploads and ACME configuration;
+# - replace ONLY the catch-all SPA location with the generated routes include;
+# - do not keep another location / returning /index.html or error_page 404 =200 ...;
+# include /etc/nginx/telvora-seo/routes.nginx.conf;
+# Preserve existing static locations. If absent, add these to the canonical vhost:
+# location ^~ /assets/ { try_files $uri =404; }
+# location ^~ /images/ { try_files $uri =404; }
+# Keep existing secured /uploads/ handling; never weaken upload PHP execution denies.
+# location ~ ^/(favicon[^/]*|apple-touch-icon\.png|telvora-logo\.svg|robots\.txt|sitemap\.xml)$ {
+#     try_files $uri =404;
+# }

@@ -17,7 +17,11 @@ export default function CatalogPage({ initialTechnology, initialResolutionToken,
   const [modelKey,setModelKey]=useState('');
   const [brands,setBrands]=useState<string[]>([]);
   const [sizes,setSizes]=useState<string[]>([]);
-  const [resolutions,setResolutions]=useState<string[]>([]);
+  const [resolutions,setResolutions]=useState<string[]>(() => {
+    if (!initialResolutionToken) return [];
+    const matches = getFilterOptions(products,p=>p.resolution).filter(value=>value.toLowerCase().includes(initialResolutionToken));
+    return matches.length ? matches : [initialResolutionToken.toUpperCase()];
+  });
   const [technologies,setTechnologies]=useState<string[]>(initialTechnology?[initialTechnology]:[]);
   const [minPrice,setMinPrice]=useState(''); const [maxPrice,setMaxPrice]=useState('');
   const [sort,setSort]=useState<SortKey>('default');

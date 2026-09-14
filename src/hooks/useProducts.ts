@@ -1,3 +1,5 @@
+import { usePrerender } from '@/store/prerender';
+import { useLocation } from 'react-router-dom';
 import { useState, useEffect, useCallback } from 'react';
 import type { Product, ProductCategory, SortKey } from '@/types';
 import { fetchProducts } from '@/services/productService';
@@ -9,14 +11,17 @@ type Options = {
 };
 
 export function useProducts(options: Options = {}) {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const snapshot = usePrerender();
+  const { pathname } = useLocation();
+  const seeded = snapshot?.path === pathname;
+  const [products, setProducts] = useState<Product[]>(seeded ? snapshot.products : []);
+  const [loading, setLoading] = useState(!seeded);
   const [error, setError] = useState<string | null>(null);
 
   const { category, search, sort } = options;
 
   const load = useCallback(async () => {
-    setLoading(true);
+    if (!seeded) setLoading(true);
     setError(null);
     try {
       const data = await fetchProducts({ category, search, sort });

@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
+import { usePrerender } from './prerender';
+
 type Theme = 'light' | 'dark';
 
 interface ThemeContextType {
@@ -10,7 +12,9 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
+  const snapshot = usePrerender();
   const [theme, setTheme] = useState<Theme>(() => {
+    if (snapshot) return snapshot.theme;
     const savedTheme = localStorage.getItem('telvora-theme');
 
     if (savedTheme === 'dark' || savedTheme === 'light') {

@@ -1,0 +1,13 @@
+# Alternative only if Apache is confirmed to terminate TLS itself.
+# Merge into the existing configuration BEFORE the generated route rules.
+RewriteEngine On
+RewriteCond %{HTTP_HOST} ^www\.telvora\.ru$ [NC]
+RewriteRule ^ https://telvora.ru%{REQUEST_URI} [R=301,L,NE]
+RewriteCond %{HTTP_HOST} ^telvora\.ru$ [NC]
+RewriteCond %{HTTPS} !=on
+RewriteRule ^ https://telvora.ru%{REQUEST_URI} [R=301,L,NE]
+# Original query string is retained. No user-controlled Host value is reflected.
+# For nginx -> HTTP Apache proxy this HTTPS test can loop: use edge nginx redirects
+# instead. Do not trust arbitrary X-Forwarded-Proto headers as a workaround.
+# Then replace the old catch-all SPA rewrite with seo-artifacts/routes.apache.conf.
+# Requires Apache 2.4 mod_rewrite, AllowOverride and a valid www TLS certificate.
