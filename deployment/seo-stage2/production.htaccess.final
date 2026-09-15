@@ -36,31 +36,36 @@ RewriteRule ^catalog/oled/lg-oled77c5rla/$ https://telvora.ru/catalog/oled/lg-ol
 RewriteRule ^((?:checkout|admin|soundbars|accessories))/$ /$1 [R=301,L,NE]
 RewriteRule ^order-success/([^/]+)/$ /order-success/$1 [R=301,L,NE]
 
-# Known prerendered pages. Explicit rules run before DirectorySlash so a
-# directory-shaped URL serves its route HTML without an unwanted slash hop.
+# Known prerendered pages. Files live under _prerender, which is deliberately
+# outside every public route name; this avoids REG.RU DirectorySlash loops.
 RewriteRule ^$ index.html [END]
-RewriteRule ^catalog$ catalog/index.html [END]
-RewriteRule ^catalog/oled$ catalog/oled/index.html [END]
-RewriteRule ^catalog/qled$ catalog/qled/index.html [END]
-RewriteRule ^catalog/led$ catalog/led/index.html [END]
-RewriteRule ^catalog/8k$ catalog/8k/index.html [END]
-RewriteRule ^delivery$ delivery/index.html [END]
-RewriteRule ^services$ services/index.html [END]
-RewriteRule ^warranty$ warranty/index.html [END]
-RewriteRule ^returns$ returns/index.html [END]
-RewriteRule ^support$ support/index.html [END]
-RewriteRule ^contacts$ contacts/index.html [END]
-RewriteRule ^requisites$ requisites/index.html [END]
-RewriteRule ^offer$ offer/index.html [END]
-RewriteRule ^privacy$ privacy/index.html [END]
-RewriteRule ^personal-data-consent$ personal-data-consent/index.html [END]
-RewriteRule ^cookies$ cookies/index.html [END]
-RewriteRule ^catalog/oled/lg-oled77c5rla$ catalog/oled/lg-oled77c5rla/index.html [END]
+RewriteRule ^catalog$ _prerender/catalog.html [END]
+RewriteRule ^catalog/oled$ _prerender/catalog-oled.html [END]
+RewriteRule ^catalog/qled$ _prerender/catalog-qled.html [END]
+RewriteRule ^catalog/led$ _prerender/catalog-led.html [END]
+RewriteRule ^catalog/8k$ _prerender/catalog-8k.html [END]
+RewriteRule ^delivery$ _prerender/delivery.html [END]
+RewriteRule ^services$ _prerender/services.html [END]
+RewriteRule ^warranty$ _prerender/warranty.html [END]
+RewriteRule ^returns$ _prerender/returns.html [END]
+RewriteRule ^support$ _prerender/support.html [END]
+RewriteRule ^contacts$ _prerender/contacts.html [END]
+RewriteRule ^requisites$ _prerender/requisites.html [END]
+RewriteRule ^offer$ _prerender/offer.html [END]
+RewriteRule ^privacy$ _prerender/privacy.html [END]
+RewriteRule ^personal-data-consent$ _prerender/personal-data-consent.html [END]
+RewriteRule ^cookies$ _prerender/cookies.html [END]
+RewriteRule ^catalog/oled/lg-oled77c5rla$ _prerender/product-lg-oled77c5rla.html [END]
 
 # Client-only routes are direct-loadable but never indexable. The dynamic
 # order number is not read or emitted by this static file.
 RewriteRule ^(?:checkout|admin|soundbars|accessories)$ client.html [END]
 RewriteRule ^order-success/[^/]+$ client.html [END]
+
+# Direct external access to the internal namespace is never an alternative
+# indexable URL. Internal rewrites above retain THE_REQUEST as the public URL.
+RewriteCond %{THE_REQUEST} \s/+_prerender(?:[/\s?]) [NC]
+RewriteRule ^_prerender(?:/|$) - [R=404,END]
 
 # Preserve all existing real files/directories: PHP APIs, uploads, assets,
 # robots.txt, sitemap.xml, favicon files and provider/security files.

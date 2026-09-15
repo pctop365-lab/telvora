@@ -1,7 +1,8 @@
 import { readFile, readdir, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 const { routes, snapshotHash } = JSON.parse(await readFile('seo-artifacts/routes.json', 'utf8'));
-const files = ['dist/index.html', ...routes.filter(p => p !== '/').map(p => `dist${p}/index.html`),
+const { prerenderFiles } = JSON.parse(await readFile('seo-artifacts/routes.json', 'utf8'));
+const files = ['dist/index.html', ...Object.values(prerenderFiles).map(p => 'dist' + p),
   'dist/client.html', 'dist/404.html', 'dist/robots.txt', 'dist/sitemap.xml',
   ...(await readdir('dist/assets')).map(f => 'dist/assets/' + f),
   'seo-artifacts/routes.nginx.conf', 'seo-artifacts/routes.apache.conf'];

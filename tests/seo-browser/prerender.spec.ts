@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 const manifest = JSON.parse(readFileSync('seo-artifacts/routes.json', 'utf8'));
 const productPath = manifest.productRoutes[0];
-const snapshot = (path: string) => JSON.parse(readFileSync(`dist${path === '/' ? '' : path}/index.html`, 'utf8').match(/id="telvora-prerender" type="application\/json">(.*?)<\/script>/s)![1]);
+const snapshot = (path: string) => JSON.parse(readFileSync(path === '/' ? 'dist/index.html' : `dist${manifest.prerenderFiles[path]}`, 'utf8').match(/id="telvora-prerender" type="application\/json">(.*?)<\/script>/s)![1]);
 const products = snapshot('/').products;
 const apiProducts = products.map((p: any) => ({
   ...p, is_active: true, screen_size: p.screenSize, old_price: p.oldPrice,
@@ -73,7 +73,7 @@ for (const mobile of [false, true]) for (const theme of ['light', 'dark']) {
 }
 test('HTTP route contract, raw noindex and query preservation', async ({ request }) => {
   for (const path of manifest.routes) expect((await request.get(path)).status()).toBe(200);
-  for (const path of ['/missing-seo-page', '/catalog/not-a-category', '/catalog/oled/not-active', '/catalog/qled/lg-oled77c5rla', '/admin/unknown', '/order-success/a/b']) {
+  for (const path of ['/missing-seo-page', '/catalog/not-a-category', '/catalog/oled/not-active', '/catalog/qled/lg-oled77c5rla', '/admin/unknown', '/order-success/a/b', '/_prerender/catalog.html']) {
     const response = await request.get(path); expect(response.status()).toBe(404); expect(await response.text()).toContain('noindex');
   }
   for (const path of ['/checkout', '/admin', '/order-success/TLV-EXAMPLE', '/soundbars', '/accessories']) {

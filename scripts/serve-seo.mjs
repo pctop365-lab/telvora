@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import { isClientRoute } from './seo-routes.mjs';
-const { routes } = JSON.parse(await readFile('seo-artifacts/routes.json', 'utf8'));
+const { routes, prerenderFiles } = JSON.parse(await readFile('seo-artifacts/routes.json', 'utf8'));
 const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.xml': 'application/xml', '.svg': 'image/svg+xml', '.png': 'image/png', '.webp': 'image/webp', '.avif': 'image/avif', '.ico': 'image/x-icon', '.txt': 'text/plain' };
 createServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1');
@@ -13,7 +13,7 @@ createServer(async (req, res) => {
     res.writeHead(301, { Location: (path.startsWith('/televisions') ? '/catalog' : normalized) + url.search }); res.end(); return;
   }
   let file, status = 200;
-  if (routes.includes(path)) file = path === '/' ? 'index.html' : path.slice(1) + '/index.html';
+  if (routes.includes(path)) file = path === '/' ? 'index.html' : prerenderFiles[path].slice(1);
   else if (isClientRoute(path)) file = 'client.html';
   else if (/^\/(assets|images)\//.test(path) || /^\/(?:favicon[^/]*|apple-touch-icon.png|telvora-logo.svg|robots.txt|sitemap.xml)$/.test(path)) file = path.slice(1);
   else { file = '404.html'; status = 404; }

@@ -8,7 +8,7 @@ try {
   const page = await context.newPage();
   const titles = new Set(), descriptions = new Set();
   for (const path of manifest.routes) {
-    const html = await readFile(path === '/' ? 'dist/index.html' : `dist${path}/index.html`, 'utf8');
+    const html = await readFile(path === '/' ? 'dist/index.html' : `dist${manifest.prerenderFiles[path]}`, 'utf8');
     await page.setContent(html);
     assert.equal(await page.locator('title').count(), 1, path);
     assert.equal(await page.locator('link[rel="canonical"]').count(), 1, path);
@@ -55,6 +55,7 @@ try {
     assert.match(await page.locator('meta[name="robots"]').getAttribute('content'), /noindex/);
     assert.equal(await page.locator('#telvora-prerender').count(), 0);
     assert.equal(await page.locator('script[type="application/ld+json"]').count(), 0);
+    assert.equal(await page.locator('link[rel="canonical"]').count(), 0);
   }
   console.log(`Raw HTML / JSON-LD / sitemap: PASS (${manifest.routes.length} pages; JavaScript disabled)`);
 } finally { await browser.close(); }

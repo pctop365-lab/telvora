@@ -26,10 +26,11 @@ foreach ($path in @('/', '/catalog', '/catalog/oled', '/catalog/qled', '/catalog
 }
 
 # Client-only routes remain direct-loadable but noindex.
-foreach ($path in @('/checkout', '/admin', '/order-success/test')) { Check-Url $path 200 }
+foreach ($path in @('/checkout', '/admin', '/soundbars', '/accessories', '/order-success/test')) { Check-Url $path 200 }
 
 # Unknown routes must be a real HTTP 404.
 foreach ($path in @('/definitely-not-existing-telvora-seo-test', '/catalog/not-a-category', '/catalog/oled/not-active')) { Check-Url $path 404 }
+Check-Url '/_prerender/catalog.html' 404
 
 # Read-only application/static checks; use only GET/HEAD endpoints with no order mutation.
 foreach ($path in @('/products.php?action=list', '/services.php', '/robots.txt', '/sitemap.xml')) { Check-Url $path 200 }

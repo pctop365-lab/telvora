@@ -44,14 +44,20 @@ JSON.stringify({ products, services: serviceSnapshot }, (_key, value) => {
 });
 const themeBootstrap = `<script>(()=>{let dark=false;try{dark=localStorage.getItem('telvora-theme')==='dark'}catch{}document.documentElement.className=dark?'dark':'light';document.documentElement.style.colorScheme=dark?'dark':'light';const t=document.getElementById('telvora-dark');if(dark)document.getElementById('root').replaceChildren(t.content);t.remove()})()</script>`;
 const sizes = {};
+const prerenderFileFor = path => {
+  if (path === '/') return 'index.html';
+  const product = productRoutes.find(route => route === path);
+  if (product) return `product-${product.split('/').pop()}.html`;
+  return `${path.slice(1).replaceAll('/', '-')}.html`;
+};
+await mkdir('dist/_prerender', { recursive: true });
 for (const path of routes) {
   const data = { path, products: path.startsWith('/catalog/') && productRoutes.includes(path) ? products.filter(p => path.endsWith('/' + p.slug)) : path === '/' || path.startsWith('/catalog') ? products : [], services: path === '/services' ? serviceSnapshot : [], theme: 'light' };
   const light = render(path, data);
   const dark = render(path, { ...data, theme: 'dark' });
   const html = template.replace('</head>', `${light.head}</head>`).replace('<div id="root"></div>',
     `<div id="root">${light.body}</div><template id="telvora-dark">${dark.body}</template>${themeBootstrap}<script id="telvora-prerender" type="application/json">${json(data)}</script>`);
-  const file = path === '/' ? 'dist/index.html' : `dist${path}/index.html`;
-  await mkdir(file.slice(0, file.lastIndexOf('/')), { recursive: true });
+  const file = path === '/' ? 'dist/index.html' : `dist/_prerender/${prerenderFileFor(path)}`;
   await writeFile(file, html);
   sizes[path] = Buffer.byteLength(html);
 }
@@ -62,10 +68,11 @@ await writeFile('dist/404.html', shell.replace('<div id="root"></div>', '<div id
 await writeFile('dist/sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${routes.map(p => `  <url><loc>https://telvora.ru${p}</loc></url>`).join('\n')}\n</urlset>\n`);
 await mkdir('seo-artifacts', { recursive: true });
 const snapshotHash = createHash('sha256').update(json({ products, services: serviceSnapshot })).digest('hex');
-await writeFile('seo-artifacts/routes.json', JSON.stringify({ routes, productRoutes, sizes, snapshotHash }, null, 2));
-const nginx = routes.map(p => `location = ${p} { try_files ${p === '/' ? '/index.html' : p + '/index.html'} =404; }${p === '/' ? '' : `\nlocation = ${p}/ { return 301 https://telvora.ru${p}$is_args$args; }`}`).join('\n');
-await writeFile('seo-artifacts/routes.nginx.conf', `${nginx}\n${clientRoutes.map(p => `location = ${p} { try_files /client.html =404; }`).join('\n')}\nlocation ~ ^/order-success/[^/]+$ { try_files /client.html =404; }\nlocation = /televisions { return 301 https://telvora.ru/catalog$is_args$args; }\nlocation / { return 404; }\nerror_page 404 /404.html;\nlocation = /404.html { internal; }\nlocation = /client.html { internal; }\n`);
+const prerenderFiles = Object.fromEntries(routes.filter(p => p !== '/').map(p => [p, `/_prerender/${prerenderFileFor(p)}`]));
+await writeFile('seo-artifacts/routes.json', JSON.stringify({ routes, productRoutes, prerenderFiles, sizes, snapshotHash }, null, 2));
+const nginx = routes.map(p => `location = ${p} { try_files ${p === '/' ? '/index.html' : prerenderFiles[p]} =404; }${p === '/' ? '' : `\nlocation = ${p}/ { return 301 https://telvora.ru${p}$is_args$args; }`}`).join('\n');
+await writeFile('seo-artifacts/routes.nginx.conf', `${nginx}\n${clientRoutes.map(p => `location = ${p} { try_files /client.html =404; }`).join('\n')}\nlocation ~ ^/order-success/[^/]+$ { try_files /client.html =404; }\nlocation = /televisions { return 301 https://telvora.ru/catalog$is_args$args; }\nlocation ^~ /_prerender/ { return 404; }\nlocation / { return 404; }\nerror_page 404 /404.html;\nlocation = /404.html { internal; }\nlocation = /client.html { internal; }\n`);
 const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-await writeFile('seo-artifacts/routes.apache.conf', `Options -MultiViews\nRewriteEngine On\nRewriteRule ^televisions/?$ https://telvora.ru/catalog [R=301,L]\n${routes.filter(p => p !== '/').map(p => `RewriteRule ^${escape(p.slice(1))}/$ https://telvora.ru${p} [R=301,L]`).join('\n')}\n${routes.map(p => `RewriteRule ^${p === '/' ? '$ index.html' : escape(p.slice(1)) + '$ ' + p.slice(1) + '/index.html'} [END]`).join('\n')}\nRewriteRule ^(?:${clientRoutes.map(p => escape(p.slice(1))).join('|')}|order-success/[^/]+)$ client.html [END]\n# Keep existing backend/security rules above this include.\nRewriteCond %{REQUEST_FILENAME} -f\nRewriteRule ^ - [END]\nRewriteRule ^ - [R=404,L]\nErrorDocument 404 /404.html\n`);
+await writeFile('seo-artifacts/routes.apache.conf', `Options -MultiViews\nRewriteEngine On\nRewriteRule ^televisions/?$ https://telvora.ru/catalog [R=301,L,NE]\n${routes.filter(p => p !== '/').map(p => `RewriteRule ^${escape(p.slice(1))}/$ https://telvora.ru${p} [R=301,L,NE]`).join('\n')}\nRewriteCond %{THE_REQUEST} \\s/+_prerender(?:[/\\s?]) [NC]\nRewriteRule ^_prerender(?:/|$) - [R=404,END]\n${routes.map(p => `RewriteRule ^${p === '/' ? '$ index.html' : escape(p.slice(1)) + '$ ' + (p === '/' ? 'index.html' : prerenderFiles[p].slice(1))} [END]`).join('\n')}\nRewriteRule ^(?:${clientRoutes.map(p => escape(p.slice(1))).join('|')}|order-success/[^/]+)$ client.html [END]\nRewriteCond %{REQUEST_FILENAME} -f [OR]\nRewriteCond %{REQUEST_FILENAME} -d\nRewriteRule ^ - [END]\nRewriteRule ^ - [R=404,END]\nErrorDocument 404 /404.html\n`);
 console.log(`SEO build: ${routes.length} routes, ${products.length} active products; snapshot ${snapshotHash}`);
 await import('./seo-release-inventory.mjs');

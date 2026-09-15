@@ -17,6 +17,7 @@ This directory is preparation only. It does not contain a complete vhost and mus
 - `../../seo-artifacts/routes.apache.conf`: conditional Apache alternative only; do not use until Apache and `.htaccess` are confirmed.
 - `production.htaccess.final`: complete proposed user-owned `.htaccess`, including the existing canonical redirect, route allowlist, client shells and real 404.
 - `post-deploy-verification.ps1`: read-only curl matrix; set `$BaseUrl` only for a validation endpoint and never add credentials.
+- `pre-activation-layout-check.sh`: read-only DocumentRoot check; run it after upload and before replacing `.htaccess`.
 
 ## Required server read before any change
 
@@ -24,12 +25,14 @@ This directory is preparation only. It does not contain a complete vhost and mus
 2. Capture current `.htaccess`, index, robots, sitemap and assets backups/hashes.
 3. Confirm PHP/API/FastCGI, upload restrictions, ACME challenge, admin/security denies and static asset behavior remain outside the new fallback.
 4. Confirm Apache 2.4 `mod_rewrite`, `AllowOverride FileInfo` and `ErrorDocument` support for the DocumentRoot.
-5. Read the current `.htaccess`, calculate its SHA-256, then replace it only after the static files are uploaded.
+5. Read the current `.htaccess`, calculate its SHA-256, upload `_prerender` and static files, run `pre-activation-layout-check.sh`, then replace `.htaccess` only after the check passes.
 6. Verify the www certificate is valid and covers both `telvora.ru` and `www.telvora.ru`.
 
 ## Safe insertion rules
 
-The final `.htaccess` must be installed in the user-owned DocumentRoot only after the preserved PHP/API/security behavior has been reviewed. It must not replace the nginx vhost. The final catch-all returns 404 and is reached only after known routes, client shells and real files/directories.
+The final `.htaccess` must be installed in the user-owned DocumentRoot only after the preserved PHP/API/security behavior has been reviewed. It must not replace the nginx vhost. Public prerender HTML is stored flat under `/_prerender/`; no `dist/catalog/`, `dist/delivery/`, product-route directory or other public route directory may be uploaded. This avoids REG.RU/Apache `DirectorySlash` redirects before `.htaccess` can serve the intended slashless route.
+
+The internal namespace is blocked for direct requests with `THE_REQUEST`, while internal rewrites from public URLs remain allowed. Every prerendered file retains its public canonical URL.
 
 The HTTP and HTTPS-www fragments preserve path and query through `$request_uri`. The canonical server must continue serving PHP/API endpoints and secured uploads normally.
 
@@ -39,8 +42,8 @@ Known prerender routes are generated from the build snapshot: `/`, `/catalog`, `
 
 Client-only routes are `/checkout`, `/admin`, `/soundbars`, `/accessories`, and `/order-success/<id>`. They serve `client.html` with `noindex` and no order/customer snapshot.
 
-Unknown routes must serve `404.html` with actual HTTP status 404. A successful body with status 200 is a failed deployment even if the body visually says “not found”.
+Unknown routes and direct `/_prerender/*` requests must serve `404.html` with actual HTTP status 404. A successful body with status 200 is a failed deployment even if the body visually says “not found”.
 
 ## Rollback
 
-Before deployment, save the current vhost fragments, `.htaccess` (if active), DocumentRoot index/sitemap/robots/assets and their hashes. If smoke tests fail, restore the saved server fragment first, then restore the previous static release atomically. Re-test canonical redirects, PHP/API, uploads, ACME, known routes and unknown 404 before reopening traffic.
+Before deployment, save the current `.htaccess`, DocumentRoot index/sitemap/robots/assets and their hashes. Verify that no forbidden public route directories exist after upload. Upload `_prerender/` and normal static assets first; activate `.htaccess` last. If smoke tests fail, restore the saved `.htaccess` first, then restore the previous static release atomically. Re-test canonical redirects, PHP/API, uploads, ACME, known routes, direct `/_prerender/*` and unknown 404 before reopening traffic.

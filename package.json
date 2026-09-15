@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "test:browser": "playwright test",
     "build:seo": "node scripts/build-seo.mjs",
-    "test:seo:raw": "node tests/seo_raw_test.mjs"
+    "test:seo:raw": "node tests/seo_raw_test.mjs",
+    "test:seo:physical": "node tests/seo_physical_routes_test.mjs",
+    "test:seo:htaccess": "node tests/seo_htaccess_test.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.446.0",
