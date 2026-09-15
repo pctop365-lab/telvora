@@ -16,5 +16,9 @@
   "ordersEmail": "telvora24@gmail.com",
   "supportEmail": "telvorasupport24@gmail.com",
   "phoneDisplay": "+7 (926) 202-01-19",
-  "phoneHref": "+79262020119"
+  "phoneHref": "+79262020119",
+  "phones": [
+    { "display": "+7 (926) 202-01-19", "href": "+79262020119" },
+    { "display": "+7 (903) 189-43-42", "href": "+79031894342" }
+  ]
 }

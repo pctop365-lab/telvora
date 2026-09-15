@@ -26,7 +26,11 @@ try {
     const blocks = await page.locator('script[type="application/ld+json"]').allTextContents();
     const schemas = blocks.flatMap(JSON.parse);
     assert.equal(new Set(schemas.map(s => s['@type'])).size, schemas.length);
-    if (path === '/') assert.ok(schemas.some(s => s['@type'] === 'Organization'));
+    if (path === '/') {
+      const organization = schemas.find(s => s['@type'] === 'Organization');
+      assert.ok(organization);
+      assert.deepEqual(organization.contactPoint.map(point => point.telephone), ['+79262020119', '+79031894342']);
+    }
     if (manifest.productRoutes.includes(path)) {
       const product = schemas.find(s => s['@type'] === 'Product');
       const data = JSON.parse(await page.locator('#telvora-prerender').textContent()).products[0];

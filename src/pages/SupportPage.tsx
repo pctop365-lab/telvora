@@ -74,7 +74,7 @@ export default function SupportPage() {
           <div>
             <h2 className="font-display font-bold text-2xl">Нужна дополнительная помощь?</h2>
             <p className="text-graphite-600 dark:text-graphite-400 mt-2 leading-relaxed">Подготовьте номер заказа и данные, указанные при оформлении. Это поможет службе поддержки быстрее разобраться в вопросе.</p>
-            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold"><a href={publicContacts.phoneLink} className="text-accent-600 hover:text-accent-700 dark:text-accent-500">{publicContacts.phoneDisplay}</a><a href={publicContacts.supportMailto} className="text-accent-600 hover:text-accent-700 dark:text-accent-500">{publicContacts.supportEmail}</a><Link to="/contacts#callback" className="text-accent-600 hover:text-accent-700 dark:text-accent-500">Заказать обратный звонок</Link></div>
+            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm font-semibold">{publicContacts.phones.map((phone) => <a key={phone.href} href={`tel:${phone.href}`} className="text-accent-600 hover:text-accent-700 dark:text-accent-500">{phone.display}</a>)}<a href={publicContacts.supportMailto} className="text-accent-600 hover:text-accent-700 dark:text-accent-500">{publicContacts.supportEmail}</a><Link to="/contacts#callback" className="text-accent-600 hover:text-accent-700 dark:text-accent-500">Заказать обратный звонок</Link></div>
           </div>
         </section>
 

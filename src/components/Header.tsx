@@ -87,10 +87,10 @@ export default function Header() {
       >
         <div className={`border-b ${isLight ? 'border-graphite-200/80' : 'border-white/10'}`}>
           <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 h-8 flex items-center justify-between lg:justify-end gap-5 text-xs">
-            <a href={publicContacts.phoneLink} className={`inline-flex items-center gap-1.5 font-semibold transition-colors hover:text-accent-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 rounded ${isLight ? 'text-graphite-800' : 'text-white'}`}>
+            <div className={`inline-flex flex-wrap items-center gap-x-3 gap-y-1 font-semibold ${isLight ? 'text-graphite-800' : 'text-white'}`}>
               <Phone className="w-3.5 h-3.5 text-accent-500" />
-              {publicContacts.phoneDisplay}
-            </a>
+              {publicContacts.phones.map((phone) => <a key={phone.href} href={`tel:${phone.href}`} className="font-semibold transition-colors hover:text-accent-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 rounded">{phone.display}</a>)}
+            </div>
             <div className="hidden lg:flex items-center gap-5">
               <a href={publicContacts.ordersMailto} className={`inline-flex items-center gap-1.5 transition-colors hover:text-accent-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 rounded ${isLight ? 'text-graphite-600' : 'text-graphite-300'}`}>
                 <Mail className="w-3.5 h-3.5 text-accent-500" />

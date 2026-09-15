@@ -29,6 +29,13 @@ export default function HomePage() {
           url: 'https://telvora.ru/',
           logo: 'https://telvora.ru/telvora-logo.svg',
           telephone: publicContacts.phoneDisplay,
+          contactPoint: publicContacts.phones.map((phone) => ({
+            '@type': 'ContactPoint',
+            telephone: phone.href,
+            contactType: 'customer service',
+            areaServed: 'RU',
+            availableLanguage: 'Russian',
+          })),
           email: publicContacts.ordersEmail,
           sameAs: ['https://t.me/telvora_store'],
         }}

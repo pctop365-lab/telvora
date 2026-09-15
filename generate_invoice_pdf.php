@@ -217,6 +217,11 @@ $sellerBik = (string)($publicContacts['bik'] ?? '');
 $sellerCorrespondentAccount = (string)($publicContacts['correspondentAccount'] ?? '');
 $sellerVatNotice = (string)($publicContacts['vatNotice'] ?? '');
 $sellerPhone = (string)($publicContacts['phoneDisplay'] ?? '');
+$sellerPhones = array_values(array_filter(array_map(static fn ($phone): string => (string)($phone['display'] ?? ''), is_array($publicContacts['phones'] ?? null) ? $publicContacts['phones'] : [])));
+if (!$sellerPhones && $sellerPhone !== '') {
+    $sellerPhones = [$sellerPhone];
+}
+$sellerPhoneLine = implode(' · ', $sellerPhones);
 $sellerOrdersEmail = (string)($publicContacts['ordersEmail'] ?? '');
 $sellerSupportEmail = (string)($publicContacts['supportEmail'] ?? '');
 
@@ -506,7 +511,7 @@ table {
 
 <tr>
     <td class="label">Телефон</td>
-    <td>' . h($sellerPhone) . '</td>
+    <td>' . h($sellerPhoneLine) . '</td>
 </tr>
 
 <tr>

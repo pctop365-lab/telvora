@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs';
 const header = readFileSync(new URL('../src/components/Header.tsx', import.meta.url), 'utf8');
 
 assert.match(header, /import \{ publicContacts \} from '@\/data\/publicContacts'/);
-assert.match(header, /href=\{publicContacts\.phoneLink\}/);
+assert.match(header, /publicContacts\.phones\.map/);
+assert.match(header, /tel:\$\{phone\.href\}/);
 assert.match(header, /href=\{publicContacts\.ordersMailto\}/);
 assert.match(header, /href=\{publicContacts\.supportMailto\}/);
 assert.match(header, /hidden lg:flex items-center gap-5/);

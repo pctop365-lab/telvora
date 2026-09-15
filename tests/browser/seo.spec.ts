@@ -75,7 +75,18 @@ test('home exposes factual Organization structured data', async ({ page }) => {
     telephone: '+7 (926) 202-01-19',
     email: 'telvora24@gmail.com',
   });
+  expect(organization.contactPoint.map((item: { telephone: string }) => item.telephone)).toEqual([
+    '+79262020119',
+    '+79031894342',
+  ]);
   expect(organization.address).toBeUndefined();
+});
+
+test('public phone links expose both TELVORA numbers', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('a[href="tel:+79262020119"]')).toHaveCount(2);
+  await expect(page.locator('a[href="tel:+79031894342"]')).toHaveCount(2);
+  await expect(page.getByText('+7 (903) 189-43-42').first()).toBeVisible();
 });
 
 test('inactive product is not exposed as an indexable product page', async ({ page }) => {

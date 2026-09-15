@@ -48,7 +48,7 @@ export default function Footer() {
               TELVORA — новый взгляд на технику и онлайн-покупки. Современно, понятно и без лишнего.
             </p>
             <div className="mt-5 space-y-2 text-sm">
-              <a href={publicContacts.phoneLink} className="block text-graphite-700 transition-colors hover:text-accent-600 dark:text-graphite-300 dark:hover:text-accent-500">{publicContacts.phoneDisplay}</a>
+              {publicContacts.phones.map((phone) => <a key={phone.href} href={`tel:${phone.href}`} className="block text-graphite-700 transition-colors hover:text-accent-600 dark:text-graphite-300 dark:hover:text-accent-500">{phone.display}</a>)}
               <a href={publicContacts.ordersMailto} className="block break-all text-graphite-600 transition-colors hover:text-accent-600 dark:text-graphite-400 dark:hover:text-accent-500">Заказы: {publicContacts.ordersEmail}</a>
               <a href={publicContacts.supportMailto} className="block break-all text-graphite-600 transition-colors hover:text-accent-600 dark:text-graphite-400 dark:hover:text-accent-500">Поддержка: {publicContacts.supportEmail}</a>
             </div>
