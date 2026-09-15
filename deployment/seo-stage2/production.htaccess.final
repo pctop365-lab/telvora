@@ -1,0 +1,75 @@
+# TELVORA SEO Stage 2 — proposed DocumentRoot .htaccess
+#
+# Read-only deployment artifact. Do not install until the current production
+# file has been backed up and the Apache 2.4/FastCGI chain has been confirmed.
+# Apache is behind nginx in the supported REG.RU arrangement; nginx remains
+# responsible for TLS termination while this file handles Apache routing.
+
+Options -MultiViews
+RewriteEngine On
+
+# Existing supported canonical redirect. X-Forwarded-Proto is supplied by the
+# front nginx; REQUEST_URI keeps the path and Apache retains the query string.
+RewriteCond %{HTTP:X-Forwarded-Proto} !https [OR]
+RewriteCond %{HTTP_HOST} ^www\.telvora\.ru$ [NC]
+RewriteRule ^ https://telvora.ru%{REQUEST_URI} [R=301,L,NE]
+
+# Canonical slash form for known frontend routes. Query strings are retained.
+RewriteRule ^televisions/?$ https://telvora.ru/catalog [R=301,L,NE]
+RewriteRule ^catalog/$ https://telvora.ru/catalog [R=301,L,NE]
+RewriteRule ^catalog/oled/$ https://telvora.ru/catalog/oled [R=301,L,NE]
+RewriteRule ^catalog/qled/$ https://telvora.ru/catalog/qled [R=301,L,NE]
+RewriteRule ^catalog/led/$ https://telvora.ru/catalog/led [R=301,L,NE]
+RewriteRule ^catalog/8k/$ https://telvora.ru/catalog/8k [R=301,L,NE]
+RewriteRule ^delivery/$ https://telvora.ru/delivery [R=301,L,NE]
+RewriteRule ^services/$ https://telvora.ru/services [R=301,L,NE]
+RewriteRule ^warranty/$ https://telvora.ru/warranty [R=301,L,NE]
+RewriteRule ^returns/$ https://telvora.ru/returns [R=301,L,NE]
+RewriteRule ^support/$ https://telvora.ru/support [R=301,L,NE]
+RewriteRule ^contacts/$ https://telvora.ru/contacts [R=301,L,NE]
+RewriteRule ^requisites/$ https://telvora.ru/requisites [R=301,L,NE]
+RewriteRule ^offer/$ https://telvora.ru/offer [R=301,L,NE]
+RewriteRule ^privacy/$ https://telvora.ru/privacy [R=301,L,NE]
+RewriteRule ^personal-data-consent/$ https://telvora.ru/personal-data-consent [R=301,L,NE]
+RewriteRule ^cookies/$ https://telvora.ru/cookies [R=301,L,NE]
+RewriteRule ^catalog/oled/lg-oled77c5rla/$ https://telvora.ru/catalog/oled/lg-oled77c5rla [R=301,L,NE]
+RewriteRule ^((?:checkout|admin|soundbars|accessories))/$ /$1 [R=301,L,NE]
+RewriteRule ^order-success/([^/]+)/$ /order-success/$1 [R=301,L,NE]
+
+# Known prerendered pages. Explicit rules run before DirectorySlash so a
+# directory-shaped URL serves its route HTML without an unwanted slash hop.
+RewriteRule ^$ index.html [END]
+RewriteRule ^catalog$ catalog/index.html [END]
+RewriteRule ^catalog/oled$ catalog/oled/index.html [END]
+RewriteRule ^catalog/qled$ catalog/qled/index.html [END]
+RewriteRule ^catalog/led$ catalog/led/index.html [END]
+RewriteRule ^catalog/8k$ catalog/8k/index.html [END]
+RewriteRule ^delivery$ delivery/index.html [END]
+RewriteRule ^services$ services/index.html [END]
+RewriteRule ^warranty$ warranty/index.html [END]
+RewriteRule ^returns$ returns/index.html [END]
+RewriteRule ^support$ support/index.html [END]
+RewriteRule ^contacts$ contacts/index.html [END]
+RewriteRule ^requisites$ requisites/index.html [END]
+RewriteRule ^offer$ offer/index.html [END]
+RewriteRule ^privacy$ privacy/index.html [END]
+RewriteRule ^personal-data-consent$ personal-data-consent/index.html [END]
+RewriteRule ^cookies$ cookies/index.html [END]
+RewriteRule ^catalog/oled/lg-oled77c5rla$ catalog/oled/lg-oled77c5rla/index.html [END]
+
+# Client-only routes are direct-loadable but never indexable. The dynamic
+# order number is not read or emitted by this static file.
+RewriteRule ^(?:checkout|admin|soundbars|accessories)$ client.html [END]
+RewriteRule ^order-success/[^/]+$ client.html [END]
+
+# Preserve all existing real files/directories: PHP APIs, uploads, assets,
+# robots.txt, sitemap.xml, favicon files and provider/security files.
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [END]
+
+# Unknown URL: set the real status first; Apache then renders this body via
+# ErrorDocument without changing the status to 200. /404.html is a real file,
+# so it is stopped by the physical-file rule above during its subrequest.
+RewriteRule ^ - [R=404,END]
+ErrorDocument 404 /404.html
