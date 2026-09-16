@@ -5,7 +5,8 @@ import { fetchProductBySlug } from '@/services/productService';
 
 export function useProduct(slug: string | undefined) {
   const snapshot = usePrerender();
-  const [product, setProduct] = useState<Product | null>(snapshot?.products.find(p => p.slug === slug) ?? null);
+  const snapshotProduct = snapshot?.products.find(p => p.slug === slug) ?? null;
+  const [product, setProduct] = useState<Product | null>(snapshotProduct);
   const [loading, setLoading] = useState(!snapshot?.products.some(p => p.slug === slug));
   const [error, setError] = useState<string | null>(null);
 
@@ -29,7 +30,9 @@ export function useProduct(slug: string | undefined) {
       })
       .catch(() => {
         if (!cancelled) {
-          setError('Не удалось загрузить товар');
+          // Keep the build-time active-product snapshot indexable if API revalidation fails.
+          if (!product && snapshotProduct) setProduct(snapshotProduct);
+          if (!product && !snapshotProduct) setError('\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0442\u043e\u0432\u0430\u0440');
           setLoading(false);
         }
       });

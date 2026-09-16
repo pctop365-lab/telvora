@@ -113,3 +113,22 @@ test('fresh API price replaces snapshot Offer; deactivation removes Product', as
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
   await expect(page.locator('script[type="application/ld+json"]')).toHaveCount(0);
 });
+
+test('active product remains indexable after hydration when API revalidation fails', async ({ page }) => {
+  await page.unroute('**/products.php**');
+  await page.route('**/products.php**', route => route.abort());
+  const raw = await page.request.get(productPath);
+  const rawHtml = await raw.text();
+  expect(raw.status()).toBe(200);
+  expect(rawHtml.match(/<meta data-rh="true" name="robots" content="([^"]+)"/s)?.[1]).toBe('index, follow');
+  expect(rawHtml.match(/<link data-rh="true" rel="canonical" href="([^"]+)"/s)?.[1]).toBe(`https://telvora.ru${productPath}`);
+  const response = await page.goto(productPath);
+  expect(response?.status()).toBe(200);
+  await expect(page.locator('html')).toHaveAttribute('data-react-ready', 'true');
+  await expect(page.locator('h1')).toHaveCount(1);
+  await expect(page.locator('meta[name="robots"]')).toHaveCount(1);
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'index, follow');
+  await expect(page.locator('meta[name="googlebot"]')).toHaveCount(0);
+  await expect(page.locator('link[rel="canonical"]')).toHaveCount(1);
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', `https://telvora.ru${productPath}`);
+});
