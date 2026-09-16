@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
     "test:browser": "playwright test",
     "build:seo": "node scripts/build-seo.mjs",
+    "seo:report": "node scripts/seo-release-report.mjs",
     "test:seo:raw": "node tests/seo_raw_test.mjs",
     "test:seo:physical": "node tests/seo_physical_routes_test.mjs",
     "test:seo:htaccess": "node tests/seo_htaccess_test.mjs"

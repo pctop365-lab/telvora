@@ -1,5 +1,17 @@
 # SEO Stage 2 deployment-readiness package
 
+## Phase 0/1 build-only automation
+
+The repository contains `.github/workflows/seo-release.yml`. It is intentionally a build-only workflow: it never connects to REG.RU, never deploys files and requires no GitHub Secrets.
+
+Run it manually in GitHub: **Actions → SEO Release (build only) → Run workflow**. The workflow checks out the exact commit, installs Node 20 dependencies, fetches only the two public read-only endpoints used by `build:seo`, runs the SEO build and contract/raw/physical/htaccess/hydration tests, scans release inputs for obvious secrets, and uploads an immutable artifact named with the commit SHA and run number.
+
+The artifact can be downloaded from the completed workflow run. It contains `dist/`, the proposed `.htaccess`, the pre-activation layout check, generated route manifests and release metadata. It is preparation for a later controlled deployment; downloading it does not change production.
+
+`npm run seo:report` writes `seo-artifacts/seo-release-report.json` and prints active product count, product routes, added/removed/changed routes, snapshot hash, prerender inventory and sitemap URL count. Pass `--baseline <previous-report.json>` (or set `SEO_BASELINE`) to obtain a route/hash diff. Without a baseline it reports the current inventory and does not fail.
+
+The workflow intentionally has no enabled schedule in Phase 1. A schedule can be added later as a fallback after the build-only process is trusted.
+
 This directory is preparation only. It does not contain a complete vhost and must not replace an ISPmanager/REG.RU server configuration.
 
 ## Current local evidence
