@@ -38,6 +38,7 @@ jobs:
         run: |
           npm run test:seo:physical
           npm run test:seo:htaccess
+          npm run test:seo:images
           node tests/seo_contract_test.mjs
           node tests/seo_release_report_test.mjs
 
