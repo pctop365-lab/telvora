@@ -34,9 +34,8 @@ jobs:
       - name: Build SEO release from public read-only APIs
         run: npm run build:seo
 
-      - name: Validate generated release
+      - name: Validate generated release (filesystem and contracts)
         run: |
-          npm run test:seo:raw
           npm run test:seo:physical
           npm run test:seo:htaccess
           node tests/seo_contract_test.mjs
@@ -46,6 +45,11 @@ jobs:
         env:
           PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright
         run: npx playwright install --with-deps chromium
+
+      - name: Validate raw generated HTML
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright
+        run: npm run test:seo:raw
 
       - name: Run SEO hydration/browser checks
         env:

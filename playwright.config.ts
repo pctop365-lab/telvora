@@ -8,7 +8,9 @@ export default defineConfig({
     baseURL: 'http://127.0.0.1:4178',
     headless: true,
     trace: 'retain-on-failure',
-    launchOptions: { executablePath: 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe' },
+    launchOptions: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE
+      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE }
+      : undefined,
   },
   webServer: {
     command: 'npm.cmd run dev -- --host 127.0.0.1 --port 4178',
