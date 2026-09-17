@@ -126,8 +126,8 @@ const boundary = await fixture(); result = run(['--archive', archive, '--staging
 if (process.platform !== 'win32') {
   assert.equal(spawnSync(bash, ['-lc', 'command -v flock'], { encoding: 'utf8' }).status, 0, 'Linux deployment tests require flock');
   const locked = await fixture(); const lock = join(dirname(locked.staging), '.telvora-seo-deploy.lock'); const holder = spawn(bash, ['-lc', `exec 9>"${posix(lock)}"; flock -n 9 -c 'sleep 3'`], { stdio: 'ignore' });
-  const beforeLocked = await treeSnapshot(locked.doc); await new Promise(resolve => setTimeout(resolve, 400)); result = run(await argsFor(locked, ['--dry-run'])); assert.notEqual(result.status, 0, 'concurrent lock was not rejected'); await assertTreeRestored(locked.doc, beforeLocked, 'rejected concurrent run mutated DocumentRoot');
-  await new Promise(resolve => holder.on('close', resolve)); await rm(locked.base, { recursive: true, force: true });
+  const beforeLocked = await treeSnapshot(locked.doc); await new Promise(resolve => setTimeout(resolve, 400)); result = run(await argsFor(locked, ['--dry-run'])); assert.notEqual(result.status, 0, 'concurrent lock was not rejected'); await assertTreeRestored(locked.doc, beforeLocked, 'rejected concurrent run mutated DocumentRoot'); result = run(['--rollback', join(locked.backups, 'not-created'), '--document-root', locked.doc, '--staging-root', locked.staging, '--backup-root', locked.backups]); assert.notEqual(result.status, 0, 'manual rollback was not rejected while deployment lock was held');
+  await new Promise(resolve => holder.on('close', resolve)); result = run(await argsFor(locked, ['--dry-run'])); assert.equal(result.status, 0, 'lock was not released after deployment process exited'); await rm(locked.base, { recursive: true, force: true });
 } else {
   console.log('seo_deploy_engine_test: flock concurrency test skipped (local shell has no flock; Linux CI exercises it)');
 }

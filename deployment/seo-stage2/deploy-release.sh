@@ -23,11 +23,11 @@ else
 fi
 [ "$document_root" != / ] || die 'resolved DocumentRoot=/ forbidden'; [ "$staging_root" != "$document_root" ] || die 'resolved staging equals DocumentRoot'; [ "$backup_root" != "$document_root" ] || die 'resolved backup equals DocumentRoot'
 mkdir -p "$staging_root" "$backup_root"
-lock_file="${TELVORA_SEO_LOCK_FILE:-$(dirname "$staging_root")/.telvora-seo-deploy.lock}"; mkdir -p "$(dirname "$lock_file")"; exec 9>"$lock_file"
-if command -v flock >/dev/null 2>&1; then flock -n 9 || die 'another deployment holds the lock'; fi
-if [ -n "$rollback_dir" ]; then
-  [ -f "$rollback_dir/backup-manifest.json" ] || die 'backup manifest missing'
-  "$PYTHON_BIN" - "$rollback_dir" "$document_root" <<'PY'
+perform_rollback(){
+  local rollback_path="$1"
+  [ -f "$rollback_path/backup-manifest.json" ] || die 'backup manifest missing'
+  [ "${TELVORA_DEPLOY_DEBUG:-0}" != 1 ] || echo "ROLLBACK begin backup=$rollback_path" >&2
+  "$PYTHON_BIN" - "$rollback_path" "$document_root" <<'PY'
 import json,os,pathlib,shutil,sys
 b=pathlib.Path(sys.argv[1]).resolve(); r=pathlib.Path(sys.argv[2]).resolve(); d=json.loads((b/'backup-manifest.json').read_text()); root=r
 for x in d['files']:
@@ -40,18 +40,28 @@ for x in d['files']:
  if x['action'] in ('replace','remove') and x['existedBefore']:
   if not s or not s.is_file(): raise SystemExit('missing backup '+x['restoreTarget'])
   t.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(s,t)
- elif x['action'] == 'add' and not x['existedBefore'] and (t.is_file() or t.is_symlink()):
-  if os.environ.get('TELVORA_DEPLOY_DEBUG') == '1': print('ROLLBACK add remove target=%s existsBefore=yes' % t, file=sys.stderr)
-  if t.is_dir(): raise SystemExit('unexpected directory '+str(t))
-  t.unlink()
-  if t.exists() or t.is_symlink(): raise SystemExit('ADD rollback target still exists '+str(t))
-  if os.environ.get('TELVORA_DEPLOY_DEBUG') == '1': print('ROLLBACK add target exists after remove=no', file=sys.stderr)
+ elif x['action'] == 'add' and not x['existedBefore']:
+  if t.is_file() or t.is_symlink():
+   if os.environ.get('TELVORA_DEPLOY_DEBUG') == '1': print('ROLLBACK add remove target=%s existsBefore=yes' % t, file=sys.stderr)
+   if t.is_dir(): raise SystemExit('unexpected directory '+str(t))
+   t.unlink()
+   if t.exists() or t.is_symlink(): raise SystemExit('ADD rollback target still exists '+str(t))
+   if os.environ.get('TELVORA_DEPLOY_DEBUG') == '1': print('ROLLBACK add target exists after remove=no', file=sys.stderr)
  elif x['action'] not in ('add','replace','remove'): raise SystemExit('unsupported rollback action '+str(x['action']))
 for rel in sorted(d.get('createdDirectories', []), key=lambda x: (x.count('/'), x), reverse=True):
  p=r/rel
  if p.is_dir() and not any(p.iterdir()): p.rmdir()
 print('rollback restored',len(d['files']),'managed files')
 PY
+}
+lock_file="${TELVORA_SEO_LOCK_FILE:-$(dirname "$staging_root")/.telvora-seo-deploy.lock}"; mkdir -p "$(dirname "$lock_file")"; exec 9>"$lock_file"
+if command -v flock >/dev/null 2>&1; then
+  [ "${TELVORA_DEPLOY_DEBUG:-0}" != 1 ] || echo "LOCK acquire mode=$([ -n "$rollback_dir" ] && echo rollback || echo deploy) file=$lock_file" >&2
+  flock -n 9 || { [ "${TELVORA_DEPLOY_DEBUG:-0}" != 1 ] || echo "LOCK busy mode=$([ -n "$rollback_dir" ] && echo rollback || echo deploy)" >&2; die 'another deployment holds the lock'; }
+  [ "${TELVORA_DEPLOY_DEBUG:-0}" != 1 ] || echo "LOCK acquired mode=$([ -n "$rollback_dir" ] && echo rollback || echo deploy)" >&2
+fi
+if [ -n "$rollback_dir" ]; then
+  perform_rollback "$rollback_dir"
   exit 0
 fi
 [ -n "$archive" ] || die '--archive required'; [ -f "$archive" ] || die 'archive missing'
@@ -103,7 +113,7 @@ for x in d['backup']:
 json.dump({'schemaVersion':1,'releaseId':d['releaseId'],'createdDirectories':d.get('createdDirectories',[]),'files':records},open(b/'backup-manifest.json','w'),indent=2); open(b/'backup-manifest.json','a').write('\n')
 PY
 activation_started=1
-rollback(){ echo 'activation failed; rollback' >&2; "$0" --rollback "$backup_dir" --document-root "$document_root" --staging-root "$staging_root" --backup-root "$backup_root" || { echo "ROLLBACK FAILED: $backup_dir" >&2; exit 2; }; }
+rollback(){ echo 'activation failed; automatic rollback' >&2; perform_rollback "$backup_dir" || { echo "AUTOMATIC ROLLBACK FAILED: $backup_dir" >&2; exit 2; }; }
 trap rollback ERR
 activate(){ p="$1"; [ "$p" = .htaccess ] && src="$stage/production.htaccess" || src="$stage/payload/$p"; dest="$document_root/$p"; case "$p" in /*|../*|*/../*|uploads/*|pdf/*|telegram*|runtime*|logs*|locks*|vendor*|*.php|public_contacts.json|telvora_secrets.php|.env) die "forbidden destination $p";; esac; [ ! -L "$dest" ] || die "symlink destination $p"; mkdir -p "$(dirname "$dest")"; tmp="$dest.telvora-new-$release_id"; rm -f "$tmp"; cp "$src" "$tmp"; mv -f "$tmp" "$dest"; }
 failpoint(){ [ "$failure_point" = "$1" ] && { echo "injected failure: $1" >&2; return 1; } || return 0; }
