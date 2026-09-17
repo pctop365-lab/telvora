@@ -32,12 +32,13 @@ import json,pathlib,shutil,sys
 b=pathlib.Path(sys.argv[1]).resolve(); r=pathlib.Path(sys.argv[2]).resolve(); d=json.loads((b/'backup-manifest.json').read_text())
 for x in d['files']:
  t=r/x['restoreTarget']; s=b/x['backupLocation'] if x.get('backupLocation') else None
- if x['existedBefore']:
+ if x['action'] in ('replace','remove') and x['existedBefore']:
   if not s or not s.is_file(): raise SystemExit('missing backup '+x['restoreTarget'])
   t.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(s,t)
- elif t.exists() or t.is_symlink():
+ elif x['action'] == 'add' and not x['existedBefore'] and (t.is_file() or t.is_symlink()):
   if t.is_dir(): raise SystemExit('unexpected directory '+str(t))
   t.unlink()
+ elif x['action'] not in ('add','replace','remove'): raise SystemExit('unsupported rollback action '+str(x['action']))
 for rel in sorted(d.get('createdDirectories', []), key=lambda x: (x.count('/'), x), reverse=True):
  p=r/rel
  if p.is_dir() and not any(p.iterdir()): p.rmdir()
@@ -79,6 +80,7 @@ for p in add+replace:
  q=dst(p).parent
  while q != r and not q.exists(): created_dirs.add(q.relative_to(r).as_posix()); q=q.parent
 backup=[{'path':p,'existedBefore':dst(p).is_file(),'previousSha256':sha(dst(p)) if dst(p).is_file() else None,'action':'add' if p in add else ('replace' if p in replace else 'remove'),'restoreTarget':p,'backupLocation':f'files/{p}' if dst(p).is_file() else None} for p in sorted(set(add+replace+remove))]
+if {x['path'] for x in backup} != set(add+replace+remove): raise SystemExit('rollback journal does not cover every mutation')
 json.dump({'schemaVersion':1,'releaseId':m['releaseId'],'commitSha':m['commitSha'],'snapshotHash':m['snapshotHash'],'add':add,'replace':replace,'remove':remove,'unchanged':unchanged,'createdDirectories':sorted(created_dirs),'backup':backup,'activationOrder':['assets/images','_prerender','client.html/404.html','index.html','robots.txt/sitemap.xml/other static','.htaccess']},open(o,'w'),indent=2); open(o,'a').write('\n')
 PY
 echo "activation plan: $plan"; cat "$plan"; [ "$dry_run" -eq 1 ] && exit 0
