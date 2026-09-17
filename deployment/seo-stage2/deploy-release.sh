@@ -38,6 +38,9 @@ for x in d['files']:
  elif t.exists() or t.is_symlink():
   if t.is_dir(): raise SystemExit('unexpected directory '+str(t))
   t.unlink()
+for rel in sorted(d.get('createdDirectories', []), key=lambda x: (x.count('/'), x), reverse=True):
+ p=r/rel
+ if p.is_dir() and not any(p.iterdir()): p.rmdir()
 print('rollback restored',len(d['files']),'managed files')
 PY
   exit 0
@@ -71,8 +74,12 @@ a=pathlib.Path(os.environ.get('TELVORA_ACTIVE_RELEASE',str(s.parent/'active-rele
 if not old:
  previous|={p.name for p in r.iterdir() if p.is_file() and p.name in m['managedRootFiles']}; previous|={f'_prerender/{p.name}' for p in (r/'_prerender').glob('*') if p.is_file()} if (r/'_prerender').is_dir() else set()
 new=sorted(allowed); add=[p for p in new if not dst(p).is_file()]; replace=[p for p in new if dst(p).is_file() and sha(dst(p))!=sha(src(p))]; unchanged=[p for p in new if dst(p).is_file() and sha(dst(p))==sha(src(p))]; remove=[p for p in sorted(previous|{'.htaccess'}) if p not in new and p.startswith('_prerender/') and dst(p).is_file()]
+created_dirs=set()
+for p in add+replace:
+ q=dst(p).parent
+ while q != r and not q.exists(): created_dirs.add(q.relative_to(r).as_posix()); q=q.parent
 backup=[{'path':p,'existedBefore':dst(p).is_file(),'previousSha256':sha(dst(p)) if dst(p).is_file() else None,'action':'add' if p in add else ('replace' if p in replace else 'remove'),'restoreTarget':p,'backupLocation':f'files/{p}' if dst(p).is_file() else None} for p in sorted(set(add+replace+remove))]
-json.dump({'schemaVersion':1,'releaseId':m['releaseId'],'commitSha':m['commitSha'],'snapshotHash':m['snapshotHash'],'add':add,'replace':replace,'remove':remove,'unchanged':unchanged,'backup':backup,'activationOrder':['assets/images','_prerender','client.html/404.html','index.html','robots.txt/sitemap.xml/other static','.htaccess']},open(o,'w'),indent=2); open(o,'a').write('\n')
+json.dump({'schemaVersion':1,'releaseId':m['releaseId'],'commitSha':m['commitSha'],'snapshotHash':m['snapshotHash'],'add':add,'replace':replace,'remove':remove,'unchanged':unchanged,'createdDirectories':sorted(created_dirs),'backup':backup,'activationOrder':['assets/images','_prerender','client.html/404.html','index.html','robots.txt/sitemap.xml/other static','.htaccess']},open(o,'w'),indent=2); open(o,'a').write('\n')
 PY
 echo "activation plan: $plan"; cat "$plan"; [ "$dry_run" -eq 1 ] && exit 0
 backup_dir="$backup_root/$(date -u +%Y%m%dT%H%M%SZ)-$release_id"; mkdir -p "$backup_dir/files"; cp "$plan" "$backup_dir/activation-plan.json"
@@ -83,7 +90,7 @@ for x in d['backup']:
  t=r/x['restoreTarget']; s=b/x['backupLocation'] if x['backupLocation'] else None
  if t.is_file(): s.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(t,s)
  records.append(x)
-json.dump({'schemaVersion':1,'releaseId':d['releaseId'],'files':records},open(b/'backup-manifest.json','w'),indent=2); open(b/'backup-manifest.json','a').write('\n')
+json.dump({'schemaVersion':1,'releaseId':d['releaseId'],'createdDirectories':d.get('createdDirectories',[]),'files':records},open(b/'backup-manifest.json','w'),indent=2); open(b/'backup-manifest.json','a').write('\n')
 PY
 activation_started=1
 rollback(){ echo 'activation failed; rollback' >&2; "$0" --rollback "$backup_dir" --document-root "$document_root" --staging-root "$staging_root" --backup-root "$backup_root" || { echo "ROLLBACK FAILED: $backup_dir" >&2; exit 2; }; }

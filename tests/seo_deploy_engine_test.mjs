@@ -38,6 +38,27 @@ async function fixture() {
   await writeFile(join(doc, 'uploads', 'customer-file'), 'customer\n');
   return { base, doc, staging, backups };
 }
+async function treeSnapshot(directory) {
+  const snapshot = new Map();
+  async function walk(dir, prefix = '') {
+    for (const entry of (await readdir(dir, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name; const full = join(dir, entry.name);
+      if (entry.isDirectory()) { snapshot.set(rel, { type: 'directory', mode: (await stat(full)).mode & 0o777 }); await walk(full, rel); }
+      else if (entry.isFile()) snapshot.set(rel, { type: 'file', mode: (await stat(full)).mode & 0o777, sha256: createHash('sha256').update(await readFile(full)).digest('hex') });
+      else snapshot.set(rel, { type: entry.isSymbolicLink() ? 'symlink' : 'other', mode: (await stat(full)).mode & 0o777 });
+    }
+  }
+  await walk(directory); return snapshot;
+}
+function snapshotDiff(before, after) {
+  const added = [], removed = [], changed = [], typeChanged = [], modeChanged = [];
+  for (const path of new Set([...before.keys(), ...after.keys()])) {
+    const left = before.get(path), right = after.get(path);
+    if (!left) added.push(path); else if (!right) removed.push(path);
+    else { if (left.type !== right.type) typeChanged.push(path); else if (left.type === 'file' && left.sha256 !== right.sha256) changed.push(path); if (left.mode !== right.mode) modeChanged.push(path); }
+  }
+  return { added, removed, changed, typeChanged, modeChanged };
+}
 async function treeHash(directory) {
   const hash = createHash('sha256');
   async function walk(dir, prefix = '') {
@@ -47,6 +68,11 @@ async function treeHash(directory) {
     }
   }
   await walk(directory); return hash.digest('hex');
+}
+async function assertTreeRestored(directory, before, message) {
+  const after = await treeSnapshot(directory); const diff = snapshotDiff(before, after);
+  const contract = { added: diff.added, removed: diff.removed, changed: diff.changed, typeChanged: diff.typeChanged };
+  assert.deepEqual(contract, { added: [], removed: [], changed: [], typeChanged: [] }, `${message}: ${JSON.stringify(diff)}`);
 }
 function run(args, env = {}) {
   // Git Bash is used only for local fixture execution on Windows.
@@ -66,7 +92,7 @@ assert.match(result.stdout, /activation plan/);
 await rm(dry.base, { recursive: true, force: true });
 
 const active = await fixture();
-const beforeActive = await treeHash(active.doc);
+const beforeActive = await treeSnapshot(active.doc);
 result = run(await argsFor(active)); assert.equal(result.status, 0, result.stderr);
 assert.ok(await stat(join(active.doc, '_prerender', 'product-lg-oled77c5rla.html')));
 assert.ok(await stat(join(active.staging, 'active-release.json')));
@@ -78,15 +104,15 @@ for (const file of ['assets/unmanaged.js', 'images/unmanaged.png', 'products.php
 const backup = (await readdir(active.backups)).find(name => name !== '.telvora-seo-deploy.lock');
 assert.ok(backup, 'backup directory missing');
 result = run(['--rollback', join(active.backups, backup), '--document-root', active.doc, '--staging-root', active.staging, '--backup-root', active.backups]); assert.equal(result.status, 0, result.stderr);
-assert.equal(await treeHash(active.doc), beforeActive, 'rollback did not restore fixture byte-for-byte');
+await assertTreeRestored(active.doc, beforeActive, 'rollback did not restore fixture');
 await rm(active.base, { recursive: true, force: true });
 
 for (const point of ['assets', 'prerender', 'root', 'htaccess']) {
-  const f = await fixture(); const before = await treeHash(f.doc); result = run(await argsFor(f, ['--failure-point', point]), { TELVORA_DEPLOY_TEST_MODE: '1' });
-  assert.notEqual(result.status, 0, `${point} failure injection unexpectedly passed`); assert.equal(await treeHash(f.doc), before, `${point} rollback did not restore fixture`); await assert.rejects(stat(join(f.staging, 'active-release.json'))); await rm(f.base, { recursive: true, force: true });
+  const f = await fixture(); const before = await treeSnapshot(f.doc); result = run(await argsFor(f, ['--failure-point', point]), { TELVORA_DEPLOY_TEST_MODE: '1' });
+  assert.notEqual(result.status, 0, `${point} failure injection unexpectedly passed`); await assertTreeRestored(f.doc, before, `${point} rollback did not restore fixture`); await assert.rejects(stat(join(f.staging, 'active-release.json'))); await rm(f.base, { recursive: true, force: true });
 }
-const protectedFailure = await fixture(); const protectedBefore = await treeHash(protectedFailure.doc); result = run(await argsFor(protectedFailure, ['--failure-point', 'root']));
-assert.notEqual(result.status, 0, 'failure injection was accepted without test mode'); assert.equal(await treeHash(protectedFailure.doc), protectedBefore, 'test-only failure point mutated DocumentRoot'); await assert.rejects(stat(join(protectedFailure.staging, 'active-release.json'))); await rm(protectedFailure.base, { recursive: true, force: true });
+const protectedFailure = await fixture(); const protectedBefore = await treeSnapshot(protectedFailure.doc); result = run(await argsFor(protectedFailure, ['--failure-point', 'root']));
+assert.notEqual(result.status, 0, 'failure injection was accepted without test mode'); await assertTreeRestored(protectedFailure.doc, protectedBefore, 'test-only failure point mutated DocumentRoot'); await assert.rejects(stat(join(protectedFailure.staging, 'active-release.json'))); await rm(protectedFailure.base, { recursive: true, force: true });
 
 const invalid = await mkdtemp(join(tmpdir(), 'telvora-invalid-')); const badArchive = join(invalid, 'bad.tar.gz'); await writeFile(badArchive, 'not an archive');
 const bad = await fixture(); result = run(['--archive', badArchive, '--staging-root', bad.staging, '--document-root', bad.doc, '--backup-root', bad.backups]); assert.notEqual(result.status, 0); await rm(invalid, { recursive: true, force: true }); await rm(bad.base, { recursive: true, force: true });
@@ -98,7 +124,7 @@ const boundary = await fixture(); result = run(['--archive', archive, '--staging
 if (process.platform !== 'win32') {
   assert.equal(spawnSync(bash, ['-lc', 'command -v flock'], { encoding: 'utf8' }).status, 0, 'Linux deployment tests require flock');
   const locked = await fixture(); const lock = join(dirname(locked.staging), '.telvora-seo-deploy.lock'); const holder = spawn(bash, ['-lc', `exec 9>"${posix(lock)}"; flock -n 9 -c 'sleep 3'`], { stdio: 'ignore' });
-  const beforeLocked = await treeHash(locked.doc); await new Promise(resolve => setTimeout(resolve, 400)); result = run(await argsFor(locked, ['--dry-run'])); assert.notEqual(result.status, 0, 'concurrent lock was not rejected'); assert.equal(await treeHash(locked.doc), beforeLocked, 'rejected concurrent run mutated DocumentRoot');
+  const beforeLocked = await treeSnapshot(locked.doc); await new Promise(resolve => setTimeout(resolve, 400)); result = run(await argsFor(locked, ['--dry-run'])); assert.notEqual(result.status, 0, 'concurrent lock was not rejected'); await assertTreeRestored(locked.doc, beforeLocked, 'rejected concurrent run mutated DocumentRoot');
   await new Promise(resolve => holder.on('close', resolve)); await rm(locked.base, { recursive: true, force: true });
 } else {
   console.log('seo_deploy_engine_test: flock concurrency test skipped (local shell has no flock; Linux CI exercises it)');
