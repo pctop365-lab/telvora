@@ -125,4 +125,5 @@ read_invoice.py
 # Local SEO build and release verification output
 /.seo-build/
 /seo-artifacts/
+/seo-release/
 /test-results/

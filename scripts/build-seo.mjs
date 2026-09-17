@@ -3,6 +3,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { publicRoutes, clientRoutes } from './seo-routes.mjs';
 import { downloadProductImages } from './seo-product-images.mjs';
+import { generateProductionHtaccess } from './seo-routing.mjs';
 
 // Only anonymous, read-only public endpoints. Never load PHP config or database secrets.
 async function getPublic(url) {
@@ -76,5 +77,6 @@ const nginx = routes.map(p => `location = ${p} { try_files ${p === '/' ? '/index
 await writeFile('seo-artifacts/routes.nginx.conf', `${nginx}\n${clientRoutes.map(p => `location = ${p} { try_files /client.html =404; }`).join('\n')}\nlocation ~ ^/order-success/[^/]+$ { try_files /client.html =404; }\nlocation = /televisions { return 301 https://telvora.ru/catalog$is_args$args; }\nlocation ^~ /_prerender/ { return 404; }\nlocation / { return 404; }\nerror_page 404 /404.html;\nlocation = /404.html { internal; }\nlocation = /client.html { internal; }\n`);
 const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 await writeFile('seo-artifacts/routes.apache.conf', `Options -MultiViews\nRewriteEngine On\nRewriteRule ^televisions/?$ https://telvora.ru/catalog [R=301,L,NE]\n${routes.filter(p => p !== '/').map(p => `RewriteRule ^${escape(p.slice(1))}/$ https://telvora.ru${p} [R=301,L,NE]`).join('\n')}\nRewriteCond %{THE_REQUEST} \\s/+_prerender(?:[/\\s?]) [NC]\nRewriteRule ^_prerender(?:/|$) - [R=404,END]\n${routes.map(p => `RewriteRule ^${p === '/' ? '$ index.html' : escape(p.slice(1)) + '$ ' + (p === '/' ? 'index.html' : prerenderFiles[p].slice(1))} [END]`).join('\n')}\nRewriteRule ^(?:${clientRoutes.map(p => escape(p.slice(1))).join('|')}|order-success/[^/]+)$ client.html [END]\nRewriteCond %{REQUEST_FILENAME} -f [OR]\nRewriteCond %{REQUEST_FILENAME} -d\nRewriteRule ^ - [END]\nRewriteRule ^ - [R=404,END]\nErrorDocument 404 /404.html\n`);
+await writeFile('seo-artifacts/production.htaccess', generateProductionHtaccess({ routes, productRoutes, prerenderFiles }));
 console.log(`SEO build: ${routes.length} routes, ${products.length} active products; snapshot ${snapshotHash}`);
 await import('./seo-release-inventory.mjs');

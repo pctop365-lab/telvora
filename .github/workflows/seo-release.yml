@@ -39,6 +39,7 @@ jobs:
           npm run test:seo:physical
           npm run test:seo:htaccess
           npm run test:seo:images
+          npm run test:seo:package
           node tests/seo_contract_test.mjs
           node tests/seo_release_report_test.mjs
 
@@ -63,15 +64,32 @@ jobs:
       - name: Generate release report
         run: npm run seo:report
 
+      - name: Build immutable deployment package (no deploy)
+        run: |
+          npm run seo:package
+          npm run seo:validate-package
+
+      - name: Validate extracted immutable package on Linux (no deploy)
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_dir="$(mktemp -d)"
+          trap 'rm -rf "$package_dir"' EXIT
+          archive="$(find seo-artifacts -maxdepth 1 -type f -name 'telvora-seo-release-*.tar.gz' -print | sort | head -n 1)"
+          test -n "$archive"
+          tar -xzf "$archive" -C "$package_dir"
+          test -f "$package_dir/tools/pre-activation-layout-check.sh"
+          bash "$package_dir/tools/pre-activation-layout-check.sh" "$package_dir"
+
       - name: Fail on obvious secret or private-config material
         shell: bash
         run: |
           set -euo pipefail
-          if find dist deployment/seo-stage2 seo-artifacts -type f \( -name '.env' -o -name 'telvora_secrets.php' -o -name '*credential*' -o -name '*private*' \) -print -quit | grep -q .; then
+          if find dist deployment/seo-stage2 seo-artifacts seo-release -type f \( -name '.env' -o -name 'telvora_secrets.php' -o -name '*credential*' -o -name '*private*' \) -print -quit | grep -q .; then
             echo 'Forbidden secret/private file found in release inputs' >&2
             exit 1
           fi
-          if rg -n -i --glob '!*.map' 'BEGIN (RSA|EC|OPENSSH) PRIVATE KEY|DB_PASSWORD|TELEGRAM_BOT_TOKEN|AWS_SECRET_ACCESS_KEY' dist deployment/seo-stage2 seo-artifacts; then
+          if rg -n -i --glob '!*.map' 'BEGIN (RSA|EC|OPENSSH) PRIVATE KEY|DB_PASSWORD|TELEGRAM_BOT_TOKEN|AWS_SECRET_ACCESS_KEY' dist deployment/seo-stage2 seo-artifacts seo-release; then
             echo 'Obvious secret material found in release inputs' >&2
             exit 1
           fi
@@ -83,11 +101,5 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           path: |
-            dist/
-            deployment/seo-stage2/production.htaccess.final
-            deployment/seo-stage2/pre-activation-layout-check.sh
-            seo-artifacts/routes.json
-            seo-artifacts/routes.nginx.conf
-            seo-artifacts/routes.apache.conf
-            seo-artifacts/release-inventory.json
+            seo-artifacts/telvora-seo-release-*.tar.gz
             seo-artifacts/seo-release-report.json

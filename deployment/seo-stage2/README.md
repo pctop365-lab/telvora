@@ -12,6 +12,69 @@ The artifact can be downloaded from the completed workflow run. It contains `dis
 
 The workflow intentionally has no enabled schedule in Phase 1. A schedule can be added later as a fallback after the build-only process is trusted.
 
+## Phase 2.1 local release package
+
+Phase 2.1 remains build-only. It does not connect to REG.RU and does not deploy.
+
+Run:
+
+```text
+npm run seo:package
+npm run seo:validate-package
+```
+
+The package is written to `seo-release/` and archived as
+`seo-artifacts/telvora-seo-release-<release-id>.tar.gz`. Its structure is:
+
+```text
+payload/
+  index.html, client.html, 404.html
+  robots.txt, sitemap.xml
+  favicon/logo files
+  assets/
+  images/
+  _prerender/
+production.htaccess
+tools/pre-activation-layout-check.sh
+deployment-manifest.json
+snapshot.json
+checksums.sha256
+```
+
+The generated `production.htaccess` is rebuilt from the same route inventory as
+`build:seo`. It is not the static template
+`deployment/seo-stage2/production.htaccess.final`. New active products are
+therefore added automatically and removed products disappear from the generated
+route rules.
+
+The production allowlist is limited to the listed static root files,
+`assets/`, `images/`, `_prerender/` and the generated `.htaccess`. PHP,
+`uploads/`, PDF, Telegram, runtime, logs, secrets, database configuration,
+customer/order data and unrelated files are forbidden. The test-only
+`seo-artifacts/images/` cache is never packaged.
+
+`deployment-manifest.json` records the schema, release ID, commit, timestamp,
+snapshot hash, route/product counts, route-to-prerender mapping, managed paths
+and SHA-256 inventory. `checksums.sha256` is sorted and covers every package
+file except itself. The validator rejects checksum changes, missing/extra files,
+symlinks, unsafe paths, PHP or other forbidden content, missing prerenders,
+incorrect sitemap metadata and incomplete noindex/indexability markers.
+
+The manifest's `managedFiles` list is sufficient for a future deployment to
+calculate add/replace/remove sets. Deactivated product prerenders must be
+removed during a future controlled activation; Phase 2.1 performs no deletion
+on production.
+
+The package carries its own `tools/pre-activation-layout-check.sh` outside
+`payload/`. Its checksum is part of the package integrity set, so a future
+deployment validates the exact tool shipped with the immutable release rather
+than an arbitrary script from a newer checkout. The tool is never copied to
+DocumentRoot.
+
+The GitHub Actions build-only workflow now runs package creation and validation
+and uploads only the immutable package archive plus the release report. It still
+never uses SSH, credentials or production deployment.
+
 This directory is preparation only. It does not contain a complete vhost and must not replace an ISPmanager/REG.RU server configuration.
 
 ## Current local evidence

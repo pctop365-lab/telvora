@@ -15,7 +15,10 @@
     "test:seo:raw": "node tests/seo_raw_test.mjs",
     "test:seo:images": "node tests/seo_images_test.mjs",
     "test:seo:physical": "node tests/seo_physical_routes_test.mjs",
-    "test:seo:htaccess": "node tests/seo_htaccess_test.mjs"
+    "test:seo:htaccess": "node tests/seo_htaccess_test.mjs",
+    "test:seo:package": "node tests/seo_package_test.mjs",
+    "seo:package": "node scripts/seo-package.mjs",
+    "seo:validate-package": "node scripts/seo-validate-package.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.446.0",
