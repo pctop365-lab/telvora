@@ -28,16 +28,24 @@ if command -v flock >/dev/null 2>&1; then flock -n 9 || die 'another deployment 
 if [ -n "$rollback_dir" ]; then
   [ -f "$rollback_dir/backup-manifest.json" ] || die 'backup manifest missing'
   "$PYTHON_BIN" - "$rollback_dir" "$document_root" <<'PY'
-import json,pathlib,shutil,sys
-b=pathlib.Path(sys.argv[1]).resolve(); r=pathlib.Path(sys.argv[2]).resolve(); d=json.loads((b/'backup-manifest.json').read_text())
+import json,os,pathlib,shutil,sys
+b=pathlib.Path(sys.argv[1]).resolve(); r=pathlib.Path(sys.argv[2]).resolve(); d=json.loads((b/'backup-manifest.json').read_text()); root=r
 for x in d['files']:
- t=r/x['restoreTarget']; s=b/x['backupLocation'] if x.get('backupLocation') else None
+ rel=x['restoreTarget']; pp=pathlib.PurePosixPath(rel)
+ if pp.is_absolute() or '..' in pp.parts or '\\' in rel: raise SystemExit('unsafe rollback target '+rel)
+ t=r/rel; resolved=t.resolve(strict=False)
+ if resolved != root and root not in resolved.parents: raise SystemExit('rollback target escapes DocumentRoot '+rel)
+ s=b/x['backupLocation'] if x.get('backupLocation') else None
+ if os.environ.get('TELVORA_DEPLOY_DEBUG') == '1': print('ROLLBACK record rel=%s action=%s existedBefore=%s restoreTarget=%s' % (x.get('path'), x.get('action'), x.get('existedBefore'), x.get('restoreTarget')), file=sys.stderr)
  if x['action'] in ('replace','remove') and x['existedBefore']:
   if not s or not s.is_file(): raise SystemExit('missing backup '+x['restoreTarget'])
   t.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(s,t)
  elif x['action'] == 'add' and not x['existedBefore'] and (t.is_file() or t.is_symlink()):
+  if os.environ.get('TELVORA_DEPLOY_DEBUG') == '1': print('ROLLBACK add remove target=%s existsBefore=yes' % t, file=sys.stderr)
   if t.is_dir(): raise SystemExit('unexpected directory '+str(t))
   t.unlink()
+  if t.exists() or t.is_symlink(): raise SystemExit('ADD rollback target still exists '+str(t))
+  if os.environ.get('TELVORA_DEPLOY_DEBUG') == '1': print('ROLLBACK add target exists after remove=no', file=sys.stderr)
  elif x['action'] not in ('add','replace','remove'): raise SystemExit('unsupported rollback action '+str(x['action']))
 for rel in sorted(d.get('createdDirectories', []), key=lambda x: (x.count('/'), x), reverse=True):
  p=r/rel
