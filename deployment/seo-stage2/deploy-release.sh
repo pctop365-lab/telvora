@@ -12,6 +12,9 @@ while [ "$#" -gt 0 ]; do
 done
 die(){ echo "deploy-release: FAIL: $*" >&2; exit 1; }
 [ -z "$failure_point" ] || [ "${TELVORA_DEPLOY_TEST_MODE:-0}" = 1 ] || die '--failure-point is test-only (set TELVORA_DEPLOY_TEST_MODE=1)'
+[ -z "${TELVORA_SEO_LOCK_FILE:-}" ] || [ "${TELVORA_DEPLOY_TEST_MODE:-0}" = 1 ] || die 'TELVORA_SEO_LOCK_FILE is test-only'
+[ -z "${TELVORA_DEPLOY_TEST_HOLD_AFTER_LOCK_SECS:-}" ] || [ "${TELVORA_DEPLOY_TEST_MODE:-0}" = 1 ] || die 'test lock hold is test-only'
+[ -z "${TELVORA_DEPLOY_TEST_READY_FILE:-}" ] || [ "${TELVORA_DEPLOY_TEST_MODE:-0}" = 1 ] || die 'test lock ready file is test-only'
 [ -n "$document_root" ] || die '--document-root required'; [ -n "$staging_root" ] || die '--staging-root required'; [ -n "$backup_root" ] || die '--backup-root required'; [ -d "$document_root" ] || die 'DocumentRoot does not exist'
 [ "$document_root" != / ] || die 'DocumentRoot=/ forbidden'; [ "$staging_root" != "$document_root" ] || die 'staging equals DocumentRoot'; [ "$backup_root" != "$document_root" ] || die 'backup equals DocumentRoot'
 if command -v realpath >/dev/null 2>&1 && [ "${TELVORA_NO_REALPATH:-0}" != 1 ]; then
@@ -54,12 +57,23 @@ for rel in sorted(d.get('createdDirectories', []), key=lambda x: (x.count('/'), 
 print('rollback restored',len(d['files']),'managed files')
 PY
 }
-lock_file="${TELVORA_SEO_LOCK_FILE:-$(dirname "$staging_root")/.telvora-seo-deploy.lock}"; mkdir -p "$(dirname "$lock_file")"; exec 9>"$lock_file"
+lock_mode=$([ -n "$rollback_dir" ] && echo rollback || echo deploy)
+lock_file="$(dirname "$document_root")/.telvora-seo-deploy.lock"
+if [ "${TELVORA_DEPLOY_TEST_MODE:-0}" = 1 ] && [ -n "${TELVORA_SEO_LOCK_FILE:-}" ]; then lock_file="$TELVORA_SEO_LOCK_FILE"; fi
+if command -v realpath >/dev/null 2>&1 && [ "${TELVORA_NO_REALPATH:-0}" != 1 ]; then lock_file="$(realpath -m "$lock_file")"; fi
+mkdir -p "$(dirname "$lock_file")"; exec 9>"$lock_file"
 if command -v flock >/dev/null 2>&1; then
-  [ "${TELVORA_DEPLOY_DEBUG:-0}" != 1 ] || echo "LOCK acquire mode=$([ -n "$rollback_dir" ] && echo rollback || echo deploy) file=$lock_file" >&2
-  flock -n 9 || { [ "${TELVORA_DEPLOY_DEBUG:-0}" != 1 ] || echo "LOCK busy mode=$([ -n "$rollback_dir" ] && echo rollback || echo deploy)" >&2; die 'another deployment holds the lock'; }
-  [ "${TELVORA_DEPLOY_DEBUG:-0}" != 1 ] || echo "LOCK acquired mode=$([ -n "$rollback_dir" ] && echo rollback || echo deploy)" >&2
+  [ "${TELVORA_DEPLOY_DEBUG:-0}" != 1 ] || echo "LOCK path=$lock_file pid=$$ mode=$lock_mode attempting" >&2
+  flock -n 9 || { [ "${TELVORA_DEPLOY_DEBUG:-0}" != 1 ] || echo "LOCK path=$lock_file pid=$$ mode=$lock_mode rejected-busy" >&2; die 'another deployment holds the lock'; }
+  [ "${TELVORA_DEPLOY_DEBUG:-0}" != 1 ] || echo "LOCK path=$lock_file pid=$$ mode=$lock_mode acquired" >&2
+  if [ "${TELVORA_DEPLOY_TEST_HOLD_AFTER_LOCK_SECS:-0}" != 0 ]; then
+    [ "${TELVORA_DEPLOY_TEST_MODE:-0}" = 1 ] || die 'test lock hold is test-only'
+    [ "${TELVORA_DEPLOY_DEBUG:-0}" != 1 ] || echo "LOCK test-hold pid=$$ seconds=${TELVORA_DEPLOY_TEST_HOLD_AFTER_LOCK_SECS}" >&2
+    if [ -n "${TELVORA_DEPLOY_TEST_READY_FILE:-}" ]; then mkdir -p "$(dirname "$TELVORA_DEPLOY_TEST_READY_FILE")"; : > "$TELVORA_DEPLOY_TEST_READY_FILE"; fi
+    sleep "$TELVORA_DEPLOY_TEST_HOLD_AFTER_LOCK_SECS"
+  fi
 fi
+trap '[ "${TELVORA_DEPLOY_DEBUG:-0}" != 1 ] || echo "LOCK path=$lock_file pid=$$ mode=$lock_mode released" >&2' EXIT
 if [ -n "$rollback_dir" ]; then
   perform_rollback "$rollback_dir"
   exit 0
