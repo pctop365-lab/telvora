@@ -4,6 +4,7 @@ set -eu
 # Read-only validator for an extracted seo-release package. It never touches
 # the DocumentRoot; pass the package root (containing payload/) as argument.
 root="${1:-.}"
+PYTHON_BIN="${TELVORA_PYTHON:-python3}"
 payload="$root/payload"
 failed=0
 fail() { printf 'FAIL %s\n' "$1" >&2; failed=1; }
@@ -16,8 +17,8 @@ if [ "$failed" -eq 0 ]; then
   (cd "$root" && sha256sum -c checksums.sha256) || fail 'checksum validation failed'
 fi
 
-if command -v python3 >/dev/null 2>&1; then
-  python3 - "$root" <<'PY' || failed=1
+if command -v "$PYTHON_BIN" >/dev/null 2>&1 || [ -x "$PYTHON_BIN" ]; then
+  "$PYTHON_BIN" - "$root" <<'PY' || failed=1
 import json, pathlib, re, stat, sys
 root = pathlib.Path(sys.argv[1]).resolve()
 payload = root / 'payload'

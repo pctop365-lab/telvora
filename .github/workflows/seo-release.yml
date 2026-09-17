@@ -81,6 +81,18 @@ jobs:
           test -f "$package_dir/tools/pre-activation-layout-check.sh"
           bash "$package_dir/tools/pre-activation-layout-check.sh" "$package_dir"
 
+      - name: Check deployment engine shell syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n deployment/seo-stage2/deploy-release.sh
+          bash -n deployment/seo-stage2/pre-activation-layout-check.sh
+
+      - name: Run deployment engine fixture tests (no deploy)
+        env:
+          TELVORA_PYTHON: python3
+        run: npm run test:seo:deploy
+
       - name: Fail on obvious secret or private-config material
         shell: bash
         run: |

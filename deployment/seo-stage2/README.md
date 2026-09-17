@@ -122,3 +122,23 @@ Unknown routes and direct `/_prerender/*` requests must serve `404.html` with ac
 ## Rollback
 
 Before deployment, save the current `.htaccess`, DocumentRoot index/sitemap/robots/assets and their hashes. Verify that no forbidden public route directories exist after upload. Upload `_prerender/` and normal static assets first; activate `.htaccess` last. If smoke tests fail, restore the saved `.htaccess` first, then restore the previous static release atomically. Re-test canonical redirects, PHP/API, uploads, ACME, known routes, direct `/_prerender/*` and unknown 404 before reopening traffic.
+
+## Phase 2.2A local staging engine
+
+`deployment/seo-stage2/deploy-release.sh` is a transport-free Linux/Bash engine for a future controlled activation. It accepts an immutable package archive and explicit `--staging-root`, `--document-root` and `--backup-root` paths; it never assumes REG.RU paths and has no SSH/SFTP logic.
+
+```text
+deploy-release.sh --archive RELEASE.tar.gz \
+  --staging-root BASE/staging/telvora-seo \
+  --document-root DOCUMENT_ROOT \
+  --backup-root BASE/backups/telvora-seo --dry-run
+```
+
+The engine extracts to `staging-root/<release-id>/`, runs the validator shipped inside that exact package, and writes `activation-plan.json`. Dry-run performs no DocumentRoot mutation. A local-fixture activation creates a timestamped backup containing only affected managed files, activates assets and prerenders before HTML and `.htaccess` last, and writes `active-release.json` outside DocumentRoot. The managed allowlist comes from the package manifest; PHP/backend files, uploads, runtime data, Telegram files and secrets are rejected or preserved. Removed files are limited to the previously owned `_prerender/` namespace.
+
+On activation failure the engine restores the backup manifest and removes only newly created managed files. `--rollback BACKUP_DIR` repeats that restoration without touching unmanaged content. A `flock` lock outside DocumentRoot rejects concurrent activation on Linux. Failure injection (`--failure-point assets`, `prerender`, `root`, or `htaccess`) exists for temporary-fixture tests only. This phase intentionally does not upload, connect to REG.RU, create secrets, or perform production activation.
+
+Failure injection is rejected unless `TELVORA_DEPLOY_TEST_MODE=1` is set. The
+Ubuntu build-only workflow runs the engine fixture suite and both Bash syntax
+checks before uploading the immutable artifact; it still performs no network
+transport or production activation.
