@@ -1,0 +1,204 @@
+name: SEO Staging Transport (no production activation)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telvora-seo-staging-transport
+  cancel-in-progress: false
+
+jobs:
+  stage-release:
+    name: Upload and validate immutable SEO release in staging
+    runs-on: ubuntu-latest
+    environment: seo-staging
+    env:
+      REMOTE_BASE: /var/www/u3609206/data
+      REMOTE_DOCUMENT_ROOT: /var/www/u3609206/data/www/telvora.ru
+      SSH_DIR: ${{ runner.temp }}/telvora-ssh-${{ github.run_id }}
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright
+
+    steps:
+      - name: Checkout exact workflow commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Set up Node LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build and validate SEO release
+        run: |
+          npm run build:seo
+          npm run test:seo:physical
+          npm run test:seo:htaccess
+          npm run test:seo:images
+          npm run test:seo:package
+          node tests/seo_contract_test.mjs
+          node tests/seo_release_report_test.mjs
+          npm run seo:package
+          npm run seo:validate-package
+
+      - name: Check deployment scripts without invoking activation
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n deployment/seo-stage2/deploy-release.sh
+          bash -n deployment/seo-stage2/pre-activation-layout-check.sh
+          test ! -e server45_ed25519.pub
+
+      - name: Select immutable package and checksum
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t archives < <(find seo-artifacts -maxdepth 1 -type f -name 'telvora-seo-release-*.tar.gz' -print | sort)
+          test "${#archives[@]}" -eq 1
+          archive="${archives[0]}"
+          checksum="$(sha256sum "$archive" | awk '{print $1}')"
+          release_id="$(basename "$archive" .tar.gz | sed 's/^telvora-seo-release-//')"
+          test -n "$release_id"
+          {
+            echo "archive=$archive"
+            echo "checksum=$checksum"
+            echo "release_id=$release_id"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "SEO_PACKAGE_SHA256=$checksum"
+            echo "SEO_RELEASE_ID=$release_id"
+          } >> "$GITHUB_ENV"
+
+      - name: Prepare pinned SSH credentials
+        shell: bash
+        env:
+          TELVORA_SSH_PRIVATE_KEY: ${{ secrets.TELVORA_SSH_PRIVATE_KEY }}
+          TELVORA_SSH_KNOWN_HOSTS: ${{ secrets.TELVORA_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p "$SSH_DIR"
+          printf '%s\n' "$TELVORA_SSH_PRIVATE_KEY" > "$SSH_DIR/id_ed25519"
+          printf '%s\n' "$TELVORA_SSH_KNOWN_HOSTS" > "$SSH_DIR/known_hosts"
+          chmod 600 "$SSH_DIR/id_ed25519" "$SSH_DIR/known_hosts"
+          test -s "$SSH_DIR/id_ed25519"
+          test -s "$SSH_DIR/known_hosts"
+
+      - name: Create isolated remote staging directory
+        id: remote-stage
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          remote_stage="$REMOTE_BASE/staging/telvora-seo-${GITHUB_SHA}-${GITHUB_RUN_ID}"
+          case "$remote_stage" in
+            "$REMOTE_BASE/staging/telvora-seo-"*) ;;
+            *) echo 'Unexpected staging path' >&2; exit 1;;
+          esac
+          printf '%s\n' "$remote_stage" > "$RUNNER_TEMP/telvora-remote-stage"
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes \
+            -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" \
+            bash -s -- "$remote_stage" "$REMOTE_BASE" "$REMOTE_DOCUMENT_ROOT" <<'REMOTE'
+          set -euo pipefail
+          stage_input="$1"
+          base_input="$2"
+          document_input="$3"
+          base="$(realpath -m -- "$base_input/staging")"
+          document_root="$(realpath -m -- "$document_input")"
+          stage="$(realpath -m -- "$stage_input")"
+          case "$stage" in "$base"/*) ;; *) echo 'staging path escaped staging root' >&2; exit 1;; esac
+          case "$stage" in "$document_root"|"$document_root"/*) echo 'staging path overlaps DocumentRoot' >&2; exit 1;; esac
+          case "$stage" in /var/www/u3609206/data/staging/telvora-seo-[0-9a-f]*-[0-9]*) ;; *) echo 'unexpected staging directory name' >&2; exit 1;; esac
+          test "$stage" != "$base"
+          mkdir -p -- "$stage"
+          printf 'REMOTE_STAGING_READY %s\n' "$stage"
+          REMOTE
+
+      - name: Upload immutable package archive
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          remote_stage="$(cat "$RUNNER_TEMP/telvora-remote-stage")"
+          scp -q -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes \
+            -i "$SSH_DIR/id_ed25519" "${{ steps.package.outputs.archive }}" \
+            "$TELVORA_SSH_USER@$TELVORA_SSH_HOST:$remote_stage/release.tar.gz"
+
+      - name: Verify and validate remote staging package
+        id: remote-validate
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+          EXPECTED_PACKAGE_SHA256: ${{ steps.package.outputs.checksum }}
+        run: |
+          set -euo pipefail
+          remote_stage="$(cat "$RUNNER_TEMP/telvora-remote-stage")"
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes \
+            -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" \
+            bash -s -- "$remote_stage" "$EXPECTED_PACKAGE_SHA256" <<'REMOTE'
+          set -euo pipefail
+          stage="$1"
+          expected="$2"
+          archive="$stage/release.tar.gz"
+          test -f "$archive"
+          actual="$(sha256sum "$archive" | awk '{print $1}')"
+          test "$actual" = "$expected"
+          while IFS= read -r member; do
+            member="${member#./}"
+            [ -z "$member" ] && continue
+            case "$member" in
+              /*|../*|*/../*|..|[A-Za-z]:/*|*\\*) echo "unsafe archive member: $member" >&2; exit 1;;
+            esac
+          done < <(tar -tzf "$archive")
+          if tar -tvzf "$archive" | awk 'substr($1,1,1) ~ /[lshcbp]/ {bad=1} END {exit bad}'; then :; else echo 'archive contains unsupported entry type' >&2; exit 1; fi
+          extracted="$stage/extracted"
+          test ! -e "$extracted"
+          mkdir -p -- "$extracted"
+          tar -xzf "$archive" --no-same-owner --no-same-permissions -C "$extracted"
+          test -f "$extracted/tools/pre-activation-layout-check.sh"
+          bash "$extracted/tools/pre-activation-layout-check.sh" "$extracted"
+          printf 'REMOTE_VALIDATION_PASS sha256=%s path=%s\n' "$actual" "$stage"
+          REMOTE
+          echo 'STAGING_VALIDATION_RESULT=PASS' >> "$GITHUB_ENV"
+
+      - name: Write staging summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_stage='not created'
+          if [ -f "$RUNNER_TEMP/telvora-remote-stage" ]; then remote_stage="$(cat "$RUNNER_TEMP/telvora-remote-stage")"; fi
+          {
+            echo '## SEO staging transport'
+            echo "- Commit SHA: `${GITHUB_SHA}`"
+            echo "- Run ID: `${GITHUB_RUN_ID}`"
+            echo "- Package SHA-256: `${SEO_PACKAGE_SHA256:-not calculated}`"
+            echo "- Remote staging path: `${remote_stage}`"
+            echo "- Validation result: `${STAGING_VALIDATION_RESULT:-not completed}`"
+            echo '- **PRODUCTION ACTIVATION: NOT PERFORMED**'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove temporary SSH credentials
+        if: always()
+        shell: bash
+        run: rm -rf -- "$SSH_DIR"
