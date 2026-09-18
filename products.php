@@ -18,6 +18,7 @@ require_once __DIR__ . '/product_variant_mutation_service.php';
 require_once __DIR__ . '/product_variant_price_service.php';
 require_once __DIR__ . '/storefront_availability_service.php';
 require_once __DIR__ . '/product_gallery_service.php';
+require_once __DIR__ . '/product_delete_service.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -1269,15 +1270,7 @@ if ($action === 'delete') {
 
     try {
 
-        $stmt = $pdo->prepare("
-            DELETE FROM products
-            WHERE id = :id
-        ");
-
-        $stmt->execute([
-            ':id' => $id
-        ]);
-
+        productDelete($pdo, $id);
 
         echo json_encode([
 
@@ -1286,6 +1279,24 @@ if ($action === 'delete') {
             'message' =>
                 'Товар удалён'
 
+        ], JSON_UNESCAPED_UNICODE);
+
+    } catch (ProductDeleteBlockedException $e) {
+
+        http_response_code(409);
+
+        echo json_encode([
+            'success' => false,
+            'message' => $e->getMessage()
+        ], JSON_UNESCAPED_UNICODE);
+
+    } catch (InvalidArgumentException $e) {
+
+        http_response_code(404);
+
+        echo json_encode([
+            'success' => false,
+            'message' => $e->getMessage()
         ], JSON_UNESCAPED_UNICODE);
 
     } catch (PDOException $e) {

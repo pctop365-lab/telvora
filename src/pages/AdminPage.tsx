@@ -746,6 +746,7 @@ export default function AdminPage() {
   const [imageUploadError, setImageUploadError] = useState('');
   const [productsLoading, setProductsLoading] = useState(false);
   const [productsError, setProductsError] = useState('');
+  const [productsNotice, setProductsNotice] = useState('');
   const [productSearch, setProductSearch] = useState('');
   const [productCategoryFilter, setProductCategoryFilter] =
     useState('Все категории');
@@ -2775,7 +2776,8 @@ const toggleProductStatus = async (product: AdminProduct) => {
     }
 
     setDeletingProductId(product.id);
-    setError('');
+    setProductsError('');
+    setProductsNotice('');
 
     try {
       const response = await fetch(PRODUCTS_API, {
@@ -2793,8 +2795,8 @@ const toggleProductStatus = async (product: AdminProduct) => {
 
       const data = await response.json();
 
-      if (!data.success) {
-        setError(data.message || 'Не удалось удалить товар');
+      if (!response.ok || !data.success) {
+        setProductsError(data.message || 'Не удалось удалить товар');
         return;
       }
 
@@ -2805,8 +2807,10 @@ const toggleProductStatus = async (product: AdminProduct) => {
       if (editingVariantsId === product.id) {
         setEditingVariantsId(null);
       }
+      setProductsNotice(`\u0422\u043e\u0432\u0430\u0440 «${product.name}» \u0443\u0434\u0430\u043b\u0451\u043d`);
+      await loadProducts();
     } catch {
-      setError('Не удалось подключиться к серверу');
+      setProductsError('Не удалось подключиться к серверу');
     } finally {
       setDeletingProductId(null);
     }
@@ -3614,6 +3618,12 @@ const toggleProductStatus = async (product: AdminProduct) => {
             {productsError && (
               <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
                 {productsError}
+              </div>
+            )}
+
+            {productsNotice && (
+              <div className="mb-6 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                {productsNotice}
               </div>
             )}
 

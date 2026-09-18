@@ -12,6 +12,21 @@ jobs:
   seo-build:
     name: Build and validate SEO release (no deploy)
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: telvora_product_delete_test
+          MYSQL_USER: telvora_test
+          MYSQL_PASSWORD: telvora_ci_test_password
+          MYSQL_ROOT_PASSWORD: telvora_ci_root_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -utelvora_test -ptelvora_ci_test_password"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
     steps:
       - name: Checkout exact workflow commit
         uses: actions/checkout@v4
@@ -92,6 +107,20 @@ jobs:
         env:
           TELVORA_PYTHON: python3
         run: npm run test:seo:deploy
+
+      - name: Product delete MySQL integration test (ephemeral DB)
+        env:
+          TELVORA_TEST_DB_HOST: 127.0.0.1
+          TELVORA_TEST_DB_PORT: '3306'
+          TELVORA_TEST_DB_NAME: telvora_product_delete_test
+          TELVORA_TEST_DB_USER: telvora_test
+          TELVORA_TEST_DB_PASSWORD: telvora_ci_test_password
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y php-cli php-mysql
+          php --version
+          php -m | grep -E '^PDO$|^pdo_mysql$'
+          php tests/product_delete_mysql_test.php
 
       - name: Fail on obvious secret or private-config material
         shell: bash

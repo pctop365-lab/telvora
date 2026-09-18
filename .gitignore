@@ -127,3 +127,6 @@ read_invoice.py
 /seo-artifacts/
 /seo-release/
 /test-results/
+
+# Local SSH diagnostics; never release content
+/ssh-reg-debug.txt
