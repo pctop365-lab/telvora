@@ -18,8 +18,6 @@ jobs:
     env:
       REMOTE_BASE: /var/www/u3609206/data
       REMOTE_DOCUMENT_ROOT: /var/www/u3609206/data/www/telvora.ru
-      SSH_DIR: ${{ runner.temp }}/telvora-ssh-${{ github.run_id }}
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright
 
     steps:
       - name: Checkout exact workflow commit
@@ -89,6 +87,8 @@ jobs:
         run: |
           set -euo pipefail
           umask 077
+          SSH_DIR="$RUNNER_TEMP/telvora-ssh-${GITHUB_RUN_ID}"
+          echo "SSH_DIR=$SSH_DIR" >> "$GITHUB_ENV"
           mkdir -p "$SSH_DIR"
           printf '%s\n' "$TELVORA_SSH_PRIVATE_KEY" > "$SSH_DIR/id_ed25519"
           printf '%s\n' "$TELVORA_SSH_KNOWN_HOSTS" > "$SSH_DIR/known_hosts"
