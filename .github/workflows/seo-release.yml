@@ -120,6 +120,7 @@ jobs:
           sudo apt-get install -y php-cli php-mysql
           php --version
           php -m | grep -E '^PDO$|^pdo_mysql$'
+          php tests/product_delete_config_guard_test.php
           php tests/product_delete_mysql_test.php
 
       - name: Fail on obvious secret or private-config material

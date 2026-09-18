@@ -13,7 +13,35 @@ const DELETE_TEST_PASSWORD_FILE = 'C:/Users/ASRock/Telvora-MySQL-Test/private/te
 function deleteTestEnv(string $name, ?string $fallback = null): ?string
 {
     $value = getenv($name);
-    return $value === false || $value === '' ? $fallback : $value;
+    return $value === false || trim($value) === '' ? $fallback : trim($value);
+}
+
+/** @param array{host:string,port:string,name:string,user:string,password:string,ci:bool} $config */
+function deleteTestValidateConfig(array $config): array
+{
+    $host = $config['host'];
+    $port = $config['port'];
+    $name = $config['name'];
+    $user = $config['user'];
+    $lowerHost = strtolower(trim($host));
+    $lowerName = strtolower(trim($name));
+    if ($host === '' || $port === '' || $name === '' || $user === '' || $config['password'] === '') {
+        throw new RuntimeException('Explicit test-only DB variables are required in CI.');
+    }
+    if (!in_array($lowerHost, ['127.0.0.1', 'localhost', '::1'], true)) {
+        throw new RuntimeException('Test database host must be loopback.');
+    }
+    if (preg_match('/(?:telvora\.ru|server45|hosting\.reg\.ru|reg\.ru)/i', $lowerHost)) {
+        throw new RuntimeException('Refusing a production-looking database host.');
+    }
+    if (!preg_match('/^telvora_[a-z0-9]+(?:_[a-z0-9]+)*_test$/', $lowerName)
+        || preg_match('/(?:^|_)(?:production|prod|live|server45|reg\.ru)(?:_|$)/', $lowerName)) {
+        throw new RuntimeException('Refusing a non-test-looking database name.');
+    }
+    if (!preg_match('/^\d{1,5}$/', $port) || (int)$port < 1 || (int)$port > 65535) {
+        throw new RuntimeException('Invalid test database port.');
+    }
+    return $config;
 }
 
 /** @return array{host:string,port:string,name:string,user:string,password:string,ci:bool} */
@@ -25,27 +53,21 @@ function deleteTestConfig(): array
     $name = deleteTestEnv('TELVORA_TEST_DB_NAME', $ci ? null : DELETE_TEST_DEFAULT_NAME);
     $user = deleteTestEnv('TELVORA_TEST_DB_USER', $ci ? null : DELETE_TEST_DEFAULT_USER);
     $password = deleteTestEnv('TELVORA_TEST_DB_PASSWORD');
-    if ($password === null && !$ci) {
-        $password = is_readable(DELETE_TEST_PASSWORD_FILE)
-            ? trim((string)file_get_contents(DELETE_TEST_PASSWORD_FILE))
-            : null;
+    if ($password === null && !$ci && is_readable(DELETE_TEST_PASSWORD_FILE)) {
+        $password = trim((string)file_get_contents(DELETE_TEST_PASSWORD_FILE));
     }
-    if ($host === null || $port === null || $name === null || $user === null || $password === null) {
+    $config = [
+        'host' => $host ?? '', 'port' => $port ?? '', 'name' => $name ?? '',
+        'user' => $user ?? '', 'password' => $password ?? '', 'ci' => $ci,
+    ];
+    fwrite(STDERR, sprintf(
+        "Product delete test DB config: host=%s port=%s name=%s user=%s CI=%s\n",
+        $config['host'], $config['port'], $config['name'], $config['user'], $config['ci'] ? 'true' : 'false'
+    ));
+    if ($ci && ($host === null || $port === null || $name === null || $user === null || $password === null)) {
         throw new RuntimeException('Explicit test-only DB variables are required in CI.');
     }
-    $lowerHost = strtolower($host);
-    $lowerName = strtolower($name);
-    if (preg_match('/(?:telvora\.ru|server45|hosting\.reg\.ru|reg\.ru)/i', $lowerHost)) {
-        throw new RuntimeException('Refusing a production-looking database host.');
-    }
-    if (!preg_match('/(?:test|ci|tmp|temp|dev|sandbox)/i', $lowerName)
-        || preg_match('/(?:production|prod|live|server45|reg\.ru)/i', $lowerName)) {
-        throw new RuntimeException('Refusing a non-test-looking database name.');
-    }
-    if (!preg_match('/^\d{1,5}$/', $port) || (int)$port < 1 || (int)$port > 65535) {
-        throw new RuntimeException('Invalid test database port.');
-    }
-    return compact('host', 'port', 'name', 'user', 'password', 'ci');
+    return deleteTestValidateConfig($config);
 }
 
 function deleteTestAssert(string $name, bool $condition, mixed $detail = null): void
@@ -199,9 +221,10 @@ function deleteTestOperationalRows(PDO $pdo, int $productId, array $variantIds):
     }
 }
 
-$pdo = deleteTestPdo();
-deleteTestReset($pdo);
-try {
+if (!defined('TELVORA_PRODUCT_DELETE_TEST_LIBRARY')) {
+    $pdo = deleteTestPdo();
+    deleteTestReset($pdo);
+    try {
     deleteTestSchema($pdo);
     $pdo->exec('INSERT INTO suppliers(id,name) VALUES(1,"Supplier A"),(2,"Supplier B")');
     $pdo->exec('INSERT INTO pricing_rules(id,name) VALUES(1,"Rule A")');
@@ -274,6 +297,7 @@ try {
     catch (InvalidArgumentException $error) { deleteTestAssert('double delete is clear', str_contains($error->getMessage(), 'не найден')); }
 
     echo "PASS product deletion isolated MySQL integration\n";
-} finally {
-    deleteTestReset($pdo);
+    } finally {
+        deleteTestReset($pdo);
+    }
 }
