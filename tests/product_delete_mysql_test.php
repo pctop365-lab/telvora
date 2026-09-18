@@ -107,13 +107,13 @@ function deleteTestReset(PDO $pdo): void
     $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
     foreach ([
         'product_images', 'product_price_publication_audit', 'order_items', 'orders',
+        'test_product_variant_delete_blocker',
         'product_variant_price_overrides', 'supplier_offers', 'supplier_import_rows',
         'supplier_import_jobs', 'supplier_product_matches', 'pricing_rules', 'suppliers',
         'product_variants', 'products',
     ] as $table) {
         $pdo->exec("DROP TABLE IF EXISTS `{$table}`");
     }
-    $pdo->exec('DROP TRIGGER IF EXISTS product_delete_test_failure');
     $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
 }
 
@@ -128,6 +128,13 @@ function deleteTestSchema(PDO $pdo): void
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, product_id INT UNSIGNED NOT NULL,
         variant_key VARCHAR(191) NOT NULL,
         CONSTRAINT fk_delete_variant_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT ON UPDATE RESTRICT
+    ) ENGINE=InnoDB");
+    // Test-only blocker used to force a failure after operational cleanup has
+    // started. It is never part of production schema or deletion semantics.
+    $pdo->exec("CREATE TABLE test_product_variant_delete_blocker (
+        product_variant_id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+        CONSTRAINT fk_delete_test_blocker_variant
+            FOREIGN KEY (product_variant_id) REFERENCES product_variants(id) ON DELETE RESTRICT
     ) ENGINE=InnoDB");
     $pdo->exec("CREATE TABLE product_images (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, product_id INT UNSIGNED NOT NULL, image_path VARCHAR(512) NOT NULL,
@@ -279,16 +286,19 @@ if (!defined('TELVORA_PRODUCT_DELETE_TEST_LIBRARY')) {
     catch (ProductDeleteBlockedException $error) { deleteTestAssert('publication audit returns blocker', str_contains($error->getMessage(), 'публикации')); }
     deleteTestAssert('audit block preserves audit and product', deleteTestCount($pdo, 'product_price_publication_audit') === 1 && deleteTestCount($pdo, 'products', 'id = ?', [$auditProduct]) === 1);
 
-    // Trigger failure after operational deletes proves transaction rollback.
+    // Test-only FK failure after operational deletes proves transaction rollback.
     $failureProduct = deleteTestProduct($pdo, 'failure-product');
     $failureVariant = deleteTestVariant($pdo, $failureProduct, 'one');
     deleteTestOperationalRows($pdo, $failureProduct, [$failureVariant]);
-    $pdo->exec("CREATE TRIGGER product_delete_test_failure BEFORE DELETE ON products FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'test failure'");
-    try { productDelete($pdo, $failureProduct); throw new RuntimeException('trigger failure unexpectedly ignored'); }
-    catch (PDOException $error) { deleteTestAssert('mid-transaction failure is surfaced', true); }
-    $pdo->exec('DROP TRIGGER product_delete_test_failure');
+    $pdo->prepare('INSERT INTO test_product_variant_delete_blocker(product_variant_id) VALUES(?)')->execute([$failureVariant]);
+    try { productDelete($pdo, $failureProduct); throw new RuntimeException('FK failure unexpectedly ignored'); }
+    catch (PDOException $error) { deleteTestAssert('mid-transaction FK failure is surfaced', str_contains($error->getMessage(), '1451') || str_contains($error->getMessage(), '23000')); }
     deleteTestAssert('rollback restores product', deleteTestCount($pdo, 'products', 'id = ?', [$failureProduct]) === 1);
+    deleteTestAssert('rollback restores variant', deleteTestCount($pdo, 'product_variants', 'id = ?', [$failureVariant]) === 1);
     deleteTestAssert('rollback restores operational rows', deleteTestCount($pdo, 'supplier_offers') === 4 && deleteTestCount($pdo, 'supplier_product_matches') === 4 && deleteTestCount($pdo, 'product_variant_price_overrides') === 4);
+    deleteTestAssert('rollback restores product image', deleteTestCount($pdo, 'product_images', 'product_id = ?', [$failureProduct]) === 1);
+    deleteTestAssert('test-only blocker remains until cleanup', deleteTestCount($pdo, 'test_product_variant_delete_blocker', 'product_variant_id = ?', [$failureVariant]) === 1);
+    $pdo->prepare('DELETE FROM test_product_variant_delete_blocker WHERE product_variant_id = ?')->execute([$failureVariant]);
 
     try { productDelete($pdo, 999999); throw new RuntimeException('missing product unexpectedly succeeded'); }
     catch (InvalidArgumentException $error) { deleteTestAssert('missing product is clear', str_contains($error->getMessage(), 'не найден')); }
