@@ -9,7 +9,7 @@ const packageRoot = resolve('seo-release');
 const payloadRoot = resolve(packageRoot, 'payload');
 const artifactRoot = resolve('seo-artifacts');
 const manifestSource = JSON.parse(await readFile(resolve(artifactRoot, 'routes.json'), 'utf8'));
-const commitSha = process.env.GITHUB_SHA || (() => {
+const commitSha = process.env.TELVORA_RELEASE_SHA || process.env.GITHUB_SHA || (() => {
   try { return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(); } catch { return 'local'; }
 })();
 const buildTimestamp = process.env.SOURCE_DATE_EPOCH

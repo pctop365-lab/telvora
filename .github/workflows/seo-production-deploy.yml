@@ -1,0 +1,330 @@
+name: SEO Production Deploy (protected)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: 'Full 40-character commit SHA to rebuild and deploy'
+        required: true
+        type: string
+      confirmation:
+        description: 'Type DEPLOY TELVORA SEO PRODUCTION exactly'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telvora-seo-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy validated SEO release to production
+    runs-on: ubuntu-latest
+    environment: seo-production
+    env:
+      REMOTE_BASE: /var/www/u3609206/data
+      REMOTE_DOCUMENT_ROOT: /var/www/u3609206/data/www/telvora.ru
+      REMOTE_BACKUP_ROOT: /var/www/u3609206/data/telvora-backups
+      REQUESTED_RELEASE_SHA: ${{ inputs.release_sha }}
+      DEPLOY_CONFIRMATION: ${{ inputs.confirmation }}
+
+    steps:
+      - name: Validate release identity and confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$REQUESTED_RELEASE_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo 'release_sha must be a full 40-character hexadecimal SHA' >&2; exit 1; }
+          [[ "$DEPLOY_CONFIRMATION" == 'DEPLOY TELVORA SEO PRODUCTION' ]] || { echo 'confirmation text does not match exactly' >&2; exit 1; }
+          echo "REQUESTED_RELEASE_SHA=${REQUESTED_RELEASE_SHA,,}" >> "$GITHUB_ENV"
+
+      - name: Checkout requested immutable commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 1
+
+      - name: Verify checked-out commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          test "$actual_sha" = "${REQUESTED_RELEASE_SHA,,}"
+          echo "ACTUAL_RELEASE_SHA=$actual_sha" >> "$GITHUB_ENV"
+
+      - name: Set up Node LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and validate exact release
+        env:
+          TELVORA_RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -euo pipefail
+          export TELVORA_RELEASE_SHA="${TELVORA_RELEASE_SHA,,}"
+          npm run typecheck
+          npm run build:seo
+          npm run test:seo:physical
+          npm run test:seo:htaccess
+          npm run test:seo:images
+          npm run test:seo:package
+          node tests/seo_contract_test.mjs
+          node tests/seo_release_report_test.mjs
+          npm run seo:package
+          npm run seo:validate-package
+
+      - name: Install Chromium for raw SEO validation
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Re-run raw generated HTML validation with installed Chromium
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/playwright
+        run: npm run test:seo:raw
+
+      - name: Select and verify immutable package
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t archives < <(find seo-artifacts -maxdepth 1 -type f -name 'telvora-seo-release-*.tar.gz' -print | sort)
+          test "${#archives[@]}" -eq 1
+          archive="${archives[0]}"
+          checksum="$(sha256sum "$archive" | awk '{print $1}')"
+          release_id="$(basename "$archive" .tar.gz | sed 's/^telvora-seo-release-//')"
+          case "$release_id" in "${REQUESTED_RELEASE_SHA:0:12}-"*) ;; *) echo 'package release ID does not belong to requested commit' >&2; exit 1;; esac
+          manifest_commit="$(node -e "const fs=require('fs'); process.stdout.write(JSON.parse(fs.readFileSync('seo-release/deployment-manifest.json','utf8')).commitSha)")"
+          test "$manifest_commit" = "${REQUESTED_RELEASE_SHA,,}"
+          {
+            echo "archive=$archive"
+            echo "checksum=$checksum"
+            echo "release_id=$release_id"
+          } >> "$GITHUB_OUTPUT"
+          echo "SEO_PACKAGE_SHA256=$checksum" >> "$GITHUB_ENV"
+
+      - name: Check deployment scripts without activation
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n deployment/seo-stage2/deploy-release.sh
+          bash -n deployment/seo-stage2/pre-activation-layout-check.sh
+
+      - name: Prepare pinned SSH credentials
+        shell: bash
+        env:
+          TELVORA_SSH_PRIVATE_KEY: ${{ secrets.TELVORA_SSH_PRIVATE_KEY }}
+          TELVORA_SSH_KNOWN_HOSTS: ${{ secrets.TELVORA_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          SSH_DIR="$RUNNER_TEMP/telvora-production-ssh-${GITHUB_RUN_ID}"
+          mkdir -p "$SSH_DIR"
+          printf '%s\n' "$TELVORA_SSH_PRIVATE_KEY" > "$SSH_DIR/id_ed25519"
+          printf '%s\n' "$TELVORA_SSH_KNOWN_HOSTS" > "$SSH_DIR/known_hosts"
+          chmod 600 "$SSH_DIR/id_ed25519" "$SSH_DIR/known_hosts"
+          test -s "$SSH_DIR/id_ed25519"; test -s "$SSH_DIR/known_hosts"
+          echo "SSH_DIR=$SSH_DIR" >> "$GITHUB_ENV"
+
+      - name: Create and validate isolated production staging path
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          remote_stage="$REMOTE_BASE/staging/telvora-seo-${REQUESTED_RELEASE_SHA}-${GITHUB_RUN_ID}"
+          printf '%s\n' "$remote_stage" > "$RUNNER_TEMP/telvora-production-stage"
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" \
+            "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$remote_stage" "$REMOTE_BASE" "$REMOTE_DOCUMENT_ROOT" <<'REMOTE'
+          set -euo pipefail
+          stage_input="$1"; base_input="$2"; document_input="$3"
+          base="$(realpath -m -- "$base_input/staging")"
+          document="$(realpath -m -- "$document_input")"
+          stage="$(realpath -m -- "$stage_input")"
+          test "$base" = '/var/www/u3609206/data/staging'
+          test "$document" = '/var/www/u3609206/data/www/telvora.ru'
+          case "$stage" in "$base"/*) ;; *) echo 'staging path escaped staging root' >&2; exit 1;; esac
+          case "$stage" in "$document"|"$document"/*) echo 'staging overlaps DocumentRoot' >&2; exit 1;; esac
+          test "$stage" != "$document"
+          test ! -e "$stage"
+          mkdir -p -- "$stage"
+          REMOTE
+
+      - name: Upload immutable package and deploy engine
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          remote_stage="$(cat "$RUNNER_TEMP/telvora-production-stage")"
+          scp -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" \
+            "${{ steps.package.outputs.archive }}" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST:$remote_stage/release.tar.gz"
+          scp -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" \
+            deployment/seo-stage2/deploy-release.sh "$TELVORA_SSH_USER@$TELVORA_SSH_HOST:$remote_stage/deploy-release.sh"
+
+      - name: Verify package and immutable validator remotely
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+          EXPECTED_PACKAGE_SHA256: ${{ steps.package.outputs.checksum }}
+        run: |
+          set -euo pipefail
+          remote_stage="$(cat "$RUNNER_TEMP/telvora-production-stage")"
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" \
+            "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$remote_stage" "$EXPECTED_PACKAGE_SHA256" "$REQUESTED_RELEASE_SHA" <<'REMOTE'
+          set -euo pipefail
+          stage="$1"; expected="$2"; requested="$3"; archive="$stage/release.tar.gz"
+          test "$(sha256sum "$archive" | awk '{print $1}')" = "$expected"
+          manifest_commit="$(tar -xOf "$archive" deployment-manifest.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["commitSha"])')"
+          test "$manifest_commit" = "$requested"
+          while IFS= read -r member; do
+            member="${member#./}"
+            [ -z "$member" ] && continue
+            case "$member" in /*|../*|*/../*|..|[A-Za-z]:/*|*\\*) echo "unsafe archive member: $member" >&2; exit 1;; esac
+          done < <(tar -tzf "$archive")
+          if tar -tvzf "$archive" | awk 'substr($1,1,1) ~ /[lshcbp]/ {bad=1} END {exit bad}'; then :; else echo 'archive contains unsupported entry type' >&2; exit 1; fi
+          extracted="$stage/validated"; test ! -e "$extracted"; mkdir -p "$extracted"
+          tar -xzf "$archive" --no-same-owner --no-same-permissions -C "$extracted"
+          test -f "$extracted/tools/pre-activation-layout-check.sh"
+          bash "$extracted/tools/pre-activation-layout-check.sh" "$extracted"
+          bash -n "$stage/deploy-release.sh"
+          REMOTE
+          echo 'PRE_ACTIVATION_VALIDATION=PASS' >> "$GITHUB_ENV"
+
+      - name: Run production dry-run plan
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          remote_stage="$(cat "$RUNNER_TEMP/telvora-production-stage")"
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" \
+            "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$remote_stage" "$REMOTE_DOCUMENT_ROOT" "$REMOTE_BACKUP_ROOT" <<'REMOTE'
+          set -euo pipefail
+          stage="$1"; document="$2"; backups="$3"; engine="$stage/deploy-release.sh"; archive="$stage/release.tar.gz"; dry="$stage/engine-dry"
+          test "$document" = '/var/www/u3609206/data/www/telvora.ru'
+          test "$(realpath -m -- "$backups")" = '/var/www/u3609206/data/telvora-backups'
+          test "$stage" != "$document"; mkdir -p "$dry"
+          bash "$engine" --archive "$archive" --staging-root "$dry" --document-root "$document" --backup-root "$backups" --dry-run > "$stage/dry-run.log"
+          plan="$(find "$dry" -type f -name activation-plan.json -print -quit)"; test -n "$plan"; cp "$plan" "$stage/activation-plan.json"
+          python3 - "$plan" <<'PY'
+          import json,sys
+          p=json.load(open(sys.argv[1]))
+          forbidden=tuple(('uploads/','pdf/','telegram','runtime','logs','locks','vendor'))
+          bad=[x for x in p.get('add',[])+p.get('replace',[])+p.get('remove',[]) if x.endswith('.php') or x in {'public_contacts.json','telvora_secrets.php','.env'} or x.startswith(forbidden)]
+          if bad: raise SystemExit('prohibited production mutation in plan: '+repr(bad))
+          print('PLAN_PASS add=%d replace=%d remove=%d' % (len(p.get('add',[])),len(p.get('replace',[])),len(p.get('remove',[]))))
+          PY
+          REMOTE
+          echo 'DRY_RUN_PLAN=PASS' >> "$GITHUB_ENV"
+
+      - name: Activate production with existing deploy engine
+        id: activate
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          remote_stage="$(cat "$RUNNER_TEMP/telvora-production-stage")"
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" \
+            "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$remote_stage" "$REMOTE_DOCUMENT_ROOT" "$REMOTE_BACKUP_ROOT" <<'REMOTE'
+          set -euo pipefail
+          stage="$1"; document="$2"; backups="$3"; engine="$stage/deploy-release.sh"; archive="$stage/release.tar.gz"; live="$stage/engine-live"
+          test "$document" = '/var/www/u3609206/data/www/telvora.ru'; test "$(realpath -m -- "$backups")" = '/var/www/u3609206/data/telvora-backups'; test "$stage" != "$document"; mkdir -p "$live"
+          test -f "$document/yandex_2f15c7f5db6e96d5.html"
+          bash "$engine" --archive "$archive" --staging-root "$live" --document-root "$document" --backup-root "$backups"
+          test -f "$document/yandex_2f15c7f5db6e96d5.html"
+          active="$live/active-release.json"; test -f "$active"
+          backup="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["backupReference"])' "$active")"
+          test -d "$backup"
+          printf '%s\n' "$backup" > "$stage/backup-path"
+          REMOTE
+          echo 'PRODUCTION_ACTIVATION_RESULT=PERFORMED' >> "$GITHUB_ENV"
+          echo 'YANDEX_VERIFICATION_RESULT=PASS' >> "$GITHUB_ENV"
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" "cat '$remote_stage/backup-path'" > "$RUNNER_TEMP/telvora-backup-path"
+
+      - name: Run post-activation smoke tests and rollback on failure
+        id: smoke
+        if: success()
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          smoke_dir="$RUNNER_TEMP/telvora-smoke"; mkdir -p "$smoke_dir"
+          check_200() { local url="$1" name="$2"; local code; code="$(curl --fail --silent --show-error --location --max-redirs 5 --output "$smoke_dir/$name.html" --write-out '%{http_code}' "$url")"; test "$code" = 200; test -s "$smoke_dir/$name.html"; }
+          smoke_status=0
+          check_200 https://telvora.ru/ home || smoke_status=1
+          check_200 https://telvora.ru/catalog catalog || smoke_status=1
+          check_200 https://telvora.ru/catalog/oled/lg-oled77c5rla product || smoke_status=1
+          check_200 https://telvora.ru/checkout checkout || smoke_status=1
+          final_www="$(curl --fail --silent --show-error --location --max-redirs 5 --output /dev/null --write-out '%{url_effective}' 'https://www.telvora.ru/catalog/oled?foo=seo-production')" || smoke_status=1
+          [ "$final_www" = 'https://telvora.ru/catalog/oled?foo=seo-production' ] || smoke_status=1
+          grep -qi 'index, follow' "$smoke_dir/product.html" || smoke_status=1
+          grep -q 'https://telvora.ru/catalog/oled/lg-oled77c5rla' "$smoke_dir/product.html" || smoke_status=1
+          remote_stage="$(cat "$RUNNER_TEMP/telvora-production-stage")"; backup="$(cat "$RUNNER_TEMP/telvora-backup-path")"
+          if [ "$smoke_status" -ne 0 ]; then
+            set +e
+            ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$remote_stage" "$REMOTE_DOCUMENT_ROOT" "$REMOTE_BACKUP_ROOT" "$backup" <<'REMOTE'
+          set -euo pipefail
+          stage="$1"; document="$2"; backup_root="$3"; backup="$4"; engine="$stage/deploy-release.sh"
+          test "$document" = '/var/www/u3609206/data/www/telvora.ru'; test "$(realpath -m -- "$backup_root")" = '/var/www/u3609206/data/telvora-backups'; test -d "$backup"
+          bash "$engine" --rollback "$backup" --document-root "$document" --staging-root "$stage/rollback" --backup-root "$backup_root"
+          rm -f -- "$stage/engine-live/active-release.json"
+          REMOTE
+            rollback_status=$?
+            set -e
+            if [ "$rollback_status" -eq 0 ]; then
+              echo 'PRODUCTION_ACTIVATION_RESULT=ROLLED_BACK' >> "$GITHUB_ENV"
+              echo 'SMOKE_TEST_RESULT=FAIL_ROLLED_BACK' >> "$GITHUB_ENV"
+            else
+              echo 'PRODUCTION_ACTIVATION_RESULT=ROLLBACK_FAILED' >> "$GITHUB_ENV"
+              echo 'SMOKE_TEST_RESULT=FAIL_ROLLBACK_FAILED' >> "$GITHUB_ENV"
+            fi
+            exit 1
+          fi
+          echo 'SMOKE_TEST_RESULT=PASS' >> "$GITHUB_ENV"
+
+      - name: Write production deployment summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_stage='not created'; [ -f "$RUNNER_TEMP/telvora-production-stage" ] && remote_stage="$(cat "$RUNNER_TEMP/telvora-production-stage")"
+          backup='not created'; [ -f "$RUNNER_TEMP/telvora-backup-path" ] && backup="$(cat "$RUNNER_TEMP/telvora-backup-path")"
+          activation="${PRODUCTION_ACTIVATION_RESULT:-NOT PERFORMED}"
+          {
+            printf '%s\n' '## SEO production deployment'
+            printf '%s\n' "- Requested release SHA: $REQUESTED_RELEASE_SHA"
+            printf '%s\n' "- Actual checked-out SHA: ${ACTUAL_RELEASE_SHA:-not checked out}"
+            printf '%s\n' "- GitHub Run ID: $GITHUB_RUN_ID"
+            printf '%s\n' "- Package SHA-256: ${SEO_PACKAGE_SHA256:-not calculated}"
+            printf '%s\n' "- Remote staging path: $remote_stage"
+            printf '%s\n' "- Production DocumentRoot: $REMOTE_DOCUMENT_ROOT"
+            printf '%s\n' "- Pre-activation validation: ${PRE_ACTIVATION_VALIDATION:-FAIL/NOT COMPLETED}"
+            printf '%s\n' "- Dry-run/plan: ${DRY_RUN_PLAN:-FAIL/NOT COMPLETED}"
+            printf '%s\n' "- Backup path: $backup"
+            printf '%s\n' "- Activation result: $activation"
+            printf '%s\n' "- Smoke tests: ${SMOKE_TEST_RESULT:-FAIL/NOT COMPLETED}"
+            printf '%s\n' "- Yandex verification: ${YANDEX_VERIFICATION_RESULT:-NOT CHECKED}"
+            printf '%s\n' "- **PRODUCTION ACTIVATION: $activation**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove temporary SSH credentials
+        if: always()
+        shell: bash
+        run: |
+          rm -rf -- "${SSH_DIR:-$RUNNER_TEMP/telvora-production-ssh-${GITHUB_RUN_ID}}"

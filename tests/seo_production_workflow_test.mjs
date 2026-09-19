@@ -1,0 +1,42 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+const path = '.github/workflows/seo-production-deploy.yml';
+const workflow = await readFile(path, 'utf8');
+
+assert.match(workflow, /^name: SEO Production Deploy/m);
+assert.match(workflow, /^\s+workflow_dispatch:/m);
+assert.match(workflow, /^\s+environment: seo-production/m);
+assert.match(workflow, /contents:\s*read/);
+assert.match(workflow, /group:\s*telvora-seo-production-deploy/);
+assert.match(workflow, /release_sha:/);
+assert.match(workflow, /confirmation:/);
+assert.match(workflow, /DEPLOY TELVORA SEO PRODUCTION/);
+assert.match(workflow, /\^\[0-9a-fA-F\]\{40\}\$/);
+assert.match(workflow, /ref:\s+\$\{\{\s*inputs\.release_sha\s*\}\}/);
+assert.match(workflow, /actual_sha=.*git rev-parse HEAD/);
+assert.match(workflow, /test "\$actual_sha" = "\$\{REQUESTED_RELEASE_SHA,,\}"/);
+assert.match(workflow, /REMOTE_DOCUMENT_ROOT: \/var\/www\/u3609206\/data\/www\/telvora\.ru/);
+assert.match(workflow, /REMOTE_BACKUP_ROOT: \/var\/www\/u3609206\/data\/telvora-backups/);
+assert.match(workflow, /remote_stage="\$REMOTE_BASE\/staging\/telvora-seo-/);
+assert.match(workflow, /StrictHostKeyChecking=yes/);
+assert.match(workflow, /UserKnownHostsFile="\$SSH_DIR\/known_hosts"/);
+assert.match(workflow, /IdentitiesOnly=yes/);
+assert.doesNotMatch(workflow, /ssh-keyscan/);
+assert.doesNotMatch(workflow, /StrictHostKeyChecking=no/);
+assert.match(workflow, /--dry-run/);
+assert.match(workflow, /--rollback/);
+assert.match(workflow, /sha256sum/);
+assert.match(workflow, /test "\$manifest_commit" = "\$\{REQUESTED_RELEASE_SHA,,\}"/);
+assert.match(workflow, /prohibited production mutation in plan/);
+assert.match(workflow, /uploads\/.*pdf\/.*telegram/);
+assert.match(workflow, /FAIL_ROLLED_BACK/);
+assert.match(workflow, /yandex_2f15c7f5db6e96d5\.html/);
+assert.match(workflow, /PRODUCTION_ACTIVATION_RESULT=PERFORMED/);
+assert.match(workflow, /PRODUCTION_ACTIVATION_RESULT=ROLLED_BACK/);
+assert.match(workflow, /if: always\(\)/);
+assert.doesNotMatch(workflow, /rm\s+-rf\s+--?\s*"\$REMOTE_DOCUMENT_ROOT/);
+assert.doesNotMatch(workflow, /rsync[^\n]*--delete[^\n]*REMOTE_DOCUMENT_ROOT/);
+assert.match(workflow, /PRODUCTION ACTIVATION: \$activation/);
+
+console.log('seo_production_workflow_test: PASS');

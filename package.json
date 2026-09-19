@@ -18,6 +18,7 @@
     "test:seo:htaccess": "node tests/seo_htaccess_test.mjs",
     "test:seo:package": "node tests/seo_package_test.mjs",
     "test:seo:deploy": "node tests/seo_deploy_engine_test.mjs",
+    "test:seo:production-workflow": "node tests/seo_production_workflow_test.mjs",
     "seo:package": "node scripts/seo-package.mjs",
     "seo:validate-package": "node scripts/seo-validate-package.mjs"
   },

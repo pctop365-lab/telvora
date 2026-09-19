@@ -142,3 +142,35 @@ Failure injection is rejected unless `TELVORA_DEPLOY_TEST_MODE=1` is set. The
 Ubuntu build-only workflow runs the engine fixture suite and both Bash syntax
 checks before uploading the immutable artifact; it still performs no network
 transport or production activation.
+
+## Phase 2.3 protected production workflow
+
+`.github/workflows/seo-production-deploy.yml` is the protected, manual
+production activation workflow. It is intentionally `workflow_dispatch` only
+and uses the separate GitHub Environment `seo-production`; configure required
+reviewers on that environment before the first pilot. It requires both a full
+40-character `release_sha` and the exact confirmation
+`DEPLOY TELVORA SEO PRODUCTION`.
+
+The workflow checks out the requested commit, rebuilds the deterministic package
+with `TELVORA_RELEASE_SHA`, verifies the checkout, package manifest and archive
+SHA-256, and runs the immutable package validator remotely. It uploads only the
+archive and the existing `deploy-release.sh` into a unique directory below
+`/var/www/u3609206/data/staging/`. It then runs the engine dry-run against the
+exact production DocumentRoot, rejects prohibited plan entries, and only then
+invokes the existing engine for activation. The engine owns the production
+flock, backup, ordering, `.htaccess`-last activation and automatic rollback.
+
+SSH uses the four `seo-production` environment secrets with temporary mode-600
+files, pinned `known_hosts`, `StrictHostKeyChecking=yes` and
+`IdentitiesOnly=yes`. No `ssh-keyscan`, production credentials in the
+repository, or deploy-time rebuild of another commit is allowed. The workflow
+checks that `yandex_2f15c7f5db6e96d5.html` exists before and after activation.
+Post-activation smoke failures invoke the engine's explicit rollback with the
+recorded backup path and remove only the staging copy of `active-release.json`.
+
+The workflow summary records the requested/actual SHA, package checksum,
+staging path, validation and plan status, backup path, activation/smoke/rollback
+state and Yandex verification. It never claims `PRODUCTION ACTIVATION:
+PERFORMED` unless the engine activation completed; a smoke failure is reported
+as rolled back. This workflow has not been run for production in this phase.
