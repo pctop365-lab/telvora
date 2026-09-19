@@ -152,9 +152,7 @@ reviewers on that environment before the first pilot. It requires both a full
 40-character `release_sha` and the exact confirmation
 `DEPLOY TELVORA SEO PRODUCTION`.
 
-The workflow checks out the requested commit, rebuilds the deterministic package
-with `TELVORA_RELEASE_SHA`, verifies the checkout, package manifest and archive
-SHA-256, and runs the immutable package validator remotely. It uploads only the
+The workflow has two jobs. `preflight` checks out the requested commit, rebuilds the deterministic package with `TELVORA_RELEASE_SHA`, verifies the checkout, package manifest and archive SHA-256, uploads and validates staging, runs the engine dry-run and publishes the actual ADD/REPLACE/REMOVE plan in its Step Summary. It uses only the existing `seo-staging` transport environment and cannot activate DocumentRoot. Only after preflight succeeds does `activation` become eligible; that job has `needs: preflight` and the protected `seo-production` environment, so required reviewer approval is requested after the plan is visible. Activation consumes the preflight release SHA, staging path and package checksum and re-verifies them remotely. It uploads no replacement package. The preflight job uploads only the
 archive and the existing `deploy-release.sh` into a unique directory below
 `/var/www/u3609206/data/staging/`. It then runs the engine dry-run against the
 exact production DocumentRoot, rejects prohibited plan entries, and only then

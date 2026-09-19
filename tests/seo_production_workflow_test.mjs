@@ -1,11 +1,20 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import YAML from 'yaml';
 
 const path = '.github/workflows/seo-production-deploy.yml';
 const workflow = await readFile(path, 'utf8');
+const parsed = YAML.parse(workflow);
+assert.equal(parsed.jobs.preflight.environment, 'seo-staging');
+assert.equal(parsed.jobs.activation.environment, 'seo-production');
+assert.equal(parsed.jobs.activation.needs, 'preflight');
+assert.equal(parsed.jobs.preflight.steps.some(step => /Activate production/.test(step.name ?? '')), false);
 
 assert.match(workflow, /^name: SEO Production Deploy/m);
 assert.match(workflow, /^\s+workflow_dispatch:/m);
+assert.match(workflow, /^\s+preflight:/m);
+assert.match(workflow, /^\s+activation:/m);
+assert.match(workflow, /^\s+needs: preflight/m);
 assert.match(workflow, /^\s+environment: seo-production/m);
 assert.match(workflow, /contents:\s*read/);
 assert.match(workflow, /group:\s*telvora-seo-production-deploy/);
@@ -26,6 +35,12 @@ assert.doesNotMatch(workflow, /ssh-keyscan/);
 assert.doesNotMatch(workflow, /StrictHostKeyChecking=no/);
 assert.match(workflow, /--dry-run/);
 assert.match(workflow, /--rollback/);
+assert.match(workflow, /Fetch exact dry-run plan for human review/);
+assert.match(workflow, /Actual mutation plan/);
+assert.match(workflow, /("add","ADD")/);
+assert.match(workflow, /("replace","REPLACE")/);
+assert.match(workflow, /("remove","REMOVE")/);
+assert.match(workflow, /PRODUCTION ACTIVATION: NOT PERFORMED/);
 assert.match(workflow, /sha256sum/);
 assert.match(workflow, /test "\$manifest_commit" = "\$\{REQUESTED_RELEASE_SHA,,\}"/);
 assert.match(workflow, /prohibited production mutation in plan/);
