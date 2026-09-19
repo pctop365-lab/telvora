@@ -189,13 +189,13 @@ jobs:
           remote_stage='not created'
           if [ -f "$RUNNER_TEMP/telvora-remote-stage" ]; then remote_stage="$(cat "$RUNNER_TEMP/telvora-remote-stage")"; fi
           {
-            echo '## SEO staging transport'
-            echo "- Commit SHA: `${GITHUB_SHA}`"
-            echo "- Run ID: `${GITHUB_RUN_ID}`"
-            echo "- Package SHA-256: `${SEO_PACKAGE_SHA256:-not calculated}`"
-            echo "- Remote staging path: `${remote_stage}`"
-            echo "- Validation result: `${STAGING_VALIDATION_RESULT:-not completed}`"
-            echo '- **PRODUCTION ACTIVATION: NOT PERFORMED**'
+            printf '%s\n' '## SEO staging transport'
+            printf '%s\n' "- Commit SHA: $GITHUB_SHA"
+            printf '%s\n' "- Run ID: $GITHUB_RUN_ID"
+            printf '%s\n' "- Package SHA-256: ${SEO_PACKAGE_SHA256:-not calculated}"
+            printf '%s\n' "- Remote staging path: $remote_stage"
+            printf '%s\n' "- Validation result: ${STAGING_VALIDATION_RESULT:-not completed}"
+            printf '%s\n' '- **PRODUCTION ACTIVATION: NOT PERFORMED**'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary SSH credentials
