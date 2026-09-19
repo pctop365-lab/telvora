@@ -25,7 +25,7 @@ jobs:
     outputs:
       release_sha: ${{ steps.identity.outputs.release_sha }}
       package_sha256: ${{ steps.package.outputs.checksum }}
-      remote_stage: ${{ steps.stage.outputs.remote_stage }}
+      stage_id: ${{ steps.stage.outputs.stage_id }}
     runs-on: ubuntu-latest
     environment: seo-staging
     env:
@@ -147,9 +147,12 @@ jobs:
           TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
         run: |
           set -euo pipefail
-          remote_stage="$REMOTE_BASE/staging/telvora-seo-${REQUESTED_RELEASE_SHA}-${GITHUB_RUN_ID}"
+          stage_id="telvora-seo-${REQUESTED_RELEASE_SHA}-${GITHUB_RUN_ID}"
+          [[ "$stage_id" =~ ^telvora-seo-[0-9a-f]{40}-[0-9]+$ ]] || { echo 'invalid staging identity' >&2; exit 1; }
+          remote_stage="$REMOTE_BASE/staging/$stage_id"
           printf '%s\n' "$remote_stage" > "$RUNNER_TEMP/telvora-production-stage"
-          echo "remote_stage=$remote_stage" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$stage_id" > "$RUNNER_TEMP/stage-id"
+          echo "stage_id=$stage_id" >> "$GITHUB_OUTPUT"
           ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" \
             "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$remote_stage" "$REMOTE_BASE" "$REMOTE_DOCUMENT_ROOT" <<'REMOTE'
           set -euo pipefail
@@ -229,6 +232,9 @@ jobs:
           python3 - "$plan" <<'PY'
           import json,sys
           p=json.load(open(sys.argv[1]))
+          required=('add','replace','remove','unchanged','activationOrder')
+          if any(not isinstance(p.get(k), list) for k in required): raise SystemExit('invalid or incomplete activation plan')
+          if not any(p[k] for k in ('add','replace','remove','unchanged')): raise SystemExit('activation plan is unexpectedly empty')
           forbidden=tuple(('uploads/','pdf/','telegram','runtime','logs','locks','vendor'))
           bad=[x for x in p.get('add',[])+p.get('replace',[])+p.get('remove',[]) if x.endswith('.php') or x in {'public_contacts.json','telvora_secrets.php','.env'} or x.startswith(forbidden)]
           if bad: raise SystemExit('prohibited production mutation in plan: '+repr(bad))
@@ -247,30 +253,63 @@ jobs:
           remote_stage="$(cat "$RUNNER_TEMP/telvora-production-stage")"
           ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" "cat '$remote_stage/activation-plan.json'" > "$RUNNER_TEMP/activation-plan.json"
           test -s "$RUNNER_TEMP/activation-plan.json"
+          python3 - "$RUNNER_TEMP/activation-plan.json" <<'PY'
+          import json, sys
+          with open(sys.argv[1], encoding='utf-8') as fh:
+              plan = json.load(fh)
+          required = ('add', 'replace', 'remove', 'unchanged', 'activationOrder')
+          if any(not isinstance(plan.get(key), list) for key in required):
+              raise SystemExit('activation plan is missing required list fields')
+          if not any(plan[key] for key in ('add', 'replace', 'remove', 'unchanged')):
+              raise SystemExit('activation plan is unexpectedly empty')
+          PY
 
       - name: Write preflight summary with actual mutation plan
         if: always()
         shell: bash
         run: |
           set -euo pipefail
-          remote_stage='not created'; [ -f "$RUNNER_TEMP/telvora-production-stage" ] && remote_stage="$(cat "$RUNNER_TEMP/telvora-production-stage")"
+          stage_id='not created'; [ -f "$RUNNER_TEMP/stage-id" ] && stage_id="$(cat "$RUNNER_TEMP/stage-id")"
           {
             printf '%s\n' '## SEO production preflight'
             printf '%s\n' "- Release SHA: $REQUESTED_RELEASE_SHA"
             printf '%s\n' "- Package SHA-256: ${SEO_PACKAGE_SHA256:-not calculated}"
-            printf '%s\n' "- Remote staging path: $remote_stage"
+            printf '%s\n' "- Staging ID: $stage_id"
             printf '%s\n' "- Production DocumentRoot: $REMOTE_DOCUMENT_ROOT"
             printf '%s\n' "- Pre-activation validation: ${PRE_ACTIVATION_VALIDATION:-FAIL/NOT COMPLETED}"
             printf '%s\n' "- Dry-run/plan: ${DRY_RUN_PLAN:-FAIL/NOT COMPLETED}"
             printf '%s\n' ''
             printf '%s\n' '### Actual mutation plan'
           } >> "$GITHUB_STEP_SUMMARY"
+          plan_ok=0
           if [ -s "$RUNNER_TEMP/activation-plan.json" ]; then
-            python3 -c 'import json,sys; p=json.load(open(sys.argv[1])); [print("**%s files:**\n%s" % (label, "\n".join("- `%s`" % x for x in p.get(key,[])) or "- none")) for key,label in (("add","ADD"),("replace","REPLACE"),("remove","REMOVE")); print("**Protected/preserved files:**"); print("- PHP/backend/runtime/uploads/config/public_contacts/Telegram files are outside the managed allowlist and preserved."); print("- Activation order: " + "; ".join(p.get("activationOrder", [])))' "$RUNNER_TEMP/activation-plan.json" >> "$GITHUB_STEP_SUMMARY"
+            if python3 - "$RUNNER_TEMP/activation-plan.json" <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, sys
+          with open(sys.argv[1], encoding='utf-8') as fh:
+              plan = json.load(fh)
+          required = ('add', 'replace', 'remove', 'unchanged', 'activationOrder')
+          if any(not isinstance(plan.get(key), list) for key in required):
+              raise SystemExit('activation plan is missing required list fields')
+          if not any(plan[key] for key in ('add', 'replace', 'remove', 'unchanged')):
+              raise SystemExit('activation plan is unexpectedly empty')
+          for key, label in (('add', 'ADD'), ('replace', 'REPLACE'), ('remove', 'REMOVE')):
+              print(label + ':')
+              print('\n'.join('- ' + item for item in plan[key]) or '- (none)')
+          print('ACTIVATION ORDER:')
+          print('\n'.join('- ' + item for item in plan['activationOrder']) or '- (none)')
+          print('PROTECTED / PRESERVED:')
+          print('- PHP, backend/runtime, uploads, PDF, Telegram, secrets/config, customer/order data, and Yandex verification are preserved.')
+          PY
+            then
+              plan_ok=1
+            else
+              printf '%s\n' '- Plan invalid; preflight is failed closed.' >> "$GITHUB_STEP_SUMMARY"
+            fi
           else
-            printf '%s\n' '- Plan unavailable because preflight did not complete.' >> "$GITHUB_STEP_SUMMARY"
+            printf '%s\n' '- Plan unavailable; preflight is failed closed.' >> "$GITHUB_STEP_SUMMARY"
           fi
           printf '%s\n' '- **PRODUCTION ACTIVATION: NOT PERFORMED**' >> "$GITHUB_STEP_SUMMARY"
+          test "$plan_ok" -eq 1
       - name: Remove temporary SSH credentials
         if: always()
         shell: bash
@@ -289,7 +328,7 @@ jobs:
       REMOTE_BACKUP_ROOT: /var/www/u3609206/data/telvora-backups
       REQUESTED_RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
       SEO_PACKAGE_SHA256: ${{ needs.preflight.outputs.package_sha256 }}
-      REMOTE_STAGE: ${{ needs.preflight.outputs.remote_stage }}
+      STAGE_ID: ${{ needs.preflight.outputs.stage_id }}
 
     steps:
       - name: Verify preflight handoff
@@ -298,8 +337,10 @@ jobs:
           set -euo pipefail
           [[ "$REQUESTED_RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$SEO_PACKAGE_SHA256" =~ ^[0-9a-f]{64}$ ]]
-          test -n "$REMOTE_STAGE"
-          case "$REMOTE_STAGE" in "$REMOTE_BASE/staging/telvora-seo-${REQUESTED_RELEASE_SHA}-"*) ;; *) echo 'preflight staging identity mismatch' >&2; exit 1;; esac
+          [[ "$STAGE_ID" =~ ^telvora-seo-[0-9a-f]{40}-[0-9]+$ ]] || { echo 'invalid preflight staging ID' >&2; exit 1; }
+          case "$STAGE_ID" in "telvora-seo-${REQUESTED_RELEASE_SHA}-"*) ;; *) echo 'preflight staging identity mismatch' >&2; exit 1;; esac
+          REMOTE_STAGE="$REMOTE_BASE/staging/$STAGE_ID"
+          echo "REMOTE_STAGE=$REMOTE_STAGE" >> "$GITHUB_ENV"
 
       - name: Prepare pinned SSH credentials
         shell: bash

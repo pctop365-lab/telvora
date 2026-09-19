@@ -79,6 +79,20 @@ This directory is preparation only. It does not contain a complete vhost and mus
 
 ## Current local evidence
 
+## Phase 2.4 production preflight handoff
+
+The protected production workflow uses two jobs. The preflight job builds,
+uploads, validates and dry-runs the requested immutable release, then writes
+the complete mutation plan (ADD, REPLACE, REMOVE, activation order and
+protected categories) to its Step Summary. It exports only the non-secret
+staging leaf `stage_id`; it never exports an absolute remote path containing
+the SSH user. The activation job reconstructs
+`/var/www/u3609206/data/staging/<stage_id>`, repeats canonical path and release
+identity checks, and is gated by the separate `seo-production` environment.
+If the plan is missing, malformed or empty, preflight fails closed and the
+activation job cannot start. The preflight summary always states
+`PRODUCTION ACTIVATION: NOT PERFORMED`.
+
 - Production edge is nginx; REG.RU/ISPmanager has confirmed Apache 2.4.37 behind it in FastCGI (Apache) mode.
 - Root-owned nginx vhost files remain unreadable to the hosting user. This package therefore targets the user-owned Apache DocumentRoot `.htaccess` layer and does not assume permission to edit nginx.
 - The existing production behavior observed before this package was a global SPA fallback: valid and unknown frontend paths returned the same root HTML with HTTP 200.
