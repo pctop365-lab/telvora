@@ -116,7 +116,8 @@ $realEmptySku = normalizationRow($profile, [
 ]);
 normalizationAssert('valid model without supplier SKU is retained', $realEmptySku['_skip_reason'] === null && $realEmptySku['errors'] === []);
 
-$accumulator = supplierPreviewAccumulator(10);
+$accumulator = supplierPreviewAccumulator(null, 10);
+normalizationAssert('preview accumulator receives callback then capture limit', is_array($accumulator) && $accumulator['_captured_row_limit'] === 10);
 foreach (array_merge($sectionRows, [$realEmptySku]) as $row) {
     supplierPreviewAccumulateRow($accumulator, $row, true);
 }
