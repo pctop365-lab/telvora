@@ -102,13 +102,19 @@ $sectionRows = [
     normalizationRow($profile, ['supplier_sku' => '', 'model' => '', 'product_name' => 'РСТ', 'purchase_price' => '', 'availability' => '', 'arrival_info' => '', 'currency_code' => '']),
     normalizationRow($profile, ['supplier_sku' => '', 'model' => '', 'product_name' => 'NEW LG 2025', 'purchase_price' => '', 'availability' => '', 'arrival_info' => '', 'currency_code' => '']),
     normalizationRow($profile, ['supplier_sku' => '', 'model' => '', 'product_name' => 'PHILIPS', 'purchase_price' => '', 'availability' => '', 'arrival_info' => '', 'currency_code' => '']),
-    normalizationRow($profile, ['supplier_sku' => '', 'model' => '', 'product_name' => 'SAMSUNG 2025', 'purchase_price' => '', 'availability' => '', 'arrival_info' => '', 'currency_code' => ''])
+    normalizationRow($profile, ['supplier_sku' => '', 'model' => '', 'product_name' => 'SAMSUNG 2024', 'purchase_price' => '', 'availability' => '', 'arrival_info' => '', 'currency_code' => '']),
+    normalizationRow($profile, ['supplier_sku' => '', 'model' => '', 'product_name' => 'SAMSUNG 2025', 'purchase_price' => '', 'availability' => '', 'arrival_info' => '', 'currency_code' => '']),
+    normalizationRow($profile, ['supplier_sku' => '', 'model' => '', 'product_name' => 'SAMSUNG 2026', 'purchase_price' => '', 'availability' => '', 'arrival_info' => '', 'currency_code' => '']),
+    normalizationRow($profile, ['supplier_sku' => '', 'model' => '', 'product_name' => 'LG2026', 'purchase_price' => '0', 'availability' => '—', 'arrival_info' => '', 'currency_code' => ''])
 ];
 normalizationAssert('television section is classified as header', $sectionRows[0]['_skip_reason'] === 'section_header');
 normalizationAssert('РСТ section is classified as header', $sectionRows[1]['_skip_reason'] === 'section_header');
 normalizationAssert('NEW LG section is classified as header', $sectionRows[2]['_skip_reason'] === 'section_header');
 normalizationAssert('PHILIPS section is classified as header', $sectionRows[3]['_skip_reason'] === 'section_header');
-normalizationAssert('SAMSUNG section is classified as header', $sectionRows[4]['_skip_reason'] === 'section_header');
+normalizationAssert('SAMSUNG 2024 section is classified as header', $sectionRows[4]['_skip_reason'] === 'section_header');
+normalizationAssert('SAMSUNG 2025 section is classified as header', $sectionRows[5]['_skip_reason'] === 'section_header');
+normalizationAssert('SAMSUNG 2026 section is classified as header', $sectionRows[6]['_skip_reason'] === 'section_header');
+normalizationAssert('LG2026 zero-price section is classified as header', $sectionRows[7]['_skip_reason'] === 'section_header');
 
 $realEmptySku = normalizationRow($profile, [
     'supplier_sku' => '', 'model' => '42C6RLA', 'product_name' => '42C6RLA',
@@ -121,8 +127,8 @@ normalizationAssert('preview accumulator receives callback then capture limit', 
 foreach (array_merge($sectionRows, [$realEmptySku]) as $row) {
     supplierPreviewAccumulateRow($accumulator, $row, true);
 }
-normalizationAssert('skipped headers are separate from import errors', $accumulator['rows_skipped_headers'] === 5 && $accumulator['rows_with_errors'] === 0);
+normalizationAssert('skipped headers are separate from import errors', $accumulator['rows_skipped_headers'] === 8 && $accumulator['rows_with_errors'] === 0);
 normalizationAssert('valid row remains in preview rows', count($accumulator['rows']) === 1 && ($accumulator['rows'][0]['_skip_reason'] ?? null) === null);
-normalizationAssert('skipped rows are available for preview explanation', count($accumulator['skipped_rows']) === 5);
+normalizationAssert('skipped rows are available for preview explanation', count($accumulator['skipped_rows']) === 8);
 
 echo "Supplier import normalization tests PASS\n";

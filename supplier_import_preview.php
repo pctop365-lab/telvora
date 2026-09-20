@@ -445,15 +445,20 @@ function supplierPreviewNonProductReason(array $values, array $normalized): ?str
         'РСТ', 'ТЕЛЕВИЗОРЫ LG', 'NEW LG 2025', 'LG2026', 'PHILIPS',
         'SAMSUNG 2024', 'SAMSUNG 2025'
     ];
-    $sectionLike = in_array($name, $knownSections, true) || preg_match(
+    $knownSection = in_array($name, $knownSections, true);
+    $sectionLike = $knownSection || preg_match(
         '/\A(?:NEW\s+)?(?:LG|PHILIPS|SAMSUNG)(?:\s+\d{4})?\z/u',
         $name
     ) === 1;
     $price = $normalized['purchase_price'] ?? null;
     $hasUsablePrice = is_string($price) && preg_match('/\A\d+(?:\.\d+)?\z/D', $price) === 1 && (float)$price > 0;
+    $hasSupplierSku = trim((string)($values['supplier_sku'] ?? '')) !== '';
     $availability = (string)($values['availability'] ?? '');
     $hasSellableSignal = !supplierAvailabilityIsBlankLikeDash($availability) && supplierAvailabilityNormalizedToken($availability) !== '';
-    if ($sectionLike && !$hasUsablePrice && !supplierPreviewLooksLikeModel($values) && !$hasSellableSignal) {
+    if (
+        $sectionLike && !$hasUsablePrice && !$hasSellableSignal &&
+        ((!$hasSupplierSku && $knownSection) || !supplierPreviewLooksLikeModel($values))
+    ) {
         return 'section_header';
     }
     return null;
