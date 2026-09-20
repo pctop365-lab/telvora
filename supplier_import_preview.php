@@ -7,6 +7,8 @@ if (!defined('TELVORA_MANAGER_REQUEST')) {
     exit;
 }
 
+require_once __DIR__ . '/supplier_availability_service.php';
+
 final class SupplierImportPreviewException extends RuntimeException
 {
     public function __construct(
@@ -318,7 +320,10 @@ function supplierPreviewValidateProfile(array $profile): array
             'default_currency_code' => $defaultCurrency
         ],
         'header_row_number' => $headerRow,
-        'sheet_name' => $sheetName
+        'sheet_name' => $sheetName,
+        'supplier_code' => is_string($profile['supplier_code'] ?? null)
+            ? trim((string)$profile['supplier_code'])
+            : ''
     ];
 }
 
@@ -424,6 +429,45 @@ function supplierPreviewNormalizePrice(string $value, string $decimalSeparator, 
     return $canonical;
 }
 
+function supplierPreviewLooksLikeModel(array $values): bool
+{
+    $identity = trim((string)($values['model'] ?? '') . ' ' . (string)($values['supplier_sku'] ?? '') . ' ' . (string)($values['product_name'] ?? ''));
+    return preg_match('/(?:\d{2,3}[A-ZА-ЯЁ]\d{1,4}[A-ZА-ЯЁ]*|[A-ZА-ЯЁ]{2,}\d{2,}[A-ZА-ЯЁ0-9]*)/u', $identity) === 1;
+}
+
+function supplierPreviewNonProductReason(array $values, array $normalized): ?string
+{
+    $name = supplierPreviewNormalizedSectionText((string)($values['product_name'] ?? ''));
+    if ($name === '') {
+        return null;
+    }
+    $knownSections = [
+        'РСТ', 'ТЕЛЕВИЗОРЫ LG', 'NEW LG 2025', 'LG2026', 'PHILIPS',
+        'SAMSUNG 2024', 'SAMSUNG 2025'
+    ];
+    $sectionLike = in_array($name, $knownSections, true) || preg_match(
+        '/\A(?:NEW\s+)?(?:LG|PHILIPS|SAMSUNG)(?:\s+\d{4})?\z/u',
+        $name
+    ) === 1;
+    $price = $normalized['purchase_price'] ?? null;
+    $hasUsablePrice = is_string($price) && preg_match('/\A\d+(?:\.\d+)?\z/D', $price) === 1 && (float)$price > 0;
+    $availability = (string)($values['availability'] ?? '');
+    $hasSellableSignal = !supplierAvailabilityIsBlankLikeDash($availability) && supplierAvailabilityNormalizedToken($availability) !== '';
+    if ($sectionLike && !$hasUsablePrice && !supplierPreviewLooksLikeModel($values) && !$hasSellableSignal) {
+        return 'section_header';
+    }
+    return null;
+}
+
+function supplierPreviewNormalizedSectionText(string $value): string
+{
+    $value = preg_replace('/[\s\x{00A0}]+/u', ' ', trim($value));
+    if (!is_string($value)) {
+        return '';
+    }
+    return function_exists('mb_strtoupper') ? mb_strtoupper($value, 'UTF-8') : strtoupper($value);
+}
+
 function supplierPreviewBuildRow(
     int $sourceRowNumber,
     array $sourceValues,
@@ -488,12 +532,23 @@ function supplierPreviewBuildRow(
         }
     }
 
+    $availabilityNormalization = normalizeSupplierAvailability(
+        $profile,
+        $values['availability'] ?? null,
+        $values['arrival_info'] ?? null,
+        null,
+        []
+    );
+    $skipReason = supplierPreviewNonProductReason($values, $normalized);
+
     return [
         'source_row_number' => $sourceRowNumber,
         'values' => $values,
         'normalized' => $normalized,
+        'availability_normalization' => $availabilityNormalization,
         'errors' => array_values(array_unique($errors)),
         'warnings' => array_values(array_unique($warnings)),
+        '_skip_reason' => $skipReason,
         '_empty' => $isEmpty
     ];
 }
@@ -506,9 +561,11 @@ function supplierPreviewAccumulator(
     return [
         'rows_scanned' => 0,
         'rows_skipped' => 0,
+        'rows_skipped_headers' => 0,
         'rows_with_errors' => 0,
         'eligible_rows' => 0,
         'rows' => [],
+        'skipped_rows' => [],
         '_row_consumer' => $rowConsumer,
         '_captured_row_limit' => $capturedRowLimit
     ];
@@ -517,6 +574,17 @@ function supplierPreviewAccumulator(
 function supplierPreviewAccumulateRow(array &$result, array $row, bool $skipEmptyRows): void
 {
     $result['rows_scanned']++;
+    if (($row['_skip_reason'] ?? null) !== null) {
+        $result['rows_skipped']++;
+        $result['rows_skipped_headers']++;
+        $row['row_kind'] = 'skipped_header';
+        $row['skip_reason'] = $row['_skip_reason'];
+        unset($row['_skip_reason'], $row['_empty']);
+        if (count($result['skipped_rows']) < $result['_captured_row_limit']) {
+            $result['skipped_rows'][] = $row;
+        }
+        return;
+    }
     if (
         $skipEmptyRows &&
         $row['_empty'] &&

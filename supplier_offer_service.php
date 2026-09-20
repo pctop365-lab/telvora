@@ -46,7 +46,8 @@ function supplierOfferPublishAnalysis(PDO $pdo, int $jobId, bool $publish): arra
 {
     $jobSql = "
         SELECT j.id, j.supplier_id, j.import_profile_id, j.status, j.created_at,
-               p.arrival_date_format, s.id AS existing_supplier_id
+               p.arrival_date_format, s.internal_code AS supplier_code,
+               s.id AS existing_supplier_id
         FROM supplier_import_jobs j
         INNER JOIN suppliers s ON s.id = j.supplier_id
         LEFT JOIN supplier_import_profiles p ON p.id = j.import_profile_id
@@ -65,7 +66,10 @@ function supplierOfferPublishAnalysis(PDO $pdo, int $jobId, bool $publish): arra
     $availabilityMappings = $job['import_profile_id'] === null
         ? []
         : supplierAvailabilityLoadMappings($pdo, (int)$job['import_profile_id'], $publish);
-    $availabilityProfile = ['arrival_date_format' => $job['arrival_date_format']];
+    $availabilityProfile = [
+        'arrival_date_format' => $job['arrival_date_format'],
+        'supplier_code' => $job['supplier_code']
+    ];
 
     $duplicateStmt = $pdo->prepare("
         SELECT r.id
@@ -96,6 +100,7 @@ function supplierOfferPublishAnalysis(PDO $pdo, int $jobId, bool $publish): arra
         'skipped_unmatched' => 0,
         'skipped_no_variant' => 0,
         'skipped_invalid_price' => 0,
+        'skipped_zero_price' => 0,
         'skipped_invalid_currency' => 0,
         'skipped_missing_sku' => 0,
         'skipped_duplicate_sku' => 0,
@@ -161,7 +166,11 @@ function supplierOfferPublishAnalysis(PDO $pdo, int $jobId, bool $publish): arra
             }
             $priceMinor = supplierOfferMinorUnits($row['purchase_price']);
             if ($priceMinor === null) {
-                $summary['skipped_invalid_price']++;
+                if (supplierOfferMinorUnits($row['purchase_price'], true) === 0) {
+                    $summary['skipped_zero_price']++;
+                } else {
+                    $summary['skipped_invalid_price']++;
+                }
                 continue;
             }
             $currency = is_string($row['currency_code']) ? strtoupper(trim($row['currency_code'])) : '';

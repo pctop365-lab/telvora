@@ -7,6 +7,8 @@ if (!defined('TELVORA_MANAGER_REQUEST')) {
     exit;
 }
 
+require_once __DIR__ . '/supplier_availability_service.php';
+
 function supplierStageNormalizeModel(string $value): ?string
 {
     $value = trim($value);
@@ -71,7 +73,7 @@ function supplierStageReviewReason(array $errors, array $warnings): ?string
     } while (true);
 }
 
-function supplierStagePrepareRow(array $row): array
+function supplierStagePrepareRow(array $row, array $profile = []): array
 {
     $values = is_array($row['values'] ?? null) ? $row['values'] : [];
     $normalized = is_array($row['normalized'] ?? null) ? $row['normalized'] : [];
@@ -119,6 +121,18 @@ function supplierStagePrepareRow(array $row): array
         $currencyCode = null;
     }
 
+    $availabilityNormalization = normalizeSupplierAvailability(
+        $profile,
+        $values['availability'] ?? null,
+        $values['arrival_info'] ?? null,
+        null,
+        []
+    );
+    array_push($warnings, ...array_map(
+        static fn(array $warning): string => (string)($warning['message'] ?? ''),
+        $availabilityNormalization['warnings']
+    ));
+
     return [
         'source_row_number' => (int)$row['source_row_number'],
         'supplier_sku' => $supplierSku,
@@ -127,6 +141,8 @@ function supplierStagePrepareRow(array $row): array
         'normalized_model' => $normalizedModel,
         'purchase_price' => $purchasePrice,
         'currency_code' => $currencyCode,
+        'normalized_availability' => $availabilityNormalization['status'] === 'unknown'
+            ? null : $availabilityNormalization['status'],
         'raw_availability' => supplierStageBoundedValue(
             $values['availability'] ?? null, 255, 'availability', $errors
         ),
@@ -255,7 +271,7 @@ function supplierStageInsertChunk(
             $row['purchase_price'],
             $row['currency_code'],
             $row['raw_availability'],
-            null,
+            $row['normalized_availability'] ?? null,
             $row['raw_arrival_info'],
             $row['detected_assembly_country'],
             $row['detected_market_region'],

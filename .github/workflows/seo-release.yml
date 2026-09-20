@@ -120,6 +120,7 @@ jobs:
           sudo apt-get install -y php-cli php-mysql
           php --version
           php -m | grep -E '^PDO$|^pdo_mysql$'
+          npm run test:supplier:normalization
           php tests/product_delete_config_guard_test.php
           php tests/product_delete_mysql_test.php
 

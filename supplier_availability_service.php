@@ -101,6 +101,45 @@ function supplierAvailabilityWarning(string $code, string $message): array
     return ['code' => $code, 'message' => $message];
 }
 
+function supplierAvailabilityNormalizedToken(?string $value): string
+{
+    if ($value === null) {
+        return '';
+    }
+    $value = supplierAvailabilityTrim($value);
+    $value = preg_replace('/[\s\x{00A0}]+/u', ' ', $value);
+    if (!is_string($value)) {
+        return '';
+    }
+    return function_exists('mb_strtoupper') ? mb_strtoupper($value, 'UTF-8') : strtoupper($value);
+}
+
+function supplierAvailabilityIsBlankLikeDash(?string $value): bool
+{
+    if ($value === null || supplierAvailabilityTrim($value) === '') {
+        return true;
+    }
+    return preg_match('/\A[\s\x{00A0}\x{2010}-\x{2015}\x{2212}-]+\z/u', $value) === 1;
+}
+
+function supplierAvailabilityIsAlekseyEuropa(array $profile): bool
+{
+    $code = $profile['supplier_code'] ?? ($profile['internal_code'] ?? '');
+    return is_string($code) && strtolower(trim($code)) === 'aleksey_europa';
+}
+
+function supplierAvailabilityNormalizeAlekseyEuropa(?string $rawAvailability): ?string
+{
+    if (supplierAvailabilityIsBlankLikeDash($rawAvailability)) {
+        return 'in_stock';
+    }
+    return match (supplierAvailabilityNormalizedToken($rawAvailability)) {
+        'ЗАКОНЧИЛИСЬ' => 'out_of_stock',
+        'NEW' => 'expected',
+        default => null
+    };
+}
+
 function supplierAvailabilityParseDate(?string $raw, ?string $format, DateTimeImmutable $today): array
 {
     if ($raw === null || supplierAvailabilityTrim($raw) === '') {
@@ -160,12 +199,21 @@ function normalizeSupplierAvailability(
     $trimmedAvailability = $rawAvailability === null ? '' : supplierAvailabilityTrim($rawAvailability);
     $index = supplierAvailabilityIndexMappings($mappingRows);
     $hash = hash('sha256', $trimmedAvailability);
-    if (isset($index[$hash]) && hash_equals($index[$hash]['raw_value'], $trimmedAvailability)) {
+    $profileStatus = supplierAvailabilityIsAlekseyEuropa($profile)
+        ? supplierAvailabilityNormalizeAlekseyEuropa($rawAvailability)
+        : null;
+    if ($profileStatus !== null) {
+        $status = $profileStatus;
+    } elseif (isset($index[$hash]) && hash_equals($index[$hash]['raw_value'], $trimmedAvailability)) {
         $status = $index[$hash]['status'];
     } elseif ($trimmedAvailability !== '') {
         $warnings[] = supplierAvailabilityWarning('availability_unmapped', 'Значение наличия не сопоставлено для этого профиля');
     }
-    $arrival = supplierAvailabilityParseDate($rawArrival, supplierAvailabilityValidateDateFormat($profile['arrival_date_format'] ?? null), $today);
+    $arrival = supplierAvailabilityIsAlekseyEuropa($profile)
+        ? ['value' => null, 'warnings' => $rawArrival !== null && supplierAvailabilityTrim($rawArrival) !== ''
+            ? [supplierAvailabilityWarning('arrival_info_preserved', 'Информация о поставке сохранена как текст без выдуманной даты')]
+            : []]
+        : supplierAvailabilityParseDate($rawArrival, supplierAvailabilityValidateDateFormat($profile['arrival_date_format'] ?? null), $today);
     $stock = supplierAvailabilityParseStock($rawStock);
     array_push($warnings, ...$arrival['warnings'], ...$stock['warnings']);
     $stockValue = $stock['value'];
@@ -174,7 +222,7 @@ function normalizeSupplierAvailability(
         $stockValue = null;
         $warnings[] = supplierAvailabilityWarning('status_stock_conflict', 'Статус наличия конфликтует с количеством; canonical значения сброшены в unknown');
     }
-    if ($status === 'expected' && $arrival['value'] === null) {
+    if ($status === 'expected' && $arrival['value'] === null && !supplierAvailabilityIsAlekseyEuropa($profile)) {
         $warnings[] = supplierAvailabilityWarning('expected_without_date', 'Ожидаемое поступление указано без корректной даты');
     }
     return [

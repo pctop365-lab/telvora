@@ -211,8 +211,16 @@ type SupplierImportPreviewRow = {
   source_row_number: number;
   values: Partial<Record<SupplierImportMappingKey, string>>;
   normalized: Partial<Record<SupplierImportMappingKey, string | null>>;
+  availability_normalization?: {
+    status: 'in_stock' | 'out_of_stock' | 'expected' | 'unknown';
+    raw_availability: string | null;
+    raw_arrival_info: string | null;
+    expected_arrival_at: string | null;
+  };
   errors: string[];
   warnings: string[];
+  row_kind?: 'skipped_header';
+  skip_reason?: string;
 };
 
 type SupplierImportPreview = {
@@ -226,9 +234,11 @@ type SupplierImportPreview = {
   mapping: Partial<Record<SupplierImportMappingKey, string>>;
   rows_scanned: number;
   rows_skipped: number;
+  rows_skipped_headers: number;
   rows_with_errors: number;
   preview_truncated: boolean;
   rows: SupplierImportPreviewRow[];
+  skipped_rows: SupplierImportPreviewRow[];
 };
 
 type SupplierImportJob = {
@@ -293,6 +303,7 @@ type SupplierOfferPublishSummary = {
   skipped_unmatched: number;
   skipped_no_variant: number;
   skipped_invalid_price: number;
+  skipped_zero_price: number;
   skipped_invalid_currency: number;
   skipped_missing_sku: number;
   skipped_duplicate_sku: number;
@@ -4404,7 +4415,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
 
                     {supplierImportPreview && (
                       <div className="mt-6">
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
                           <div className="rounded-xl bg-white border border-gray-200 p-3">
                             <div className="text-xs text-gray-500">Формат</div>
                             <div className="mt-1 font-semibold uppercase">{supplierImportPreview.format}</div>
@@ -4420,6 +4431,10 @@ const toggleProductStatus = async (product: AdminProduct) => {
                           <div className="rounded-xl bg-white border border-gray-200 p-3">
                             <div className="text-xs text-gray-500">Пропущено</div>
                             <div className="mt-1 font-semibold">{supplierImportPreview.rows_skipped}</div>
+                          </div>
+                          <div className="rounded-xl bg-white border border-gray-200 p-3">
+                            <div className="text-xs text-gray-500">Разделы/заголовки</div>
+                            <div className="mt-1 font-semibold">{supplierImportPreview.rows_skipped_headers}</div>
                           </div>
                           <div className="rounded-xl bg-white border border-gray-200 p-3">
                             <div className="text-xs text-gray-500">С ошибками</div>
@@ -4486,6 +4501,12 @@ const toggleProductStatus = async (product: AdminProduct) => {
                                       );
                                     })}
                                   <td className="px-3 py-3 min-w-[240px]">
+                                    {row.availability_normalization && (
+                                      <div className="mb-1 text-xs text-slate-600">
+                                        Наличие: <span className="font-semibold">{row.availability_normalization.status}</span>
+                                        {row.availability_normalization.raw_arrival_info && ` · Поставка: ${row.availability_normalization.raw_arrival_info}`}
+                                      </div>
+                                    )}
                                     {row.errors.map((message) => (
                                       <div key={`error-${message}`} className="text-xs text-red-600">Ошибка: {message}</div>
                                     ))}
@@ -4501,6 +4522,18 @@ const toggleProductStatus = async (product: AdminProduct) => {
                             </tbody>
                           </table>
                         </div>
+                        {supplierImportPreview.skipped_rows.length > 0 && (
+                          <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <div className="text-sm font-semibold text-slate-800">Пропущенные разделы и заголовки</div>
+                            <div className="mt-2 space-y-1 text-xs text-slate-600">
+                              {supplierImportPreview.skipped_rows.map((row) => (
+                                <div key={`skipped-${row.source_row_number}`}>
+                                  Строка {row.source_row_number}: {row.values.product_name || 'без названия'}{row.skip_reason ? ` · ${row.skip_reason}` : ''}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

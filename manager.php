@@ -1417,6 +1417,7 @@ if ($action === 'supplier_import_preview') {
     try {
         $profileStmt = $pdo->prepare("
             SELECT p.id, p.supplier_id, p.sheet_name, p.header_row_number,
+                   s.internal_code AS supplier_code,
                    p.column_mapping, p.parser_options
             FROM supplier_import_profiles p
             INNER JOIN suppliers s ON s.id = p.supplier_id
@@ -1489,9 +1490,11 @@ if ($action === 'supplier_import_preview') {
                 'mapping' => $profile['mapping_response'],
                 'rows_scanned' => $parsed['rows_scanned'],
                 'rows_skipped' => $parsed['rows_skipped'],
+                'rows_skipped_headers' => $parsed['rows_skipped_headers'],
                 'rows_with_errors' => $parsed['rows_with_errors'],
                 'preview_truncated' => $parsed['preview_truncated'],
-                'rows' => $parsed['rows']
+                'rows' => $parsed['rows'],
+                'skipped_rows' => $parsed['skipped_rows']
             ]
         ]);
     } catch (SupplierImportPreviewException $error) {
@@ -1528,6 +1531,7 @@ if ($action === 'supplier_import_stage') {
     try {
         $profileStmt = $pdo->prepare("
             SELECT p.id, p.supplier_id, p.sheet_name, p.header_row_number,
+                   s.internal_code AS supplier_code,
                    p.column_mapping, p.parser_options
             FROM supplier_import_profiles p
             INNER JOIN suppliers s ON s.id = p.supplier_id
@@ -1602,10 +1606,11 @@ if ($action === 'supplier_import_stage') {
             $pdo,
             $jobId,
             $supplierId,
+            $profile,
             &$rowBuffer,
             &$counters
         ): void {
-            $rowBuffer[] = supplierStagePrepareRow($row);
+            $rowBuffer[] = supplierStagePrepareRow($row, $profile);
             if (count($rowBuffer) >= 200) {
                 supplierStageInsertChunk($pdo, $jobId, $supplierId, $rowBuffer, $counters);
                 $rowBuffer = [];
@@ -1716,7 +1721,7 @@ if ($action === 'supplier_import_job_rows') {
                    j.status, j.rows_total, j.rows_matched, j.rows_unmatched,
                    j.rows_errors, j.created_at, j.finished_at,
                    p.name AS profile_name, p.arrival_date_format,
-                   s.name AS supplier_name
+                   s.name AS supplier_name, s.internal_code AS supplier_code
             FROM supplier_import_jobs j
             INNER JOIN suppliers s ON s.id = j.supplier_id
             LEFT JOIN supplier_import_profiles p ON p.id = j.import_profile_id
@@ -1754,7 +1759,10 @@ if ($action === 'supplier_import_job_rows') {
         $availabilityMappings = $job['import_profile_id'] === null
             ? []
             : supplierAvailabilityLoadMappings($pdo, (int)$job['import_profile_id']);
-        $normalizationProfile = ['arrival_date_format' => $job['arrival_date_format']];
+        $normalizationProfile = [
+            'arrival_date_format' => $job['arrival_date_format'],
+            'supplier_code' => $job['supplier_code']
+        ];
         $rows = array_map(static function (array $row) use ($normalizationProfile, $availabilityMappings): array {
             foreach (['id', 'source_row_number', 'matched_product_id', 'matched_product_variant_id', 'match_id'] as $key) {
                 $row[$key] = $row[$key] === null ? null : (int)$row[$key];
