@@ -822,7 +822,7 @@ function validatePricingRuleInput(array $data): array
     if ($markup !== null && pricingRuleScaledInteger($markup, 4) > 100000000) {
         sendManagerJson(400, ['success' => false, 'message' => 'Наценка не должна превышать 10000%']);
     }
-    $margin = normalizePricingRuleDecimal($data['minimum_margin'] ?? null, 2, 13, 'минимальная маржа');
+    $margin = normalizePricingRuleDecimal($data['minimum_margin'] ?? null, 2, 13, 'минимальная чистая прибыль после 10% расходов');
 
     $validFrom = normalizePricingRuleDate($data['valid_from'] ?? null, 'действует с');
     $validUntil = normalizePricingRuleDate($data['valid_until'] ?? null, 'действует до');

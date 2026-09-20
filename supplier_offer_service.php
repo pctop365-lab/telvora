@@ -350,41 +350,228 @@ function supplierPricingCalculate(array $offer, array $rules): array
         return ['calculable' => false, 'rule' => $rule, 'warnings' => ['Параметры округления не поддерживаются без определённой семантики']];
     }
     $purchaseMinor = supplierOfferMinorUnits($offer['purchase_price']);
+
     $markupScaled = $rule['markup_percent'] === null
-        ? 0 : supplierPricingDecimalScaled((string)$rule['markup_percent'], 4);
+        ? 0
+        : supplierPricingDecimalScaled((string)$rule['markup_percent'], 4);
+
+    /*
+     * minimum_margin is treated as minimum NET profit
+     * after TELVORA total expenses.
+     */
     $minimumMargin = $rule['minimum_margin'] === null
-        ? 0 : supplierOfferMinorUnits((string)$rule['minimum_margin'], true);
+        ? 0
+        : supplierOfferMinorUnits((string)$rule['minimum_margin'], true);
+
     if ($purchaseMinor === null || $markupScaled === null || $minimumMargin === null) {
-        return ['calculable' => false, 'rule' => $rule, 'warnings' => ['Денежные параметры правила выходят за безопасные пределы']];
+        return [
+            'calculable' => false,
+            'rule' => $rule,
+            'warnings' => ['Pricing parameters exceed safe limits']
+        ];
     }
+
+    /*
+     * Candidate based on markup percentage.
+     */
     $factor = 1000000 + $markupScaled;
+
     if ($factor <= 0 || $purchaseMinor > intdiv(PHP_INT_MAX - 999999, $factor)) {
-        return ['calculable' => false, 'rule' => $rule, 'warnings' => ['Расчёт превышает безопасный целочисленный диапазон']];
+        return [
+            'calculable' => false,
+            'rule' => $rule,
+            'warnings' => ['Markup calculation exceeds safe integer limits']
+        ];
     }
-    $numerator = $purchaseMinor * $factor;
-    $markupCandidate = intdiv($numerator + 999999, 1000000);
+
+    $markupCandidate = intdiv(
+        ($purchaseMinor * $factor) + 999999,
+        1000000
+    );
+
+    /*
+     * TELVORA total expenses = 10% of final sale price.
+     *
+     * sale * 0.90 - purchase >= minimumMargin
+     *
+     * sale >= (purchase + minimumMargin) / 0.90
+     *      >= (purchase + minimumMargin) * 10 / 9
+     */
     if ($purchaseMinor > PHP_INT_MAX - $minimumMargin) {
-        return ['calculable' => false, 'rule' => $rule, 'warnings' => ['Расчёт минимальной маржи превышает безопасный диапазон']];
+        return [
+            'calculable' => false,
+            'rule' => $rule,
+            'warnings' => ['Net profit calculation exceeds safe limits']
+        ];
     }
-    $minimumCandidate = $purchaseMinor + $minimumMargin;
-    $candidate = max($markupCandidate, $minimumCandidate);
+
+    $netBase = $purchaseMinor + $minimumMargin;
+
+    if ($netBase > intdiv(PHP_INT_MAX - 8, 10)) {
+        return [
+            'calculable' => false,
+            'rule' => $rule,
+            'warnings' => ['Net price floor exceeds safe limits']
+        ];
+    }
+
+    $minimumCandidate = intdiv(
+        ($netBase * 10) + 8,
+        9
+    );
+
+    $priceBeforeRounding = max(
+        $markupCandidate,
+        $minimumCandidate
+    );
+
+    /*
+     * Round UP to the nearest retail price ending with 900 RUB.
+     *
+     * 262222.23 -> 262900
+     * 259900.00 -> 259900
+     * 262999.00 -> 263900
+     */
+    if ($priceBeforeRounding > PHP_INT_MAX - 99) {
+        return [
+            'calculable' => false,
+            'rule' => $rule,
+            'warnings' => ['Rounding exceeds safe limits']
+        ];
+    }
+
+    $wholeRubles = intdiv(
+        $priceBeforeRounding + 99,
+        100
+    );
+
+    $roundedRubles =
+        (intdiv($wholeRubles, 1000) * 1000) + 900;
+
+    if ($roundedRubles < $wholeRubles) {
+        $roundedRubles += 1000;
+    }
+
+    if ($roundedRubles > intdiv(PHP_INT_MAX, 100)) {
+        return [
+            'calculable' => false,
+            'rule' => $rule,
+            'warnings' => ['Rounded price exceeds safe limits']
+        ];
+    }
+
+    $candidate = $roundedRubles * 100;
+
+    /*
+     * Gross margin.
+     */
     $margin = $candidate - $purchaseMinor;
+
     if ($margin > intdiv(PHP_INT_MAX, 10000)) {
-        return ['calculable' => false, 'rule' => $rule, 'warnings' => ['Процент маржи превышает безопасный диапазон']];
+        return [
+            'calculable' => false,
+            'rule' => $rule,
+            'warnings' => ['Gross margin percentage exceeds safe limits']
+        ];
     }
-    $marginPercentHundredths = intdiv($margin * 10000, $purchaseMinor);
+
+    $marginPercentHundredths = intdiv(
+        $margin * 10000,
+        $purchaseMinor
+    );
+
+    /*
+     * Estimated total expenses = 10% of final retail price.
+     */
+    $expenseMinor = intdiv(
+        $candidate + 9,
+        10
+    );
+
+    $netProfit =
+        $candidate -
+        $expenseMinor -
+        $purchaseMinor;
+
+    if ($netProfit < $minimumMargin) {
+        return [
+            'calculable' => false,
+            'rule' => $rule,
+            'warnings' => ['Net profit floor was not satisfied']
+        ];
+    }
+
+    if ($netProfit > intdiv(PHP_INT_MAX, 10000)) {
+        return [
+            'calculable' => false,
+            'rule' => $rule,
+            'warnings' => ['Net profit percentage exceeds safe limits']
+        ];
+    }
+
+    $netProfitPercentHundredths = intdiv(
+        $netProfit * 10000,
+        $purchaseMinor
+    );
+
     if ($minimumCandidate > $markupCandidate) {
-        $warnings[] = 'Цена повышена до уровня минимальной абсолютной маржи';
+        $warnings[] = 'Price increased to satisfy minimum net profit after 10% expenses';
     }
+
+    if ($candidate > $priceBeforeRounding) {
+        $warnings[] = 'Price rounded up to the nearest ...900 RUB';
+    }
+
     return [
         'calculable' => true,
         'rule' => $rule,
-        'purchase_price' => supplierOfferMoney($purchaseMinor),
-        'markup_percent' => $rule['markup_percent'] === null ? '0.0000' : (string)$rule['markup_percent'],
-        'price_before_rounding' => supplierOfferMoney(max($markupCandidate, $minimumCandidate)),
-        'candidate_retail_price' => supplierOfferMoney($candidate),
-        'expected_margin' => supplierOfferMoney($margin),
-        'expected_margin_percent' => intdiv($marginPercentHundredths, 100) . '.' . str_pad((string)($marginPercentHundredths % 100), 2, '0', STR_PAD_LEFT),
+
+        'purchase_price' =>
+            supplierOfferMoney($purchaseMinor),
+
+        'markup_percent' =>
+            $rule['markup_percent'] === null
+                ? '0.0000'
+                : (string)$rule['markup_percent'],
+
+        'operating_cost_percent' => '10.00',
+
+        'minimum_net_profit' =>
+            supplierOfferMoney($minimumMargin),
+
+        'price_before_rounding' =>
+            supplierOfferMoney($priceBeforeRounding),
+
+        'candidate_retail_price' =>
+            supplierOfferMoney($candidate),
+
+        'expected_margin' =>
+            supplierOfferMoney($margin),
+
+        'expected_margin_percent' =>
+            intdiv($marginPercentHundredths, 100) . '.' .
+            str_pad(
+                (string)($marginPercentHundredths % 100),
+                2,
+                '0',
+                STR_PAD_LEFT
+            ),
+
+        'estimated_expenses' =>
+            supplierOfferMoney($expenseMinor),
+
+        'expected_net_profit' =>
+            supplierOfferMoney($netProfit),
+
+        'expected_net_profit_percent' =>
+            intdiv($netProfitPercentHundredths, 100) . '.' .
+            str_pad(
+                (string)($netProfitPercentHundredths % 100),
+                2,
+                '0',
+                STR_PAD_LEFT
+            ),
+
         'warnings' => $warnings
     ];
 }

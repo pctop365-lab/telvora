@@ -336,6 +336,11 @@ type SupplierOfferPricingPreview = {
     candidate_retail_price?: string;
     expected_margin?: string;
     expected_margin_percent?: string;
+    operating_cost_percent?: string;
+    minimum_net_profit?: string;
+    estimated_expenses?: string;
+    expected_net_profit?: string;
+    expected_net_profit_percent?: string;
     warnings: string[];
   };
 };
@@ -4267,7 +4272,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                     <label className="text-sm text-gray-600">Наценка, %
                       <input className="admin-input mt-2" inputMode="decimal" placeholder="0" value={pricingRuleForm.markup_percent} onChange={(e) => setPricingRuleForm((v) => ({ ...v, markup_percent: e.target.value }))} />
                     </label>
-                    <label className="text-sm text-gray-600">Минимальная маржа, ₽
+                    <label className="text-sm text-gray-600">Мин. чистая прибыль после 10% расходов, ₽
                       <input className="admin-input mt-2" inputMode="decimal" placeholder="0" value={pricingRuleForm.minimum_margin} onChange={(e) => setPricingRuleForm((v) => ({ ...v, minimum_margin: e.target.value }))} />
                     </label>
                     <label className="text-sm text-gray-600">Действует с
@@ -4277,7 +4282,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                       <input className="admin-input mt-2" type="datetime-local" value={pricingRuleForm.valid_until} onChange={(e) => setPricingRuleForm((v) => ({ ...v, valid_until: e.target.value }))} />
                     </label>
                   </div>
-                  <div className="mt-4 rounded-lg bg-white border border-gray-200 px-4 py-3 text-sm text-gray-600">Округление: <span className="font-medium">Без дополнительного округления</span>. Дополнительный scope недоступен.</div>
+                  <div className="mt-4 rounded-lg bg-white border border-gray-200 px-4 py-3 text-sm text-gray-600">Расходы: <span className="font-medium">10% от конечной цены</span> · Округление: <span className="font-medium">вверх до ближайшей цены …900 ₽</span>. Дополнительный scope недоступен.</div>
                   <label className="inline-flex items-center gap-3 mt-4 text-sm text-gray-700"><input type="checkbox" checked={pricingRuleForm.is_active} onChange={(e) => setPricingRuleForm((v) => ({ ...v, is_active: e.target.checked }))} /> Активно</label>
                   <div className="flex justify-end gap-3 mt-5">
                     <button type="button" onClick={closePricingRuleForm} className="px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-gray-700">Отмена</button>
@@ -4292,7 +4297,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                 <div className="mt-5 overflow-x-auto">
                   <table className="w-full min-w-[1050px] text-sm">
                     <thead><tr className="border-b border-gray-200 bg-gray-50">
-                      <th className="px-3 py-3 text-left">Название / статус</th><th className="px-3 py-3 text-left">Приоритет</th><th className="px-3 py-3 text-left">Категория</th><th className="px-3 py-3 text-left">Диапазон закупки</th><th className="px-3 py-3 text-left">Наценка</th><th className="px-3 py-3 text-left">Мин. маржа</th><th className="px-3 py-3 text-left">Срок</th><th className="px-3 py-3 text-right">Действия</th>
+                      <th className="px-3 py-3 text-left">Название / статус</th><th className="px-3 py-3 text-left">Приоритет</th><th className="px-3 py-3 text-left">Категория</th><th className="px-3 py-3 text-left">Диапазон закупки</th><th className="px-3 py-3 text-left">Наценка</th><th className="px-3 py-3 text-left">Мин. чистая прибыль</th><th className="px-3 py-3 text-left">Срок</th><th className="px-3 py-3 text-right">Действия</th>
                     </tr></thead>
                     <tbody>{pricingRules.map((rule) => (
                       <tr key={rule.id} className="border-b border-gray-100 align-top">
@@ -5009,12 +5014,12 @@ const toggleProductStatus = async (product: AdminProduct) => {
                       <div><h5 className="font-semibold text-graphite-900">Расчёт цен</h5><p className="text-sm text-gray-500 mt-1">Только серверный preview. Цена на сайте не изменена.</p></div>
                       {offerPricingLoading ? <div className="py-6 text-center text-gray-500">Расчёт цен...</div> : offerPricingRows.length === 0 ? <div className="mt-4 rounded-xl border border-dashed border-gray-300 p-5 text-center text-gray-500">Предложения из этого import job ещё не опубликованы.</div> : (
                         <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200"><table className="w-full min-w-[1250px] text-sm"><thead className="bg-gray-50"><tr>
-                          <th className="px-3 py-3 text-left">Поставщик / вариант</th><th className="px-3 py-3 text-left">Закупка</th><th className="px-3 py-3 text-left">Наличие</th><th className="px-3 py-3 text-left">Правило</th><th className="px-3 py-3 text-left">До округления</th><th className="px-3 py-3 text-left">Candidate</th><th className="px-3 py-3 text-left">Маржа</th><th className="px-3 py-3 text-left">Предупреждения</th><th className="px-3 py-3 text-right">Публикация</th>
+                          <th className="px-3 py-3 text-left">Поставщик / вариант</th><th className="px-3 py-3 text-left">Закупка</th><th className="px-3 py-3 text-left">Наличие</th><th className="px-3 py-3 text-left">Правило</th><th className="px-3 py-3 text-left">До округления</th><th className="px-3 py-3 text-left">Candidate</th><th className="px-3 py-3 text-left">Экономика</th><th className="px-3 py-3 text-left">Предупреждения</th><th className="px-3 py-3 text-right">Публикация</th>
                         </tr></thead><tbody>{offerPricingRows.map((offer) => <tr key={offer.id} className="border-t border-gray-100 align-top">
                           <td className="px-3 py-3"><div>{offer.supplier_name}</div><div className="font-medium">{offer.product_name}</div><div className="text-xs text-gray-500">{offer.variant_name || offer.variant_key} · row #{offer.source_import_row_id}</div></td>
                           <td className="px-3 py-3">{offer.purchase_price} {offer.currency_code}</td><td className="px-3 py-3"><div>{supplierAvailabilityLabels[(offer.availability_status in supplierAvailabilityLabels ? offer.availability_status : 'unknown') as SupplierAvailabilityStatus]}</div><div className="text-xs text-gray-500">Количество: {offer.stock_quantity ?? 'неизвестно'} · ETA: {offer.expected_arrival_at?.slice(0, 10) || '—'}</div><div className="text-xs text-gray-500">Raw: {offer.raw_availability || '—'} · {offer.raw_arrival_info || '—'}</div><div className="text-xs text-gray-500">{offer.delivery_info || '—'}</div></td>
                           <td className="px-3 py-3"><div>{offer.pricing.rule?.name || '—'}</div>{offer.pricing.rule?.markup_percent !== null && offer.pricing.rule?.markup_percent !== undefined && <div className="text-xs text-gray-500">Наценка: {offer.pricing.rule.markup_percent}%</div>}</td><td className="px-3 py-3">{offer.pricing.price_before_rounding || '—'}</td><td className="px-3 py-3 font-semibold">{offer.pricing.candidate_retail_price || '—'}</td>
-                          <td className="px-3 py-3">{offer.pricing.expected_margin ? `${offer.pricing.expected_margin} ₽ · ${offer.pricing.expected_margin_percent}%` : '—'}</td><td className="px-3 py-3">{offer.pricing.warnings.map((warning) => <div key={warning} className="text-xs text-amber-700">{warning}</div>)}</td>
+                          <td className="px-3 py-3"><div>{offer.pricing.expected_margin ? `Валовая: ${offer.pricing.expected_margin} ₽ · ${offer.pricing.expected_margin_percent}%` : '—'}</div>{offer.pricing.estimated_expenses && <div className="mt-1 text-xs text-gray-500">Расходы 10%: {offer.pricing.estimated_expenses} ₽</div>}{offer.pricing.expected_net_profit && <div className="mt-1 text-xs font-semibold text-green-700">Чистыми: {offer.pricing.expected_net_profit} ₽ · {offer.pricing.expected_net_profit_percent}%</div>}</td><td className="px-3 py-3">{offer.pricing.warnings.map((warning) => <div key={warning} className="text-xs text-amber-700">{warning}</div>)}</td>
                           <td className="px-3 py-3 text-right"><button type="button" disabled={!offer.pricing.calculable || pricePublicationLoading} onClick={() => preparePricePublication(offer.id)} className="px-3 py-2 rounded-lg border border-red-200 text-red-700 disabled:opacity-40">Подготовить изменение цены</button></td>
                         </tr>)}</tbody></table></div>
                       )}
@@ -5036,7 +5041,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                                 <div className="rounded-xl bg-white border p-3"><div className="text-xs text-gray-500">Закупка</div><div className="font-semibold">{pricePublicationPreview.offer.purchase_price} {pricePublicationPreview.offer.currency_code}</div></div>
                                 <div className="rounded-xl bg-white border p-3"><div className="text-xs text-gray-500">Pricing rule</div><div className="font-semibold">{pricePublicationPreview.pricing.rule?.name || '—'}</div></div>
                                 <div className="rounded-xl bg-white border p-3"><div className="text-xs text-gray-500">Изменение</div><div className="font-semibold">{pricePublicationPreview.delta_amount || '—'} ₽ · {pricePublicationPreview.delta_percent || '—'}%</div></div>
-                                <div className="rounded-xl bg-white border p-3"><div className="text-xs text-gray-500">Расчётная маржа</div><div className="font-semibold">{pricePublicationPreview.pricing.expected_margin || '—'} ₽ · {pricePublicationPreview.pricing.expected_margin_percent || '—'}%</div></div>
+                                <div className="rounded-xl bg-white border p-3"><div className="text-xs text-gray-500">Экономика продажи</div><div className="font-semibold">Валовая: {pricePublicationPreview.pricing.expected_margin || '—'} ₽</div>{pricePublicationPreview.pricing.estimated_expenses && <div className="text-xs text-gray-500">Расходы 10%: {pricePublicationPreview.pricing.estimated_expenses} ₽</div>}{pricePublicationPreview.pricing.expected_net_profit && <div className="text-sm font-semibold text-green-700">Чистыми: {pricePublicationPreview.pricing.expected_net_profit} ₽</div>}</div>
                                 <div className="rounded-xl bg-white border p-3 md:col-span-2"><div className="text-xs text-gray-500">Источник</div><div>import job #{pricePublicationPreview.offer.source_import_job_id ?? '—'} · row #{pricePublicationPreview.offer.source_import_row_id ?? '—'}</div><div>Offer импортирован: {formatDate(pricePublicationPreview.offer.imported_at)}</div></div>
                                 <div className="rounded-xl bg-white border p-3 md:col-span-2"><div className="text-xs text-gray-500">Base product fields (не изменяются)</div><div>products.price: {pricePublicationPreview.product.base_price} ₽ · products.old_price: {pricePublicationPreview.product.base_old_price ?? 'NULL'}</div></div>
                               </div>
