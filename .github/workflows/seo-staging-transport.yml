@@ -13,7 +13,7 @@ concurrency:
 jobs:
   stage-release:
     name: Upload and validate immutable SEO release in staging
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: seo-staging
     env:
       REMOTE_BASE: /var/www/u3609206/data
@@ -21,13 +21,13 @@ jobs:
 
     steps:
       - name: Checkout exact workflow commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ github.sha }}
           fetch-depth: 1
 
       - name: Set up Node LTS
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 20.x
           cache: npm
@@ -186,14 +186,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          remote_stage='not created'
-          if [ -f "$RUNNER_TEMP/telvora-remote-stage" ]; then remote_stage="$(cat "$RUNNER_TEMP/telvora-remote-stage")"; fi
+          stage_id='not created'
+          if [ -f "$RUNNER_TEMP/telvora-remote-stage" ]; then stage_id="$(basename "$(cat "$RUNNER_TEMP/telvora-remote-stage")")"; fi
           {
             printf '%s\n' '## SEO staging transport'
             printf '%s\n' "- Commit SHA: $GITHUB_SHA"
             printf '%s\n' "- Run ID: $GITHUB_RUN_ID"
             printf '%s\n' "- Package SHA-256: ${SEO_PACKAGE_SHA256:-not calculated}"
-            printf '%s\n' "- Remote staging path: $remote_stage"
+            printf '%s\n' "- Staging ID: $stage_id"
             printf '%s\n' "- Validation result: ${STAGING_VALIDATION_RESULT:-not completed}"
             printf '%s\n' '- **PRODUCTION ACTIVATION: NOT PERFORMED**'
           } >> "$GITHUB_STEP_SUMMARY"

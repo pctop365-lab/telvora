@@ -26,7 +26,7 @@ jobs:
       release_sha: ${{ steps.identity.outputs.release_sha }}
       package_sha256: ${{ steps.package.outputs.checksum }}
       stage_id: ${{ steps.stage.outputs.stage_id }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: seo-staging
     env:
       REMOTE_BASE: /var/www/u3609206/data
@@ -47,7 +47,7 @@ jobs:
           echo "release_sha=${REQUESTED_RELEASE_SHA,,}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout requested immutable commit
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ inputs.release_sha }}
           fetch-depth: 1
@@ -61,7 +61,7 @@ jobs:
           echo "ACTUAL_RELEASE_SHA=$actual_sha" >> "$GITHUB_ENV"
 
       - name: Set up Node LTS
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 20.x
           cache: npm
@@ -320,7 +320,7 @@ jobs:
     name: Activate reviewed SEO release in production
     needs: preflight
     if: needs.preflight.result == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: seo-production
     env:
       REMOTE_BASE: /var/www/u3609206/data
@@ -447,11 +447,13 @@ jobs:
           activation="${PRODUCTION_ACTIVATION_RESULT:-NOT PERFORMED}"
           {
             printf '%s\n' '## SEO production activation'
-            printf '%s\n' "- Release SHA: $REQUESTED_RELEASE_SHA"
+            printf '%s\n' "- Requested release SHA: $REQUESTED_RELEASE_SHA"
+            printf '%s\n' "- Actual release SHA: ${ACTUAL_RELEASE_SHA:-not verified}"
+            printf '%s\n' "- Run ID: $GITHUB_RUN_ID"
             printf '%s\n' "- Package SHA-256: $SEO_PACKAGE_SHA256"
-            printf '%s\n' "- Preflight staging path: $REMOTE_STAGE"
+            printf '%s\n' "- Staging ID: ${STAGE_ID:-not reconstructed}"
             printf '%s\n' "- Production DocumentRoot: $REMOTE_DOCUMENT_ROOT"
-            printf '%s\n' "- Backup path: $backup"
+            printf '%s\n' "- Backup path: ${backup##*/} (under configured SEO backup root)"
             printf '%s\n' "- Activation result: $activation"
             printf '%s\n' "- Smoke tests: ${SMOKE_TEST_RESULT:-FAIL/NOT COMPLETED}"
             printf '%s\n' "- Yandex verification: ${YANDEX_VERIFICATION_RESULT:-NOT CHECKED}"
