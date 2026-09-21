@@ -243,7 +243,7 @@ function attachStorefrontVariants(PDO $pdo, array $products): array
         $publicVariants = [];
         foreach ($byProduct[(int)$product['id']] ?? [] as $variant) {
             try {
-                $identity = productVariantIdentityResolve($pdo, $product, $variant);
+                $identity = productVariantIdentityResolve($pdo, $product, $variant, true);
             } catch (ProductVariantIdentityException) {
                 continue;
             }
@@ -256,6 +256,14 @@ function attachStorefrontVariants(PDO $pdo, array $products): array
             } catch (ProductVariantPriceException) {
                 continue;
             }
+
+            // A zero legacy price is allowed during identity resolution because
+            // an active manual override may provide the actual storefront price.
+            // Never expose a variant whose final effective price is still zero.
+            if (($effectivePrice['price_minor'] ?? 0) <= 0) {
+                continue;
+            }
+
             $availability = storefrontAvailabilityResolve($offersByVariant[$variant['id']] ?? [], 1);
             $publicVariants[] = [
                 'product_variant_id' => $variant['id'],

@@ -25,4 +25,27 @@ priceTest('manual source overlays retail price', $manual['price_source']==='manu
 $disabled = productVariantPriceEffective($legacy, ['is_active'=>0,'manual_price'=>'175000.00','manual_old_price'=>null]);
 priceTest('disabled override returns latest automatic price', $disabled['price_source']==='automatic' && $disabled['price']===190000);
 
+$zeroLegacy = ['price_minor'=>0, 'price'=>0, 'old_price'=>null];
+
+$manualOverZero = productVariantPriceEffective(
+    $zeroLegacy,
+    ['is_active'=>1, 'manual_price'=>'250000.00', 'manual_old_price'=>null]
+);
+
+priceTest(
+    'manual override supplies price when legacy price is zero',
+    $manualOverZero['price_source']==='manual' &&
+    $manualOverZero['price_minor']===25000000 &&
+    $manualOverZero['price']===250000
+);
+
+$automaticZero = productVariantPriceEffective($zeroLegacy, null);
+
+priceTest(
+    'zero legacy price stays zero without manual override',
+    $automaticZero['price_source']==='automatic' &&
+    $automaticZero['price_minor']===0 &&
+    $automaticZero['price']===0
+);
+
 echo "PASS product variant price service fixtures\n";
