@@ -26,31 +26,24 @@ export default function ProductCard({
       variant.isActive !== false
   );
 
-  const minVariantPrice =
-    activeVariants.length > 0
-      ? Math.min(
-          ...activeVariants.map((variant) =>
-            Number(variant.price)
-          )
-        )
+  const orderableVariants = activeVariants
+    .filter((variant) => variant.availability?.orderable)
+    .sort((a, b) => Number(a.price) - Number(b.price));
+
+  const defaultVariant = orderableVariants[0];
+
+  const minVariantPrice = defaultVariant
+    ? Number(defaultVariant.price)
+    : activeVariants.length > 0
+      ? Math.min(...activeVariants.map((variant) => Number(variant.price)))
       : product.price;
 
-  const variantOldPrices = activeVariants
-  .map((variant) =>
-    variant.oldPrice
-      ? Number(variant.oldPrice)
-      : 0
-  )
-  .filter((price) => price > 0);
-
-const minVariantOldPrice =
-  variantOldPrices.length > 0
-    ? Math.min(...variantOldPrices)
+  const minVariantOldPrice = defaultVariant?.oldPrice
+    ? Number(defaultVariant.oldPrice)
     : undefined;
 
   const hasVariants = activeVariants.length > 0;
-  const singleVariant = activeVariants.length === 1 ? activeVariants[0] : undefined;
-  const cardAvailability = singleVariant?.availability;
+  const cardAvailability = defaultVariant?.availability;
 
   const discount =
     minVariantOldPrice &&
@@ -66,8 +59,8 @@ const minVariantOldPrice =
     e.preventDefault();
     e.stopPropagation();
 
-    if (!singleVariant?.availability.orderable) return;
-    addToCart(product, 1, singleVariant);
+    if (!defaultVariant?.availability.orderable) return;
+    addToCart(product, 1, defaultVariant);
 
     setAdded(true);
     setTimeout(() => setAdded(false), 1500);
