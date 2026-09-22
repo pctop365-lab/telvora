@@ -25,13 +25,16 @@ assert.match(endpoint, /ProductDeleteBlockedException/);
 assert.match(endpoint, /http_response_code\(409\)/);
 
 assert.match(service, /\$pdo->beginTransaction\(\)/);
-assert.match(service, /SELECT id FROM products WHERE id = :id FOR UPDATE/);
+assert.match(service, /SELECT id, is_active, publication_status FROM products WHERE id = :id FOR UPDATE/);
 assert.match(service, /order_items/);
 assert.match(service, /supplier_import_rows/);
 assert.match(service, /product_price_publication_audit/);
 assert.match(service, /supplier_offers/);
 assert.match(service, /supplier_product_matches/);
 assert.match(service, /product_variant_price_overrides/);
+assert.match(service, /publication_status/);
+assert.match(service, /status IN \('queued', 'running'\)/);
+assert.match(service, /DELETE FROM seo_publication_jobs WHERE product_id = :product_id/);
 assert.match(service, /\$pdo->commit\(\)/);
 assert.match(service, /\$pdo->rollBack\(\)/);
 assert.match(service, /ProductDeleteBlockedException/);

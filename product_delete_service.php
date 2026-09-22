@@ -83,9 +83,21 @@ function productDelete(PDO $pdo, int $productId): void
 {
     $pdo->beginTransaction();
     try {
-        $lock = $pdo->prepare('SELECT id FROM products WHERE id = :id FOR UPDATE');
+        $lock = $pdo->prepare('SELECT id, is_active, publication_status FROM products WHERE id = :id FOR UPDATE');
         $lock->execute([':id' => $productId]);
-        if ($lock->fetchColumn() === false) throw new InvalidArgumentException('Товар не найден. Обновите список и повторите попытку.');
+        $product = $lock->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($product)) throw new InvalidArgumentException('Товар не найден. Обновите список и повторите попытку.');
+
+        $publicationReasons = [];
+        if ((int)$product['is_active'] !== 0 || (string)$product['publication_status'] !== 'draft') {
+            $publicationReasons[] = 'товар должен быть неактивным и иметь статус draft';
+        }
+        if (productDeleteTableExists($pdo, 'seo_publication_jobs')) {
+            $activeJobs = $pdo->prepare("SELECT COUNT(*) FROM seo_publication_jobs WHERE product_id = :product_id AND status IN ('queued', 'running')");
+            $activeJobs->execute([':product_id' => $productId]);
+            if ((int)$activeJobs->fetchColumn() > 0) $publicationReasons[] = 'есть активные SEO-задачи';
+        }
+        if ($publicationReasons !== []) throw new ProductDeleteBlockedException($publicationReasons);
 
         $variantIds = productDeleteVariantIds($pdo, $productId);
         $reasons = [];
@@ -147,6 +159,11 @@ function productDelete(PDO $pdo, int $productId): void
         productDeleteIn($pdo, 'supplier_product_matches', 'product_id', [$productId]);
         productDeleteIn($pdo, 'supplier_product_matches', 'product_variant_id', $variantIds);
         productDeleteIn($pdo, 'product_variants', 'id', $variantIds);
+
+        if (productDeleteTableExists($pdo, 'seo_publication_jobs')) {
+            $deleteJobs = $pdo->prepare('DELETE FROM seo_publication_jobs WHERE product_id = :product_id');
+            $deleteJobs->execute([':product_id' => $productId]);
+        }
 
         $stmt = $pdo->prepare('DELETE FROM products WHERE id = :id');
         $stmt->execute([':id' => $productId]);

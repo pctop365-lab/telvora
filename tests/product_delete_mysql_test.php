@@ -107,6 +107,7 @@ function deleteTestReset(PDO $pdo): void
     $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
     foreach ([
         'product_images', 'product_price_publication_audit', 'order_items', 'orders',
+        'seo_publication_jobs',
         'test_product_variant_delete_blocker',
         'product_variant_price_overrides', 'supplier_offers', 'supplier_import_rows',
         'supplier_import_jobs', 'supplier_product_matches', 'pricing_rules', 'suppliers',
@@ -122,7 +123,19 @@ function deleteTestSchema(PDO $pdo): void
     $pdo->exec("CREATE TABLE products (
         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, slug VARCHAR(255) NOT NULL,
         name VARCHAR(255) NOT NULL, is_active TINYINT(1) NOT NULL DEFAULT 1,
+        publication_status VARCHAR(32) NOT NULL DEFAULT 'draft',
+        publication_revision BIGINT UNSIGNED NOT NULL DEFAULT 0,
         UNIQUE KEY uq_delete_products_slug (slug)
+    ) ENGINE=InnoDB");
+    $pdo->exec("CREATE TABLE seo_publication_jobs (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, product_id INT UNSIGNED NOT NULL,
+        operation VARCHAR(16) NOT NULL, requested_revision BIGINT UNSIGNED NOT NULL,
+        status VARCHAR(16) NOT NULL DEFAULT 'queued', batch_id CHAR(36) NOT NULL,
+        completed_at TIMESTAMP NULL DEFAULT NULL,
+        UNIQUE KEY uq_delete_seo_job_intent (product_id, requested_revision, operation),
+        CONSTRAINT chk_delete_seo_job_operation CHECK (operation IN ('publish', 'unpublish')),
+        CONSTRAINT chk_delete_seo_job_status CHECK (status IN ('queued', 'running', 'completed', 'failed', 'superseded')),
+        CONSTRAINT fk_delete_seo_job_product FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT ON UPDATE RESTRICT
     ) ENGINE=InnoDB");
     $pdo->exec("CREATE TABLE product_variants (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, product_id INT UNSIGNED NOT NULL,
@@ -199,9 +212,15 @@ function deleteTestSchema(PDO $pdo): void
 
 function deleteTestProduct(PDO $pdo, string $slug): int
 {
-    $stmt = $pdo->prepare('INSERT INTO products(slug,name) VALUES(?,?)');
+    $stmt = $pdo->prepare("INSERT INTO products(slug,name,is_active,publication_status,publication_revision) VALUES(?,?,0,'draft',0)");
     $stmt->execute([$slug, $slug]);
     return (int)$pdo->lastInsertId();
+}
+
+function deleteTestJob(PDO $pdo, int $productId, string $operation, int $revision, string $status, int $id): void
+{
+    $stmt = $pdo->prepare('INSERT INTO seo_publication_jobs(id,product_id,operation,requested_revision,status,batch_id) VALUES(?,?,?,?,?,?)');
+    $stmt->execute([$id, $productId, $operation, $revision, $status, sprintf('00000000-0000-4000-8000-%012d', $id)]);
 }
 
 function deleteTestVariant(PDO $pdo, int $productId, string $key): int
@@ -243,6 +262,8 @@ if (!defined('TELVORA_PRODUCT_DELETE_TEST_LIBRARY')) {
     $productB = deleteTestProduct($pdo, 'product-b');
     $variantB = deleteTestVariant($pdo, $productB, 'one');
     $pdo->prepare('INSERT INTO product_images(product_id,image_path,position) VALUES(?,?,?)')->execute([$productB, '/images/product-b.png', 1]);
+    deleteTestJob($pdo, $productA, 'publish', 1, 'completed', 1);
+    deleteTestJob($pdo, $productA, 'unpublish', 2, 'failed', 2);
     productDelete($pdo, $productA);
     deleteTestAssert('safe delete removes product', deleteTestCount($pdo, 'products', 'id = ?', [$productA]) === 0);
     deleteTestAssert('safe delete removes variants', deleteTestCount($pdo, 'product_variants', 'product_id = ?', [$productA]) === 0);
@@ -250,8 +271,36 @@ if (!defined('TELVORA_PRODUCT_DELETE_TEST_LIBRARY')) {
     deleteTestAssert('safe delete removes matches', deleteTestCount($pdo, 'supplier_product_matches') === 0);
     deleteTestAssert('safe delete removes overrides', deleteTestCount($pdo, 'product_variant_price_overrides') === 0);
     deleteTestAssert('product image cascade follows FK', deleteTestCount($pdo, 'product_images', 'product_id = ?', [$productA]) === 0);
+    deleteTestAssert('terminal SEO history is removed with product', deleteTestCount($pdo, 'seo_publication_jobs', 'product_id = ?', [$productA]) === 0);
     deleteTestAssert('unrelated product remains', deleteTestCount($pdo, 'products', 'id = ?', [$productB]) === 1);
     deleteTestAssert('unrelated variant remains', deleteTestCount($pdo, 'product_variants', 'id = ?', [$variantB]) === 1);
+
+    // Active SEO jobs block deletion and preserve both product and history.
+    $queuedProduct = deleteTestProduct($pdo, 'queued-product');
+    deleteTestJob($pdo, $queuedProduct, 'publish', 1, 'queued', 10);
+    try { productDelete($pdo, $queuedProduct); throw new RuntimeException('queued SEO delete unexpectedly succeeded'); }
+    catch (ProductDeleteBlockedException $error) { deleteTestAssert('queued SEO job blocks delete', str_contains($error->getMessage(), 'SEO')); }
+    deleteTestAssert('queued SEO product remains', deleteTestCount($pdo, 'products', 'id = ?', [$queuedProduct]) === 1 && deleteTestCount($pdo, 'seo_publication_jobs', 'product_id = ?', [$queuedProduct]) === 1);
+
+    $runningProduct = deleteTestProduct($pdo, 'running-product');
+    deleteTestJob($pdo, $runningProduct, 'publish', 1, 'running', 11);
+    try { productDelete($pdo, $runningProduct); throw new RuntimeException('running SEO delete unexpectedly succeeded'); }
+    catch (ProductDeleteBlockedException $error) { deleteTestAssert('running SEO job blocks delete', str_contains($error->getMessage(), 'SEO')); }
+
+    $publishedProduct = deleteTestProduct($pdo, 'published-product');
+    $pdo->prepare("UPDATE products SET is_active = 1, publication_status = 'published' WHERE id = ?")->execute([$publishedProduct]);
+    try { productDelete($pdo, $publishedProduct); throw new RuntimeException('published delete unexpectedly succeeded'); }
+    catch (ProductDeleteBlockedException $error) { deleteTestAssert('published product blocks delete', str_contains($error->getMessage(), 'draft')); }
+
+    $pendingPublishProduct = deleteTestProduct($pdo, 'pending-publish-product');
+    $pdo->prepare("UPDATE products SET publication_status = 'pending_publish' WHERE id = ?")->execute([$pendingPublishProduct]);
+    try { productDelete($pdo, $pendingPublishProduct); throw new RuntimeException('pending publish delete unexpectedly succeeded'); }
+    catch (ProductDeleteBlockedException $error) { deleteTestAssert('pending publish blocks delete', str_contains($error->getMessage(), 'draft')); }
+
+    $pendingUnpublishProduct = deleteTestProduct($pdo, 'pending-unpublish-product');
+    $pdo->prepare("UPDATE products SET is_active = 1, publication_status = 'pending_unpublish' WHERE id = ?")->execute([$pendingUnpublishProduct]);
+    try { productDelete($pdo, $pendingUnpublishProduct); throw new RuntimeException('pending unpublish delete unexpectedly succeeded'); }
+    catch (ProductDeleteBlockedException $error) { deleteTestAssert('pending unpublish blocks delete', str_contains($error->getMessage(), 'draft')); }
 
     // Order history blocks and rolls back before operational cleanup.
     $orderProduct = deleteTestProduct($pdo, 'order-product');
