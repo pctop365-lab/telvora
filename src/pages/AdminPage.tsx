@@ -96,6 +96,8 @@ type AdminProduct = {
   highlights: string[];
   variants: ProductVariant[];
   is_active: boolean;
+  publication_status: 'draft' | 'pending_publish' | 'published' | 'pending_unpublish' | 'publish_failed' | 'unpublish_failed';
+  publication_revision: number;
   homepage_position: number | null;
   created_at: string;
   updated_at: string;
@@ -111,6 +113,15 @@ type AdminVariantDiagnosticEntry = {
   old_price: number | string | null;
   identity_status: string;
   diagnostic_code: string;
+};
+
+const publicationStatusLabels: Record<AdminProduct['publication_status'], string> = {
+  draft: 'Черновик',
+  pending_publish: 'Ожидает публикации',
+  published: 'Опубликован',
+  pending_unpublish: 'Ожидает снятия',
+  publish_failed: 'Ошибка публикации',
+  unpublish_failed: 'Ошибка снятия',
 };
 
 type AdminVariantListItem = {
@@ -1240,6 +1251,11 @@ const login = async (e: React.FormEvent) => {
       loadProducts();
     }
   }, [authenticated, activeTab]);
+  useEffect(() => {
+    if (!authenticated || activeTab !== 'products' || !products.some((product) => product.publication_status === 'pending_publish' || product.publication_status === 'pending_unpublish')) return;
+    const timer = window.setInterval(() => { void loadProducts(); }, 10000);
+    return () => window.clearInterval(timer);
+  }, [authenticated, activeTab, products]);
   useEffect(() => {
     if (authenticated && activeTab === 'suppliers') {
       loadSuppliers();
@@ -2745,7 +2761,9 @@ if (!response.ok || !data.success || !data.image) {
     }
   };
 const toggleProductStatus = async (product: AdminProduct) => {
-  const newStatus = !product.is_active;
+  const operation = product.publication_status === 'published' || product.publication_status === 'unpublish_failed'
+    ? 'request_unpublish'
+    : 'request_publish';
 
   try {
     const response = await fetch(PRODUCTS_API, {
@@ -2756,13 +2774,19 @@ const toggleProductStatus = async (product: AdminProduct) => {
         'X-CSRF-Token': csrfToken || '',
       },
       body: JSON.stringify({
-        action: 'update',
+        action: operation,
         id: product.id,
-        is_active: newStatus,
+        expected_revision: product.publication_revision,
       }),
     });
 
     const data = await response.json();
+
+    if (response.status === 409) {
+      setProductsError(data.message || 'Состояние товара изменилось. Список обновлён.');
+      await loadProducts();
+      return;
+    }
 
     if (!data.success) {
       setError(
@@ -2771,13 +2795,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
       return;
     }
 
-    setProducts((current) =>
-      current.map((item) =>
-        item.id === product.id
-          ? { ...item, is_active: newStatus }
-          : item
-      )
-    );
+    await loadProducts();
   } catch {
     setError('Не удалось подключиться к серверу');
   }
@@ -3766,16 +3784,18 @@ const toggleProductStatus = async (product: AdminProduct) => {
                             </td>
 
                             <td className="px-5 py-4">
+  <div className="mb-2 text-xs text-gray-600">{publicationStatusLabels[product.publication_status] || product.publication_status}</div>
   <button
     type="button"
     onClick={() => toggleProductStatus(product)}
+    disabled={product.publication_status === 'pending_publish' || product.publication_status === 'pending_unpublish'}
     className={`inline-flex px-2.5 py-1 rounded-full border text-xs transition ${
       product.is_active
         ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
         : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
     }`}
   >
-    {product.is_active ? 'Активен' : 'Скрыт'}
+    {product.publication_status === 'published' || product.publication_status === 'unpublish_failed' ? 'Скрыть' : product.publication_status === 'publish_failed' ? 'Повторить публикацию' : product.publication_status === 'pending_publish' ? 'Ожидает публикации' : product.publication_status === 'pending_unpublish' ? 'Ожидает снятия' : 'Опубликовать'}
   </button>
 </td>
                             <td className="px-5 py-4">
