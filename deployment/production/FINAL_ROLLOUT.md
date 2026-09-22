@@ -25,7 +25,7 @@ the protected production host.
 5. Only after that backup succeeds, copy the exact migration and runner to a
    private directory and run `php apply-seo-publication-migration.php --apply`.
    The runner accepts only the hard-coded migration and SHA-256
-   `59829574ea7a605a4a70c77dbbe4255a3d141c72ddb33e006a23ad8340f5e56c6`.
+   `7bd21e3a906b4562d7bb04a04e3ddbea55e353690cc0fabb759aacaea04000f7`.
 6. Verify publication columns/index, jobs table, unique intent key, FK, active
    and inactive backfill, and unchanged `is_active` counts. If verification
    fails, stop and use the recorded DB backup only through operator recovery.

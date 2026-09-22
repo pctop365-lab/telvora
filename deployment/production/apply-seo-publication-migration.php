@@ -1,7 +1,7 @@
 <?php
 
 declare(strict_types=1);
-const SEO_PUBLICATION_MIGRATION_SHA256 = '59829574ea7a605a4a70c77dbbe4255a3d141c72ddb33e006a23ad8340f5e56c6';
+const SEO_PUBLICATION_MIGRATION_SHA256 = '7bd21e3a906b4562d7bb04a04e3ddbea55e353690cc0fabb759aacaea04000f7';
 if (PHP_SAPI !== 'cli') { fwrite(STDERR, "CLI_ONLY\n"); exit(2); }
 $mode = $argv[1] ?? '';
 if (!in_array($mode, ['--preflight', '--apply'], true)) { fwrite(STDERR, "Usage: php apply-seo-publication-migration.php --preflight|--apply\n"); exit(2); }
