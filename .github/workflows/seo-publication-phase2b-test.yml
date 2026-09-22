@@ -1,0 +1,126 @@
+name: SEO Publication Phase 2B E2E Test
+
+on:
+  push:
+    branches:
+      - ci/seo-publication-phase2b
+
+permissions:
+  contents: read
+
+jobs:
+  phase2b-e2e:
+    name: Phase 2B disposable E2E gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 7
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: telvora_phase2b_test
+          MYSQL_USER: telvora_phase2b
+          MYSQL_PASSWORD: telvora_phase2b_ci_password
+          MYSQL_ROOT_PASSWORD: telvora_phase2b_ci_root_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -utelvora_phase2b -ptelvora_phase2b_ci_password"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      TELVORA_TEST_DB_HOST: 127.0.0.1
+      TELVORA_TEST_DB_PORT: '3306'
+      TELVORA_TEST_DB_NAME: telvora_phase2b_test
+      TELVORA_TEST_DB_USER: telvora_phase2b
+      TELVORA_TEST_DB_PASSWORD: telvora_phase2b_ci_password
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install PHP and MySQL clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y php-cli php-mysql php-mbstring default-mysql-client
+          php --version
+          mysql --version
+          php -r 'if (!extension_loaded("pdo_mysql")) exit(1);'
+
+      - name: PHP syntax checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in \
+            seo_publication_batch_service.php \
+            seo_publication_snapshot_service.php \
+            seo_publication_worker.php \
+            seo_publication_service.php \
+            seo_publication_job_service.php \
+            product_activation_service.php \
+            tests/seo_publication_phase2b_e2e_fixture.php; do
+            php -l "$file"
+          done
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Phase 2A contract test
+        run: npm run test:seo:publication-phase2a
+
+      - name: Prepare disposable publication fixture
+        run: php tests/seo_publication_phase2b_e2e_fixture.php
+
+      - name: Run publication worker prepare and assert snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          export TELVORA_SEO_SNAPSHOT_DIR="$RUNNER_TEMP/seo-snapshots"
+          php seo_publication_worker.php prepare | tee "$RUNNER_TEMP/prepare.json"
+          node --input-type=module - "$RUNNER_TEMP/prepare.json" <<'NODE'
+          import { readFile, stat } from 'node:fs/promises';
+          import assert from 'node:assert/strict';
+          const result = JSON.parse(await readFile(process.argv[2], 'utf8'));
+          assert.equal(result.status, 'PREPARED');
+          assert.match(result.batch_id, /^[0-9a-f-]{36}$/i);
+          assert.match(result.snapshot_hash, /^[0-9a-f]{64}$/i);
+          assert.ok(Array.isArray(result.job_ids) && result.job_ids.length === 3);
+          assert.ok(Array.isArray(result.product_ids) && result.product_ids.includes(1) && result.product_ids.includes(5));
+          await stat(result.snapshot_file);
+          const snapshot = JSON.parse(await readFile(result.snapshot_file, 'utf8'));
+          assert.equal(snapshot.version, 1);
+          assert.equal(snapshot.batch_id, result.batch_id);
+          assert.equal(snapshot.snapshot_hash, result.snapshot_hash);
+          const slugs = snapshot.products.map(product => product.slug);
+          assert.ok(slugs.includes('phase2b-published'));
+          assert.ok(slugs.includes('phase2b-pending-publish'));
+          assert.ok(!slugs.includes('phase2b-pending-unpublish-a'));
+          assert.ok(!slugs.includes('phase2b-pending-unpublish-b'));
+          assert.ok(!slugs.includes('phase2b-draft'));
+          assert.ok(Array.isArray(snapshot.services));
+          NODE
+          echo "TELVORA_SEO_SNAPSHOT_FILE=$(node -p "JSON.parse(require('fs').readFileSync('$RUNNER_TEMP/prepare.json','utf8')).snapshot_file")" >> "$GITHUB_ENV"
+
+      - name: Serve disposable fixture image
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/seo-image-root/uploads/products"
+          printf 'phase2b-fixture-image' > "$RUNNER_TEMP/seo-image-root/uploads/products/phase2b-test.png"
+          python3 -m http.server 8765 --bind 127.0.0.1 --directory "$RUNNER_TEMP/seo-image-root" > "$RUNNER_TEMP/seo-image-server.log" 2>&1 &
+          echo "TELVORA_SEO_IMAGE_BASE_URL=http://127.0.0.1:8765" >> "$GITHUB_ENV"
+
+      - name: Build SEO from prepared snapshot
+        run: npm run build:seo
+
+      - name: Package SEO release
+        env:
+          TELVORA_RELEASE_SHA: ${{ github.sha }}
+          SOURCE_DATE_EPOCH: '0'
+        run: npm run seo:package
+
+      - name: Validate SEO package and generated artifacts
+        run: |
+          npm run seo:validate-package
+          npm run test:seo:physical
+          npm run test:seo:package
+          npm run test:seo:htaccess
