@@ -16,7 +16,7 @@ jobs:
   autopublish:
     name: Prepare, build, validate and activate SEO batch
     runs-on: ubuntu-24.04
-    environment: seo-production
+    environment: seo-autopublish-production
     timeout-minutes: 30
     env:
       REMOTE_BASE: /var/www/u3609206/data

@@ -35,7 +35,7 @@ assert.match(workflow, /--batch-id=.*--snapshot-hash=/);
 assert.match(workflow, /complete --batch-id=/);
 assert.match(workflow, /fail --batch-id=/);
 assert.match(workflow, /if: failure\(\) && env\.BATCH_STATUS == 'PREPARED'/);
-assert.match(workflow, /environment: seo-production/);
+assert.match(workflow, /environment: seo-autopublish-production/);
 assert.match(workflow, /StrictHostKeyChecking=yes/);
 assert.match(workflow, /UserKnownHostsFile=/);
 assert.match(workflow, /IdentitiesOnly=yes/);
