@@ -151,6 +151,9 @@ jobs:
           set -euo pipefail
           archive="$(find seo-artifacts -maxdepth 1 -type f -name 'telvora-seo-release-*.tar.gz' -print -quit)"; test -n "$archive"
           PACKAGE_SHA256="$(sha256sum "$archive" | awk '{print $1}')"; echo "PACKAGE_SHA256=$PACKAGE_SHA256" >> "$GITHUB_ENV"
+          RELEASE_SHA="$(node -e "console.log(require('./seo-artifacts/deployment-manifest.json').commitSha)")"
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          echo "RELEASE_SHA=$RELEASE_SHA" >> "$GITHUB_ENV"
           STAGE_ID="telvora-seo-autopublish-${GITHUB_RUN_ID}-${BATCH_ID}"; [[ "$STAGE_ID" =~ ^telvora-seo-autopublish-[0-9]+-[0-9a-f-]+$ ]]
           echo "STAGE_ID=$STAGE_ID" >> "$GITHUB_ENV"
           remote_stage="$REMOTE_BASE/staging/$STAGE_ID"
@@ -189,6 +192,9 @@ jobs:
           REMOTE
           echo 'DEPLOY_SUCCEEDED=true' >> "$GITHUB_ENV"
           ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" "cat '$REMOTE_STAGE/backup-reference'" > "$RUNNER_TEMP/backup-reference"
+          BACKUP_REFERENCE="$(cat "$RUNNER_TEMP/backup-reference")"
+          test -n "$BACKUP_REFERENCE"
+          echo "BACKUP_REFERENCE=$BACKUP_REFERENCE" >> "$GITHUB_ENV"
 
       - name: Complete exact batch after verified deployment
         if: env.BATCH_STATUS == 'PREPARED' && env.DEPLOY_SUCCEEDED == 'true'
@@ -198,8 +204,8 @@ jobs:
           TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
         run: |
           set -euo pipefail
-          release_sha="$(node -e "console.log(require('./seo-artifacts/deployment-manifest.json').commitSha)")"
-          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" "php '$REMOTE_APP_ROOT/seo_publication_worker.php' complete --batch-id='$BATCH_ID' --snapshot-hash='$SNAPSHOT_HASH' --release-sha='$release_sha' --package-sha256='$PACKAGE_SHA256' --backup-reference='$(cat "$RUNNER_TEMP/backup-reference")'"
+          test -n "$RELEASE_SHA"; test -n "$PACKAGE_SHA256"; test -n "$BACKUP_REFERENCE"
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" "php '$REMOTE_APP_ROOT/seo_publication_worker.php' complete --batch-id='$BATCH_ID' --snapshot-hash='$SNAPSHOT_HASH' --release-sha='$RELEASE_SHA' --package-sha256='$PACKAGE_SHA256' --backup-reference='$BACKUP_REFERENCE'"
           echo 'FINALIZATION_RESULT=PASS' >> "$GITHUB_ENV"
 
       - name: Fail exact batch after pre-deploy or rolled-back failure

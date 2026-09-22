@@ -237,7 +237,7 @@ function seoPublicationJobLock(PDO $pdo, int $jobId): array
 function seoPublicationFinalize(PDO $pdo, int $jobId, string $operation): array
 {
     seoPublicationAssertOperation($operation);
-    return seoPublicationRunTransaction($pdo, static function () use ($pdo, $jobId, $operation): array {
+    $finalized = seoPublicationRunTransaction($pdo, static function () use ($pdo, $jobId, $operation): array {
         // The locator is deliberately non-locking. Authoritative validation
         // happens only after the product and exact job rows are locked.
         $locatedProductId = seoPublicationJobProductLocator($pdo, $jobId);
@@ -269,6 +269,15 @@ function seoPublicationFinalize(PDO $pdo, int $jobId, string $operation): array
         }
         return ['job' => $job + ['status' => 'completed'], 'product' => $product + $decision];
     });
+    $jobQuery = $pdo->prepare('SELECT * FROM seo_publication_jobs WHERE id = :id LIMIT 1');
+    $jobQuery->execute([':id' => $jobId]);
+    $job = $jobQuery->fetch();
+    if (!is_array($job)) throw new SeoPublicationStateException(500, 'SEO job disappeared after finalization');
+    $productQuery = $pdo->prepare('SELECT id, is_active, publication_status, publication_revision FROM products WHERE id = :id LIMIT 1');
+    $productQuery->execute([':id' => (int)$finalized['job']['product_id']]);
+    $product = $productQuery->fetch();
+    if (!is_array($product)) throw new SeoPublicationStateException(500, 'Product disappeared after finalization');
+    return ['job' => $job, 'product' => $product];
 }
 
 function seoPublicationFinalizePublish(PDO $pdo, int $jobId): array

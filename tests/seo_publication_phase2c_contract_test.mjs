@@ -3,12 +3,19 @@ import { readFile } from 'node:fs/promises';
 
 const workflow = await readFile(new URL('../.github/workflows/seo-autopublish.yml', import.meta.url), 'utf8');
 const worker = await readFile(new URL('../seo_publication_worker.php', import.meta.url), 'utf8');
+const publicationService = await readFile(new URL('../seo_publication_service.php', import.meta.url), 'utf8');
 
 assert.match(workflow, /on:\r?\n\s+workflow_dispatch:/);
 assert.doesNotMatch(workflow, /^\s+(push|schedule|workflow_run|repository_dispatch|pull_request):/m);
 assert.match(workflow, /Prepare exact queued SEO batch/);
 assert.match(workflow, /php .*seo_publication_worker\.php.* prepare/);
 assert.match(workflow, /TELVORA_SEO_SNAPSHOT_FILE=/);
+assert.match(workflow, /RELEASE_SHA=.*deployment-manifest/);
+assert.match(workflow, /PACKAGE_SHA256=.*sha256sum/);
+assert.match(workflow, /BACKUP_REFERENCE=.*cat/);
+assert.doesNotMatch(workflow, /release_sha=.*deployment-manifest/);
+assert.match(workflow, /complete --batch-id=.*--release-sha=\'\$RELEASE_SHA\'/);
+assert.match(workflow, /complete --batch-id=.*--backup-reference=\'\$BACKUP_REFERENCE\'/);
 assert.match(workflow, /SNAPSHOT_FILE_SHA256/);
 assert.match(workflow, /sha256sum[\s\S]*SNAPSHOT_FILE_SHA256/);
 assert.doesNotMatch(workflow, /sha256sum[^\n]*SNAPSHOT_HASH/);
@@ -31,4 +38,7 @@ assert.match(worker, /seoPublicationValidateBatchStillCurrent/);
 assert.match(worker, /seoPublicationBatchComplete/);
 assert.match(worker, /seoPublicationBatchFail/);
 assert.match(worker, /'release-sha'/);
+assert.match(publicationService, /\$finalized = seoPublicationRunTransaction/);
+assert.match(publicationService, /SELECT \* FROM seo_publication_jobs WHERE id = :id/);
+assert.match(publicationService, /SELECT id, is_active, publication_status, publication_revision FROM products/);
 console.log('PASS SEO publication Phase 2C orchestration contract');
