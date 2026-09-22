@@ -184,7 +184,7 @@ function phase1aStopProcess($process, array $pipes): void
     $status = proc_get_status($process);
     if ($status['running']) {
         proc_terminate($process);
-        $deadline = microtime(true) + 2;
+        $deadline = microtime(true) + 1;
         do {
             usleep(50000);
             $status = proc_get_status($process);
@@ -215,7 +215,8 @@ function phase1aRunLockTest(array $config): void
     $env = array_merge($_ENV, ['TELVORA_TEST_DB_HOST' => $config[0], 'TELVORA_TEST_DB_PORT' => (string)$config[1], 'TELVORA_TEST_DB_NAME' => $config[2], 'TELVORA_TEST_DB_USER' => $config[3], 'TELVORA_TEST_DB_PASSWORD' => $config[4]]);
     $holder = $contender = $contender2 = null;
     $pipes = $pipes2 = $pipes3 = [];
-    $deadline = microtime(true) + 30;
+    // Reserve bounded cleanup time so the whole section cannot exceed 30s.
+    $deadline = microtime(true) + 24;
     try {
         $holder = proc_open("$command --holder " . escapeshellarg($dir), $descriptor, $pipes, dirname(__DIR__), $env);
         if (!is_resource($holder)) throw new RuntimeException('Could not start lock holder');
