@@ -87,7 +87,7 @@ await mkdir('seo-artifacts', { recursive: true });
 const snapshotHash = suppliedSnapshotHash || createHash('sha256').update(json({ products, services: serviceSnapshot })).digest('hex');
 const prerenderFiles = Object.fromEntries(routes.filter(p => p !== '/').map(p => [p, `/_prerender/${prerenderFileFor(p)}`]));
 await writeFile('seo-artifacts/routes.json', JSON.stringify({ routes, productRoutes, prerenderFiles, sizes, snapshotHash }, null, 2));
-await downloadProductImages(products);
+await downloadProductImages(products, { baseUrl: process.env.TELVORA_SEO_IMAGE_BASE_URL || 'https://telvora.ru' });
 const nginx = routes.map(p => `location = ${p} { try_files ${p === '/' ? '/index.html' : prerenderFiles[p]} =404; }${p === '/' ? '' : `\nlocation = ${p}/ { return 301 https://telvora.ru${p}$is_args$args; }`}`).join('\n');
 await writeFile('seo-artifacts/routes.nginx.conf', `${nginx}\n${clientRoutes.map(p => `location = ${p} { try_files /client.html =404; }`).join('\n')}\nlocation ~ ^/order-success/[^/]+$ { try_files /client.html =404; }\nlocation = /televisions { return 301 https://telvora.ru/catalog$is_args$args; }\nlocation ^~ /_prerender/ { return 404; }\nlocation / { return 404; }\nerror_page 404 /404.html;\nlocation = /404.html { internal; }\nlocation = /client.html { internal; }\n`);
 const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

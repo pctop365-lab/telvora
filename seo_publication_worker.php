@@ -8,6 +8,12 @@ require_once __DIR__ . '/seo_publication_snapshot_service.php';
 
 function seoPublicationWorkerPdo(): PDO
 {
+    $testHost = getenv('TELVORA_TEST_DB_HOST');
+    $testName = getenv('TELVORA_TEST_DB_NAME');
+    if (is_string($testHost) && $testHost !== '' || is_string($testName) && $testName !== '') {
+        if (!in_array($testHost, ['127.0.0.1', 'localhost'], true) || $testName !== 'telvora_phase2b_test') throw new RuntimeException('Refusing non-disposable worker database');
+        return new PDO('mysql:host=' . $testHost . ';port=' . (int)getenv('TELVORA_TEST_DB_PORT') . ';dbname=' . $testName . ';charset=utf8mb4', (string)getenv('TELVORA_TEST_DB_USER'), (string)getenv('TELVORA_TEST_DB_PASSWORD'), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]);
+    }
     $secrets = telvoraSecretsFile();
     if (!is_file($secrets) || !is_readable($secrets)) throw new RuntimeException('SEO worker database configuration unavailable');
     $config = require $secrets;
