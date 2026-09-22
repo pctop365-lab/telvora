@@ -1,0 +1,81 @@
+name: SEO Publication Phase 1A Test
+
+on:
+  push:
+    branches:
+      - ci/seo-publication-phase1a
+
+permissions:
+  contents: read
+
+jobs:
+  phase1a-php-mysql:
+    name: PHP and MySQL Phase 1A gate
+    runs-on: ubuntu-24.04
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: telvora_phase1a_test
+          MYSQL_USER: telvora_phase1a
+          MYSQL_PASSWORD: telvora_phase1a_ci_password
+          MYSQL_ROOT_PASSWORD: telvora_phase1a_ci_root_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -utelvora_phase1a -ptelvora_phase1a_ci_password"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      TELVORA_TEST_DB_HOST: 127.0.0.1
+      TELVORA_TEST_DB_PORT: '3306'
+      TELVORA_TEST_DB_NAME: telvora_phase1a_test
+      TELVORA_TEST_DB_USER: telvora_phase1a
+      TELVORA_TEST_DB_PASSWORD: telvora_phase1a_ci_password
+    steps:
+      - name: Checkout exact temporary branch commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Install PHP CLI and MySQL client
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y php-cli php-mysql php-mbstring default-mysql-client
+          php --version
+          php -m
+          mysql --version
+          php -r 'if (!extension_loaded("pdo_mysql")) { fwrite(STDERR, "pdo_mysql is required\n"); exit(1); }'
+
+      - name: PHP syntax checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in \
+            product_activation_service.php \
+            seo_publication_job_service.php \
+            seo_publication_service.php \
+            tests/product_activation_service_test.php \
+            tests/seo_publication_state_test.php \
+            tests/seo_publication_api_contract_test.php \
+            tests/seo_publication_mysql_concurrency_test.php; do
+            php -l "$file"
+          done
+
+      - name: PHP fixture and contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/product_activation_service_test.php
+          php tests/seo_publication_state_test.php
+          php tests/seo_publication_api_contract_test.php
+
+      - name: Real disposable MySQL Phase 1A test
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/seo_publication_mysql_concurrency_test.php
