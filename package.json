@@ -20,6 +20,7 @@
     "test:seo:deploy": "node tests/seo_deploy_engine_test.mjs",
     "test:seo:production-workflow": "node tests/seo_production_workflow_test.mjs",
     "test:seo:publication-phase2a": "node tests/seo_publication_phase2a_contract_test.mjs",
+    "test:seo:publication-phase2c": "node tests/seo_publication_phase2c_contract_test.mjs",
     "test:seo:ops": "node tests/seo_ops_test.mjs",
     "test:supplier:normalization": "php tests/supplier_import_normalization_test.php",
     "test:seo:workflow-maintenance": "node tests/seo_workflow_maintenance_test.mjs",

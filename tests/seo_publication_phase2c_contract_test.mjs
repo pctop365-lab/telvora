@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+const workflow = await readFile(new URL('../.github/workflows/seo-autopublish.yml', import.meta.url), 'utf8');
+const worker = await readFile(new URL('../seo_publication_worker.php', import.meta.url), 'utf8');
+
+assert.match(workflow, /on:\r?\n\s+workflow_dispatch:/);
+assert.doesNotMatch(workflow, /^\s+(push|schedule|workflow_run|repository_dispatch|pull_request):/m);
+assert.match(workflow, /Prepare exact queued SEO batch/);
+assert.match(workflow, /php .*seo_publication_worker\.php.* prepare/);
+assert.match(workflow, /TELVORA_SEO_SNAPSHOT_FILE=/);
+assert.match(workflow, /npm run build:seo[\s\S]*npm run seo:package[\s\S]*npm run seo:validate-package/);
+assert.match(workflow, /Validate batch immediately before deployment/);
+assert.match(workflow, /existing deployment engine/);
+assert.match(workflow, /--batch-id=.*--snapshot-hash=/);
+assert.match(workflow, /complete --batch-id=/);
+assert.match(workflow, /fail --batch-id=/);
+assert.match(workflow, /if: failure\(\) && env\.BATCH_STATUS == 'PREPARED'/);
+assert.match(workflow, /environment: seo-production/);
+assert.match(workflow, /StrictHostKeyChecking=yes/);
+assert.match(workflow, /UserKnownHostsFile=/);
+assert.match(workflow, /IdentitiesOnly=yes/);
+assert.match(worker, /\['prepare', 'validate', 'complete', 'fail'\]/);
+assert.match(worker, /seoPublicationValidateBatchStillCurrent/);
+assert.match(worker, /seoPublicationBatchComplete/);
+assert.match(worker, /seoPublicationBatchFail/);
+assert.match(worker, /'release-sha'/);
+console.log('PASS SEO publication Phase 2C orchestration contract');

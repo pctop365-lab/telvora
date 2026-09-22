@@ -1,0 +1,215 @@
+name: SEO Autopublish (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telvora-seo-autopublish
+  cancel-in-progress: false
+
+jobs:
+  autopublish:
+    name: Prepare, build, validate and activate SEO batch
+    runs-on: ubuntu-24.04
+    environment: seo-production
+    timeout-minutes: 30
+    env:
+      REMOTE_BASE: /var/www/u3609206/data
+      REMOTE_APP_ROOT: /var/www/u3609206/data/www/telvora.ru
+      REMOTE_DOCUMENT_ROOT: /var/www/u3609206/data/www/telvora.ru
+      REMOTE_BACKUP_ROOT: /var/www/u3609206/data/telvora-backups
+
+    steps:
+      - name: Checkout orchestration code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Set up Node LTS
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare pinned SSH credentials
+        if: always()
+        shell: bash
+        env:
+          TELVORA_SSH_PRIVATE_KEY: ${{ secrets.TELVORA_SSH_PRIVATE_KEY }}
+          TELVORA_SSH_KNOWN_HOSTS: ${{ secrets.TELVORA_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          SSH_DIR="$RUNNER_TEMP/telvora-autopublish-ssh-${GITHUB_RUN_ID}"
+          mkdir -p "$SSH_DIR"
+          printf '%s\n' "$TELVORA_SSH_PRIVATE_KEY" > "$SSH_DIR/id_ed25519"
+          printf '%s\n' "$TELVORA_SSH_KNOWN_HOSTS" > "$SSH_DIR/known_hosts"
+          chmod 600 "$SSH_DIR/id_ed25519" "$SSH_DIR/known_hosts"
+          test -s "$SSH_DIR/id_ed25519"; test -s "$SSH_DIR/known_hosts"
+          echo "SSH_DIR=$SSH_DIR" >> "$GITHUB_ENV"
+
+      - name: Prepare exact queued SEO batch
+        id: prepare
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          snapshot_dir="$REMOTE_BASE/seo-runtime/snapshots"
+          ssh_opts=(-q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519")
+          ssh "${ssh_opts[@]}" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$REMOTE_APP_ROOT" "$snapshot_dir" <<'REMOTE' > "$RUNNER_TEMP/prepare.json"
+          set -euo pipefail
+          app_root="$1"; snapshot_dir="$2"
+          test "$(realpath -m -- "$app_root")" = '/var/www/u3609206/data/www/telvora.ru'
+          test "$(realpath -m -- "$snapshot_dir")" = '/var/www/u3609206/data/seo-runtime/snapshots'
+          mkdir -p -- "$snapshot_dir"
+          TELVORA_SEO_SNAPSHOT_DIR="$snapshot_dir" php "$app_root/seo_publication_worker.php" prepare
+          REMOTE
+          python3 - "$RUNNER_TEMP/prepare.json" <<'PY'
+          import json,sys
+          data=json.load(open(sys.argv[1], encoding='utf-8'))
+          if data.get('status') == 'NO_WORK':
+              print('NO_WORK')
+              open('/tmp/telvora-no-work','w').close()
+              raise SystemExit(0)
+          required=('PREPARED','batch_id','snapshot_file','snapshot_hash')
+          if data.get('status') != required[0] or any(not data.get(k) for k in required[1:]): raise SystemExit('invalid prepare result')
+          open('/tmp/telvora-batch.env','w').write('BATCH_ID=%s\nSNAPSHOT_HASH=%s\nREMOTE_SNAPSHOT=%s\n' % (data['batch_id'], data['snapshot_hash'], data['snapshot_file']))
+          PY
+          if [ -f /tmp/telvora-no-work ]; then echo 'BATCH_STATUS=NO_WORK' >> "$GITHUB_ENV"; exit 0; fi
+          cat /tmp/telvora-batch.env >> "$GITHUB_ENV"
+          echo 'BATCH_STATUS=PREPARED' >> "$GITHUB_ENV"
+
+      - name: Stop cleanly when queue is empty
+        if: env.BATCH_STATUS == 'NO_WORK'
+        run: echo 'NO_WORK: no SEO publication batch was queued; build and deploy skipped.'
+
+      - name: Download private desired snapshot
+        if: env.BATCH_STATUS == 'PREPARED'
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          scp -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST:$REMOTE_SNAPSHOT" "$RUNNER_TEMP/seo-snapshot.json"
+          test -s "$RUNNER_TEMP/seo-snapshot.json"
+          test "$(sha256sum "$RUNNER_TEMP/seo-snapshot.json" | awk '{print $1}')" = "$SNAPSHOT_HASH"
+          echo "TELVORA_SEO_SNAPSHOT_FILE=$RUNNER_TEMP/seo-snapshot.json" >> "$GITHUB_ENV"
+
+      - name: Build and package exact desired snapshot
+        if: env.BATCH_STATUS == 'PREPARED'
+        run: |
+          set -euo pipefail
+          npm run build:seo
+          npm run seo:package
+          npm run seo:validate-package
+
+      - name: Validate batch immediately before deployment
+        if: env.BATCH_STATUS == 'PREPARED'
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" "php '$REMOTE_APP_ROOT/seo_publication_worker.php' validate --batch-id='$BATCH_ID' --snapshot-hash='$SNAPSHOT_HASH'"
+
+      - name: Upload immutable package and existing deploy engine
+        if: env.BATCH_STATUS == 'PREPARED'
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          archive="$(find seo-artifacts -maxdepth 1 -type f -name 'telvora-seo-release-*.tar.gz' -print -quit)"; test -n "$archive"
+          PACKAGE_SHA256="$(sha256sum "$archive" | awk '{print $1}')"; echo "PACKAGE_SHA256=$PACKAGE_SHA256" >> "$GITHUB_ENV"
+          STAGE_ID="telvora-seo-autopublish-${GITHUB_RUN_ID}-${BATCH_ID}"; [[ "$STAGE_ID" =~ ^telvora-seo-autopublish-[0-9]+-[0-9a-f-]+$ ]]
+          echo "STAGE_ID=$STAGE_ID" >> "$GITHUB_ENV"
+          remote_stage="$REMOTE_BASE/staging/$STAGE_ID"
+          echo "REMOTE_STAGE=$remote_stage" >> "$GITHUB_ENV"
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$remote_stage" "$REMOTE_BASE" "$REMOTE_DOCUMENT_ROOT" <<'REMOTE'
+          set -euo pipefail
+          stage="$(realpath -m -- "$1")"; base="$(realpath -m -- "$2/staging")"; document="$(realpath -m -- "$3")"
+          test "$base" = '/var/www/u3609206/data/staging'; test "$document" = '/var/www/u3609206/data/www/telvora.ru'
+          case "$stage" in "$base"/*) ;; *) exit 1;; esac
+          case "$stage" in "$document"|"$document"/*) exit 1;; esac
+          test ! -e "$stage"; mkdir -p -- "$stage"
+          REMOTE
+          scp -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$archive" deployment/seo-stage2/deploy-release.sh "$TELVORA_SSH_USER@$TELVORA_SSH_HOST:$remote_stage/"
+
+      - name: Validate package and run existing deployment engine
+        if: env.BATCH_STATUS == 'PREPARED'
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$REMOTE_STAGE" "$PACKAGE_SHA256" "$REMOTE_DOCUMENT_ROOT" "$REMOTE_BACKUP_ROOT" <<'REMOTE'
+          set -euo pipefail
+          stage="$1"; expected="$2"; document="$3"; backups="$4"; archive="$stage/$(basename "$(find "$stage" -maxdepth 1 -name 'telvora-seo-release-*.tar.gz' -print -quit)")"
+          test -f "$archive"; test "$(sha256sum "$archive" | awk '{print $1}')" = "$expected"
+          test "$(realpath -m -- "$document")" = '/var/www/u3609206/data/www/telvora.ru'; test "$(realpath -m -- "$backups")" = '/var/www/u3609206/data/telvora-backups'
+          mkdir -p "$stage/live"; bash "$stage/deploy-release.sh" --archive "$archive" --staging-root "$stage/live" --document-root "$document" --backup-root "$backups"
+          test -f "$document/yandex_2f15c7f5db6e96d5.html"
+          active="$stage/live/active-release.json"; test -f "$active"
+          python3 - "$active" > "$stage/backup-reference" <<'PY'
+          import json,sys
+          print(json.load(open(sys.argv[1]))['backupReference'])
+          PY
+          test -d "$(cat "$stage/backup-reference")"
+          REMOTE
+          echo 'DEPLOY_SUCCEEDED=true' >> "$GITHUB_ENV"
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" "cat '$REMOTE_STAGE/backup-reference'" > "$RUNNER_TEMP/backup-reference"
+
+      - name: Complete exact batch after verified deployment
+        if: env.BATCH_STATUS == 'PREPARED' && env.DEPLOY_SUCCEEDED == 'true'
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          release_sha="$(node -e "console.log(require('./seo-artifacts/deployment-manifest.json').commitSha)")"
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" "php '$REMOTE_APP_ROOT/seo_publication_worker.php' complete --batch-id='$BATCH_ID' --snapshot-hash='$SNAPSHOT_HASH' --release-sha='$release_sha' --package-sha256='$PACKAGE_SHA256' --backup-reference='$(cat "$RUNNER_TEMP/backup-reference")'"
+          echo 'FINALIZATION_RESULT=PASS' >> "$GITHUB_ENV"
+
+      - name: Fail exact batch after pre-deploy or rolled-back failure
+        if: failure() && env.BATCH_STATUS == 'PREPARED' && env.DEPLOY_SUCCEEDED != 'true'
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" "php '$REMOTE_APP_ROOT/seo_publication_worker.php' fail --batch-id='$BATCH_ID' --snapshot-hash='$SNAPSHOT_HASH' --message='SEO autopublish orchestration failed before finalization'"
+
+      - name: Write orchestration summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '## SEO autopublish orchestration'
+            echo "- Batch ID: ${BATCH_ID:-none}"
+            echo "- Snapshot SHA-256: ${SNAPSHOT_HASH:-none}"
+            echo "- Package SHA-256: ${PACKAGE_SHA256:-none}"
+            echo "- Staging path: ${REMOTE_STAGE:-none}"
+            echo "- Deployment: ${DEPLOY_SUCCEEDED:-false}"
+            echo "- Finalization: ${FINALIZATION_RESULT:-not completed}"
+            if [ "${DEPLOY_SUCCEEDED:-false}" = true ] && [ "${FINALIZATION_RESULT:-}" != PASS ]; then echo '- **DEPLOY_SUCCEEDED_FINALIZATION_FAILED**'; fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove temporary credentials and snapshot
+        if: always()
+        shell: bash
+        run: rm -rf -- "${SSH_DIR:-$RUNNER_TEMP/telvora-autopublish-ssh-${GITHUB_RUN_ID}}" "${TELVORA_SEO_SNAPSHOT_FILE:-$RUNNER_TEMP/seo-snapshot.json}"
