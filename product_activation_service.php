@@ -59,6 +59,17 @@ function productActivationReadyCandidate(PDO $pdo, int $productId): array
     );
 }
 
+/**
+ * Validate whether a currently inactive product can be activated.
+ *
+ * This deliberately performs no UPDATE, transaction commit, or callback.
+ * The existing productActivationRun() remains the final activation helper.
+ */
+function productActivationValidateCandidate(PDO $pdo, int $productId): array
+{
+    return productActivationReadyCandidate($pdo, $productId);
+}
+
 function productActivationLockAndValidate(PDO $pdo, int $productId, array $preflight): array
 {
     if (!$pdo->inTransaction()) throw new LogicException('Product activation requires an active transaction');
