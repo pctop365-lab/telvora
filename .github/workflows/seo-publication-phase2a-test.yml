@@ -1,0 +1,72 @@
+name: SEO Publication Phase 2A Test
+
+on:
+  push:
+    branches:
+      - ci/seo-publication-phase2a
+
+permissions:
+  contents: read
+
+jobs:
+  phase2a-php-mysql:
+    name: Phase 2A PHP/MySQL smoke gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: telvora_phase2a_test
+          MYSQL_USER: telvora_phase2a
+          MYSQL_PASSWORD: telvora_phase2a_ci_password
+          MYSQL_ROOT_PASSWORD: telvora_phase2a_ci_root_password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -utelvora_phase2a -ptelvora_phase2a_ci_password"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      TELVORA_TEST_DB_HOST: 127.0.0.1
+      TELVORA_TEST_DB_PORT: '3306'
+      TELVORA_TEST_DB_NAME: telvora_phase2a_test
+      TELVORA_TEST_DB_USER: telvora_phase2a
+      TELVORA_TEST_DB_PASSWORD: telvora_phase2a_ci_password
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install PHP and MySQL clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y php-cli php-mysql php-mbstring default-mysql-client
+          php --version
+          mysql --version
+          php -r 'if (!extension_loaded("pdo_mysql")) { exit(1); }'
+
+      - name: PHP syntax checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in \
+            seo_publication_batch_service.php \
+            seo_publication_snapshot_service.php \
+            seo_publication_worker.php \
+            seo_publication_service.php \
+            seo_publication_job_service.php \
+            product_activation_service.php \
+            tests/seo_publication_phase2a_mysql_smoke_test.php; do
+            php -l "$file"
+          done
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Phase 2A contract test
+        run: npm run test:seo:publication-phase2a
+
+      - name: Phase 2A MySQL smoke test
+        shell: bash
+        run: php tests/seo_publication_phase2a_mysql_smoke_test.php
