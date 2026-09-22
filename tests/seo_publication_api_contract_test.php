@@ -45,5 +45,15 @@ $publicApi = file_get_contents(dirname(__DIR__) . '/products.php');
 if (!is_string($publicApi)) throw new RuntimeException('FAIL cannot read products endpoint');
 seoContractAssert((bool)preg_match('/WHERE\s+is_active\s*=\s*1/i', $publicApi), 'public API keeps is_active gate');
 seoContractAssert(!str_contains($publicApi, "publication_status = 1"), 'public API has no invalid publication status gate');
+seoContractAssert(str_contains($publicApi, "'request_publish', 'request_unpublish'"), 'publication request actions are registered');
+seoContractAssert(str_contains($publicApi, "empty(\$_SESSION['telvora_admin'])"), 'publication request actions remain behind admin session');
+seoContractAssert((bool)preg_match('/if \(in_array\(\$action, \[\x27request_publish\x27, \x27request_unpublish\x27\].*?\$_SERVER\x5b\x27REQUEST_METHOD\x27\x5d.*?POST/is', $publicApi), 'publication request actions require POST');
+seoContractAssert(str_contains($publicApi, "\$_SESSION['csrf_token']") && str_contains($publicApi, "HTTP_X_CSRF_TOKEN"), 'publication request actions use existing CSRF mechanism');
+seoContractAssert(str_contains($publicApi, "expected_revision") && str_contains($publicApi, "FILTER_VALIDATE_INT"), 'publication actions validate expected revision and IDs');
+seoContractAssert(str_contains($publicApi, 'seoPublicationRequestPublish') && str_contains($publicApi, 'seoPublicationRequestUnpublish'), 'publication actions delegate to state service');
+seoContractAssert(str_contains($publicApi, "in_array(\$action, ['request_publish', 'request_unpublish'], true)"), 'publication operation is selected only from the fixed action allowlist');
+seoContractAssert(str_contains($publicApi, 'publication_status,') && str_contains($publicApi, 'publication_revision,'), 'admin list selects publication state fields');
+seoContractAssert(str_contains($publicApi, 'productActivationRun($pdo, $id'), 'legacy is_active activation path remains');
+seoContractAssert(str_contains($publicApi, "'publication_status' =>") && str_contains($publicApi, "'publication_revision' =>"), 'publication response serializes state fields');
 
 echo "PASS SEO publication API contract\n";

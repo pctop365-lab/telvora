@@ -14,6 +14,7 @@ require_once __DIR__ . '/runtime_config.php';
 
 require_once __DIR__ . '/product_variant_identity_service.php';
 require_once __DIR__ . '/product_activation_service.php';
+require_once __DIR__ . '/seo_publication_service.php';
 require_once __DIR__ . '/product_variant_mutation_service.php';
 require_once __DIR__ . '/product_variant_price_service.php';
 require_once __DIR__ . '/storefront_availability_service.php';
@@ -160,6 +161,12 @@ function prepareProduct(array $product): array
     $product['reviews'] = (int)($product['reviews'] ?? 0);
 
     $product['is_active'] = (bool)($product['is_active'] ?? false);
+    if (array_key_exists('publication_status', $product)) {
+        $product['publication_status'] = (string)$product['publication_status'];
+    }
+    if (array_key_exists('publication_revision', $product)) {
+        $product['publication_revision'] = (int)$product['publication_revision'];
+    }
     $homepagePosition = $product['homepage_position'] ?? null;
     $product['homepage_position'] = $homepagePosition === null || $homepagePosition === ''
         ? null
@@ -184,6 +191,43 @@ function prepareProduct(array $product): array
     );
 
     return $product;
+}
+
+function productPublicationResponse(array $result): array
+{
+    $product = $result['product'] ?? [];
+    $job = $result['job'] ?? null;
+    return [
+        'success' => true,
+        'result' => (string)($result['result'] ?? ''),
+        'product' => [
+            'id' => (int)($product['id'] ?? 0),
+            'is_active' => (int)($product['is_active'] ?? 0),
+            'publication_status' => (string)($product['publication_status'] ?? ''),
+            'publication_revision' => (int)($product['publication_revision'] ?? 0),
+        ],
+        'job' => is_array($job) ? [
+            'id' => (int)($job['id'] ?? 0),
+            'operation' => (string)($job['operation'] ?? ''),
+            'requested_revision' => (int)($job['requested_revision'] ?? 0),
+            'status' => (string)($job['status'] ?? ''),
+            'batch_id' => (string)($job['batch_id'] ?? ''),
+        ] : null,
+    ];
+}
+
+function productPublicationCurrentState(PDO $pdo, int $productId): ?array
+{
+    $stmt = $pdo->prepare('SELECT id, is_active, publication_status, publication_revision FROM products WHERE id = :id LIMIT 1');
+    $stmt->execute([':id' => $productId]);
+    $product = $stmt->fetch();
+    if (!is_array($product)) return null;
+    return [
+        'id' => (int)$product['id'],
+        'is_active' => (int)$product['is_active'],
+        'publication_status' => (string)$product['publication_status'],
+        'publication_revision' => (int)$product['publication_revision'],
+    ];
 }
 
 function normalizeHomepagePosition(mixed $value): ?int
@@ -377,7 +421,7 @@ if (empty($_SESSION['telvora_admin'])) {
 |--------------------------------------------------------------------------
 */
 
-if (in_array($action, ['upload_image', 'upload_gallery', 'gallery_save', 'add', 'update', 'delete', 'variant_add', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic'], true)) {
+if (in_array($action, ['upload_image', 'upload_gallery', 'gallery_save', 'add', 'update', 'delete', 'variant_add', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic', 'request_publish', 'request_unpublish'], true)) {
     $sessionToken = $_SESSION['csrf_token'] ?? '';
     $requestToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 
@@ -393,6 +437,39 @@ if (in_array($action, ['upload_image', 'upload_gallery', 'gallery_save', 'add', 
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
+}
+
+if (in_array($action, ['request_publish', 'request_unpublish'], true)) {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['success' => false, 'message' => 'Метод не поддерживается'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $productId = filter_var($data['id'] ?? $data['product_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+    $expectedRevision = filter_var($data['expected_revision'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]);
+    if ($productId === false || $expectedRevision === false) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Некорректный ID товара или revision'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    try {
+        $result = $action === 'request_publish'
+            ? seoPublicationRequestPublish($pdo, (int)$productId, (int)$expectedRevision)
+            : seoPublicationRequestUnpublish($pdo, (int)$productId, (int)$expectedRevision);
+        echo json_encode(productPublicationResponse($result), JSON_UNESCAPED_UNICODE);
+    } catch (SeoPublicationStateException|SeoPublicationJobException|ProductActivationException $error) {
+        http_response_code($error->httpStatus);
+        $response = ['success' => false, 'message' => $error->getMessage()];
+        if ($error->httpStatus === 409) {
+            try { $response['product'] = productPublicationCurrentState($pdo, (int)$productId); } catch (Throwable) { /* state is optional on conflict */ }
+        }
+        echo json_encode($response, JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $error) {
+        error_log('SEO publication request failed: ' . $error->getMessage());
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => 'Не удалось изменить состояние публикации'], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
 }
 
 if (in_array($action, ['variant_add', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic'], true)) {
@@ -656,6 +733,8 @@ if ($action === 'admin_list') {
                 variants,
                 homepage_position,
                 is_active,
+                publication_status,
+                publication_revision,
                 created_at,
                 updated_at
             FROM products
