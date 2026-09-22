@@ -144,24 +144,36 @@ function phase1aExpectRejected(callable $callback, string $message): void
     throw new RuntimeException("FAIL $message");
 }
 
+function phase1aWriteMarker(string $path, string $contents): void
+{
+    $temporary = $path . '.tmp.' . bin2hex(random_bytes(4));
+    if (file_put_contents($temporary, $contents, LOCK_EX) === false || !rename($temporary, $path)) {
+        @unlink($temporary);
+        throw new RuntimeException("Could not write synchronization marker: $path");
+    }
+}
+
 function phase1aChild(array $config, string $mode, string $dir, string $resultName = 'contender-result'): int
 {
-    $pdo = phase1aPdo($config);
-    if ($mode === 'holder') {
-        $pdo->beginTransaction();
-        $pdo->query('SELECT id FROM products WHERE id = 1 FOR UPDATE')->fetch();
-        file_put_contents("$dir/holder-ready", 'ready');
-        while (!is_file("$dir/release")) usleep(50000);
-        $pdo->commit();
-        return 0;
-    }
-    while (!is_file("$dir/holder-ready")) usleep(50000);
-    $pdo->exec('SET SESSION innodb_lock_wait_timeout = 1');
     try {
+        $pdo = phase1aPdo($config);
+        if ($mode === 'holder') {
+            $pdo->beginTransaction();
+            $locked = $pdo->query('SELECT id FROM products WHERE id = 1 FOR UPDATE')->fetchColumn();
+            if ((int)$locked !== 1) throw new RuntimeException('Holder could not lock product 1');
+            phase1aWriteMarker("$dir/holder-ready", (string)getmypid());
+            while (!is_file("$dir/release")) usleep(50000);
+            $pdo->commit();
+            return 0;
+        }
+        while (!is_file("$dir/holder-ready")) usleep(50000);
+        $pdo->exec('SET SESSION innodb_lock_wait_timeout = 1');
         $result = seoPublicationRequestPublish($pdo, 1, 0);
         file_put_contents("$dir/$resultName", json_encode(['ok' => true, 'result' => $result], JSON_THROW_ON_ERROR));
     } catch (Throwable $error) {
-        file_put_contents("$dir/$resultName", json_encode(['ok' => false, 'class' => get_class($error)], JSON_THROW_ON_ERROR));
+        $marker = $mode === 'holder' ? "$dir/holder-error" : "$dir/$resultName";
+        file_put_contents($marker, json_encode(['ok' => false, 'class' => get_class($error), 'message' => $error->getMessage()], JSON_THROW_ON_ERROR));
+        if ($mode === 'holder') return 1;
     }
     return 0;
 }
@@ -175,9 +187,19 @@ function phase1aRunLockTest(array $config): void
     $env = array_merge($_ENV, ['TELVORA_TEST_DB_HOST' => $config[0], 'TELVORA_TEST_DB_PORT' => (string)$config[1], 'TELVORA_TEST_DB_NAME' => $config[2], 'TELVORA_TEST_DB_USER' => $config[3], 'TELVORA_TEST_DB_PASSWORD' => $config[4]]);
     $holder = proc_open("$command --holder " . escapeshellarg($dir), $descriptor, $pipes, dirname(__DIR__), $env);
     if (!is_resource($holder)) throw new RuntimeException('Could not start lock holder');
-    $deadline = microtime(true) + 10;
-    while (!is_file("$dir/holder-ready") && microtime(true) < $deadline) usleep(50000);
-    phase1aAssert(is_file("$dir/holder-ready"), 'connection A holds product lock');
+    $deadline = microtime(true) + 5;
+    while (!is_file("$dir/holder-ready") && !is_file("$dir/holder-error") && microtime(true) < $deadline) {
+        $status = proc_get_status($holder);
+        if (!$status['running']) break;
+        usleep(50000);
+    }
+    if (!is_file("$dir/holder-ready")) {
+        $stdout = stream_get_contents($pipes[1]); $stderr = stream_get_contents($pipes[2]);
+        $status = proc_get_status($holder);
+        $detail = is_file("$dir/holder-error") ? (string)file_get_contents("$dir/holder-error") : 'no holder marker';
+        proc_close($holder);
+        throw new RuntimeException("Connection A did not acquire product lock: $detail; exit=" . (string)($status['exitcode'] ?? 'unknown') . "; stdout=$stdout; stderr=$stderr");
+    }
     $contender = proc_open("$command --contender " . escapeshellarg($dir) . ' contender-1', $descriptor, $pipes2, dirname(__DIR__), $env);
     $contender2 = proc_open("$command --contender " . escapeshellarg($dir) . ' contender-2', $descriptor, $pipes3, dirname(__DIR__), $env);
     if (!is_resource($contender) || !is_resource($contender2)) throw new RuntimeException('Could not start lock contender');
