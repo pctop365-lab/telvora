@@ -89,7 +89,8 @@ jobs:
 
       - name: Stop cleanly when queue is empty
         if: env.BATCH_STATUS == 'NO_WORK'
-        run: echo 'NO_WORK: no SEO publication batch was queued; build and deploy skipped.'
+        run: |
+          echo 'NO_WORK: no SEO publication batch was queued; build and deploy skipped.'
 
       - name: Download private desired snapshot
         if: env.BATCH_STATUS == 'PREPARED'
