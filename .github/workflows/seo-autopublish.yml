@@ -2,12 +2,14 @@ name: SEO Autopublish (manual)
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'
 
 permissions:
   contents: read
 
 concurrency:
-  group: telvora-seo-autopublish
+  group: telvora-seo-autopublish-production
   cancel-in-progress: false
 
 jobs:

@@ -6,9 +6,14 @@ const worker = await readFile(new URL('../seo_publication_worker.php', import.me
 const publicationService = await readFile(new URL('../seo_publication_service.php', import.meta.url), 'utf8');
 
 assert.match(workflow, /on:\r?\n\s+workflow_dispatch:/);
-assert.doesNotMatch(workflow, /^\s+(push|schedule|workflow_run|repository_dispatch|pull_request):/m);
+assert.match(workflow, /schedule:\r?\n\s+- cron: ['"]\*\/5 \* \* \* \*['"]/);
+assert.doesNotMatch(workflow, /^\s+(push|pull_request|workflow_run|repository_dispatch):/m);
+assert.match(workflow, /concurrency:\r?\n\s+group: telvora-seo-autopublish-production\r?\n\s+cancel-in-progress: false/);
 assert.match(workflow, /Prepare exact queued SEO batch/);
 assert.match(workflow, /php .*seo_publication_worker\.php.* prepare/);
+assert.match(workflow, /Stop cleanly when queue is empty[\s\S]*if: env\.BATCH_STATUS == 'NO_WORK'/);
+assert.match(workflow, /Build and package exact desired snapshot[\s\S]*if: env\.BATCH_STATUS == 'PREPARED'/);
+assert.match(workflow, /Validate package and run existing deployment engine[\s\S]*if: env\.BATCH_STATUS == 'PREPARED'/);
 assert.match(workflow, /TELVORA_SEO_SNAPSHOT_FILE=/);
 assert.match(workflow, /RELEASE_SHA="\$GITHUB_SHA"/);
 assert.match(workflow, /PACKAGE_SHA256=.*sha256sum/);
