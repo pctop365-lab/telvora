@@ -46,7 +46,7 @@ For one safe test product, record id/slug/is_active/status/revision. Call
 job, manually run `SEO Autopublish`, then verify completed job, published state,
 unchanged revision, API visibility, route/canonical, prerender and sitemap.
 Repeat with `request_unpublish`, verifying pending unpublish first and then
-draft/inactive/API and sitemap removal. Finally queue 23 safe intents without a
+draft/inactive/API and sitemap removal. Finally queue 2–3 safe intents without a
 run and execute exactly one autopublish run; verify one batch, snapshot, package
 and deploy and all jobs completed.
 
@@ -62,7 +62,7 @@ deploy blindly.
 
 ## Schedule gate
 
-Keep `seo-autopublish.yml` manual-only through both canaries and the 23-product
+Keep `seo-autopublish.yml` manual-only through both canaries and the 2–3 product
 batch. Only after those results are recorded should an approved change add a
 UTC five-minute cron while retaining `workflow_dispatch` and
 `cancel-in-progress: false`.
