@@ -5,7 +5,7 @@ import {
   parseCategorySlug,
 } from '@/data/seed';
 
-const PRODUCTS_API = 'https://telvora.ru/products.php';
+const PRODUCTS_API = '/products.php';
 
 type ApiProduct = {
   id: number | string;

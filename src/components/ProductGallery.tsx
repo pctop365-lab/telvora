@@ -27,7 +27,7 @@ export default function ProductGallery({ images, legacyImage, productName, badge
   </>;
   return <div className="self-start">
     <div className="relative overflow-hidden rounded-3xl border border-white/5 bg-graphite-800">
-      <button type="button" onClick={() => setZoomed(true)} aria-label={`Увеличить изображение ${index + 1} товара ${productName}`} className="block aspect-[4/3] w-full cursor-zoom-in">
+      <button type="button" onClick={() => setZoomed(true)} aria-label={`Увеличить изображение ${index + 1} товара ${productName}`} className="block aspect-video w-full cursor-zoom-in bg-white">
         <img src={items[index]} alt={`${productName}, изображение ${index + 1} из ${items.length}`} className="h-full w-full object-contain" /><ZoomIn className="absolute bottom-4 right-4 rounded bg-black/60 p-1 text-white" />
       </button>{controls}
       <div className="pointer-events-none absolute left-4 top-4 flex flex-col gap-2">{badge && <span className="rounded-lg bg-accent-500 px-3 py-1.5 text-xs font-bold text-white">{badge}</span>}{discount > 0 && <span className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-graphite-900">Скидка {discount}%</span>}</div>

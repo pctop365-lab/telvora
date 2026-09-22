@@ -34,6 +34,12 @@ export default defineConfig({
         changeOrigin: true,
         secure: true,
       },
+
+      '/uploads/products': {
+        target: 'https://telvora.ru',
+        changeOrigin: true,
+        secure: true,
+      },
     },
   },
 });
