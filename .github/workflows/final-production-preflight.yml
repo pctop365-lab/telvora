@@ -1,0 +1,60 @@
+name: Final Production Preflight
+
+on:
+  push:
+    branches:
+      - ci/final-production-preflight
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_mysql
+          tools: none
+
+      - name: Install Bash and Node dependencies
+        run: |
+          php --version
+          node --version
+          npm --version
+          bash --version | head -n 1
+          npm ci
+
+      - name: PHP syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t manifest_files < <(sed '/^[[:space:]]*#/d;/^[[:space:]]*$/d' deployment/backend/backend-manifest.txt)
+          declare -A seen=()
+          for file in "${manifest_files[@]}" deployment/production/backup-database.php deployment/production/apply-seo-publication-migration.php; do
+            if [[ -z "${seen[$file]+x}" ]]; then
+              php -l "$file"
+              seen[$file]=1
+            fi
+          done
+
+      - name: Bash syntax
+        run: |
+          bash -n deployment/backend/deploy-backend.sh
+          bash -n deployment/production/final-preflight.sh
+
+      - name: Contract and application checks
+        run: |
+          npm run test:backend:deployment
+          npm run test:seo:publication-phase2a
+          npm run test:seo:publication-phase2c
+          npm run test:admin:publication
+          npm run typecheck
+          npm run build
+          git diff --check

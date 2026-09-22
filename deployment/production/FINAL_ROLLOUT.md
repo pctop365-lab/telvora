@@ -62,7 +62,7 @@ deploy blindly.
 
 ## Schedule gate
 
-Keep `seo-autopublish.yml` manual-only through both canaries and the 23-product
+Keep `seo-autopublish.yml` manual-only through both canaries and the 23 product
 batch. Only after those results are recorded should an approved change add a
 UTC five-minute cron while retaining `workflow_dispatch` and
 `cancel-in-progress: false`.
