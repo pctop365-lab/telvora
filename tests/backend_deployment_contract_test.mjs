@@ -5,6 +5,9 @@ const workflow = await readFile(new URL('../.github/workflows/backend-production
 const deploy = await readFile(new URL('../deployment/backend/deploy-backend.sh', import.meta.url), 'utf8');
 const manifest = await readFile(new URL('../deployment/backend/backend-manifest.txt', import.meta.url), 'utf8');
 const backup = await readFile(new URL('../deployment/production/backup-database.php', import.meta.url), 'utf8');
+const migrationRunner = await readFile(new URL('../deployment/production/apply-seo-publication-migration.php', import.meta.url), 'utf8');
+const preflight = await readFile(new URL('../deployment/production/final-preflight.sh', import.meta.url), 'utf8');
+const runbook = await readFile(new URL('../deployment/production/FINAL_ROLLOUT.md', import.meta.url), 'utf8');
 const seoDeploy = await readFile(new URL('../deployment/seo-stage2/deploy-release.sh', import.meta.url), 'utf8');
 
 assert.match(workflow, /on:\r?\n\s+workflow_dispatch:/);
@@ -29,4 +32,15 @@ assert.doesNotMatch(backup, /password\s*=\s*['"][^'"$]+['"]/i);
 assert.match(manifest, /^products\.php$/m);
 assert.match(manifest, /^seo_publication_worker\.php$/m);
 assert.doesNotMatch(manifest, /migration|tests|cleanup|secret/i);
+assert.match(migrationRunner, /PHP_SAPI !== 'cli'/);
+assert.match(migrationRunner, /SEO_PUBLICATION_MIGRATION_SHA256/);
+assert.match(migrationRunner, /MIGRATION_HASH_MISMATCH/);
+assert.match(migrationRunner, /20260922_013_seo_publication_state\.sql/);
+assert.doesNotMatch(migrationRunner, /\$argv\[[^]]+\].*file_get_contents/);
+assert.match(preflight, /php -l/);
+assert.match(preflight, /bash -n deployment\/backend\/deploy-backend\.sh/);
+assert.match(preflight, /command -v mysqldump/);
+assert.match(runbook, /backup-database\.php --backup/);
+assert.match(runbook, /apply-seo-publication-migration\.php --apply/);
+assert.match(runbook, /23 safe intents/);
 console.log('PASS backend deployment and database backup contract');
