@@ -22,6 +22,7 @@
     "test:seo:publication-phase2a": "node tests/seo_publication_phase2a_contract_test.mjs",
     "test:seo:publication-phase2c": "node tests/seo_publication_phase2c_contract_test.mjs",
     "test:admin:publication": "node tests/admin_publication_ui_contract_test.mjs",
+    "test:backend:deployment": "node tests/backend_deployment_contract_test.mjs",
     "test:seo:ops": "node tests/seo_ops_test.mjs",
     "test:supplier:normalization": "php tests/supplier_import_normalization_test.php",
     "test:seo:workflow-maintenance": "node tests/seo_workflow_maintenance_test.mjs",

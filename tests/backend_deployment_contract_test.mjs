@@ -1,0 +1,32 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+const workflow = await readFile(new URL('../.github/workflows/backend-production-deploy.yml', import.meta.url), 'utf8');
+const deploy = await readFile(new URL('../deployment/backend/deploy-backend.sh', import.meta.url), 'utf8');
+const manifest = await readFile(new URL('../deployment/backend/backend-manifest.txt', import.meta.url), 'utf8');
+const backup = await readFile(new URL('../deployment/production/backup-database.php', import.meta.url), 'utf8');
+const seoDeploy = await readFile(new URL('../deployment/seo-stage2/deploy-release.sh', import.meta.url), 'utf8');
+
+assert.match(workflow, /on:\r?\n\s+workflow_dispatch:/);
+assert.doesNotMatch(workflow, /^\s+(push|schedule|workflow_run|repository_dispatch|pull_request):/m);
+assert.match(workflow, /environment: seo-production/);
+assert.match(workflow, /StrictHostKeyChecking=yes/);
+assert.match(workflow, /UserKnownHostsFile=/);
+assert.match(workflow, /IdentitiesOnly=yes/);
+assert.match(deploy, /backend-manifest\.txt/);
+assert.match(deploy, /php -l/);
+assert.match(deploy, /backup/);
+assert.match(deploy, /POST_LINT_FAILED/);
+assert.match(deploy, /rollback/);
+assert.doesNotMatch(deploy, /for\s+[^\n]*\*\.php/);
+assert.doesNotMatch(deploy, /\*\/\*/);
+assert.match(seoDeploy, /p\.endswith\('\.php'\)/);
+assert.match(backup, /PHP_SAPI !== 'cli'/);
+assert.match(backup, /mysqldump/);
+assert.match(backup, /MYSQLDUMP_NOT_AVAILABLE/);
+assert.match(backup, /DB_CONFIG_INVALID/);
+assert.doesNotMatch(backup, /password\s*=\s*['"][^'"$]+['"]/i);
+assert.match(manifest, /^products\.php$/m);
+assert.match(manifest, /^seo_publication_worker\.php$/m);
+assert.doesNotMatch(manifest, /migration|tests|cleanup|secret/i);
+console.log('PASS backend deployment and database backup contract');

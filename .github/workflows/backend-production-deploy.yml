@@ -1,0 +1,110 @@
+name: Backend Production Deploy (protected, manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telvora-backend-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment: seo-production
+    timeout-minutes: 15
+    env:
+      REMOTE_BASE: /var/www/u3609206/data
+      REMOTE_DOCUMENT_ROOT: /var/www/u3609206/data/www/telvora.ru
+      REMOTE_BACKUP_ROOT: /var/www/u3609206/data/backend-backups
+    steps:
+      - name: Checkout exact main commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Prepare explicit backend payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/backend-payload"
+          while IFS= read -r file; do
+            [ -z "$file" ] && continue
+            case "$file" in /*|../*|*/../*|*\\*) exit 1;; esac
+            test -f "$file"; cp -- "$file" "$RUNNER_TEMP/backend-payload/$file"
+          done < deployment/backend/backend-manifest.txt
+          tar -czf "$RUNNER_TEMP/backend-payload.tar.gz" -C "$RUNNER_TEMP/backend-payload" .
+          echo "PAYLOAD_SHA256=$(sha256sum "$RUNNER_TEMP/backend-payload.tar.gz" | awk '{print $1}')" >> "$GITHUB_ENV"
+
+      - name: Prepare pinned SSH credentials
+        shell: bash
+        env:
+          TELVORA_SSH_PRIVATE_KEY: ${{ secrets.TELVORA_SSH_PRIVATE_KEY }}
+          TELVORA_SSH_KNOWN_HOSTS: ${{ secrets.TELVORA_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          SSH_DIR="$RUNNER_TEMP/telvora-backend-ssh-${GITHUB_RUN_ID}"
+          mkdir -p "$SSH_DIR"
+          printf '%s\n' "$TELVORA_SSH_PRIVATE_KEY" > "$SSH_DIR/id_ed25519"
+          printf '%s\n' "$TELVORA_SSH_KNOWN_HOSTS" > "$SSH_DIR/known_hosts"
+          chmod 600 "$SSH_DIR/id_ed25519" "$SSH_DIR/known_hosts"
+          echo "SSH_DIR=$SSH_DIR" >> "$GITHUB_ENV"
+
+      - name: Upload and run isolated backend deployment
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          stage="$REMOTE_BASE/backend-staging/backend-${GITHUB_SHA}-${GITHUB_RUN_ID}"
+          case "$stage" in "$REMOTE_BASE/backend-staging/backend-"*) ;; *) exit 1;; esac
+          echo "BACKEND_STAGE=$stage" >> "$GITHUB_ENV"
+          ssh_opts=(-q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519")
+          ssh "${ssh_opts[@]}" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$stage" "$REMOTE_BASE" "$REMOTE_DOCUMENT_ROOT" <<'REMOTE'
+          set -euo pipefail
+          stage="$(realpath -m -- "$1")"; base="$(realpath -m -- "$2/backend-staging")"; document="$(realpath -m -- "$3")"
+          test "$document" = '/var/www/u3609206/data/www/telvora.ru'; case "$stage" in "$base"/*) ;; *) exit 1;; esac
+          case "$stage" in "$document"|"$document"/*) exit 1;; esac
+          test ! -e "$stage"; mkdir -p "$stage"
+          REMOTE
+          scp -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$RUNNER_TEMP/backend-payload.tar.gz" deployment/backend/deploy-backend.sh deployment/backend/backend-manifest.txt "$TELVORA_SSH_USER@$TELVORA_SSH_HOST:$stage/"
+          result="$(ssh "${ssh_opts[@]}" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$stage" "$REMOTE_DOCUMENT_ROOT" "$REMOTE_BACKUP_ROOT" <<'REMOTE'
+          set -euo pipefail
+          stage="$1"; document="$2"; backups="$3"; test "$(realpath -m -- "$document")" = '/var/www/u3609206/data/www/telvora.ru'; test "$(realpath -m -- "$backups")" = '/var/www/u3609206/data/backend-backups'
+          mkdir "$stage/payload"; tar -xzf "$stage/backend-payload.tar.gz" --no-same-owner --no-same-permissions -C "$stage/payload"
+          chmod 700 "$stage/deploy-backend.sh"
+          bash "$stage/deploy-backend.sh" --payload "$stage/payload" --document-root "$document" --backup-root "$backups"
+          REMOTE
+          )"
+          printf '%s\n' "$result" > "$RUNNER_TEMP/backend-result.json"
+          echo "BACKEND_RESULT=$result" >> "$GITHUB_ENV"
+
+      - name: Backend deployment summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '## Backend production deployment'
+            echo "- Commit: $GITHUB_SHA"
+            echo "- Payload SHA-256: ${PAYLOAD_SHA256:-not calculated}"
+            echo "- Result: ${BACKEND_RESULT:-not completed}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove private backend staging and credentials
+        if: always()
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set +e
+          if [ -n "${BACKEND_STAGE:-}" ]; then
+            ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" "case '$BACKEND_STAGE' in '$REMOTE_BASE'/backend-staging/backend-*) rm -rf -- '$BACKEND_STAGE';; esac"
+          fi
+          rm -rf -- "${SSH_DIR:-$RUNNER_TEMP/telvora-backend-ssh-${GITHUB_RUN_ID}}" "$RUNNER_TEMP/backend-payload" "$RUNNER_TEMP/backend-payload.tar.gz"
