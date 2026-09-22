@@ -185,7 +185,7 @@ function seoPublicationRequest(PDO $pdo, int $productId, string $operation, int 
                 ':revision' => $decision['revision'],
                 ':id' => $productId,
             ]);
-            return ['result' => 'reversed', 'job' => null, 'product' => $product + ['publication_status' => $decision['status'], 'publication_revision' => $decision['revision']]];
+            return ['result' => 'reversed', 'job' => null, 'product' => array_replace($product, ['publication_status' => $decision['status'], 'publication_revision' => $decision['revision']])];
         }
 
         if ($operation === 'publish') productActivationValidateCandidate($pdo, $productId);
@@ -200,7 +200,7 @@ function seoPublicationRequest(PDO $pdo, int $productId, string $operation, int 
             ':id' => $productId,
         ]);
         $job = seoPublicationJobCreate($pdo, $productId, $operation, $decision['revision'], $batchId);
-        return ['result' => 'queued', 'job' => $job, 'product' => $product + ['publication_status' => $decision['status'], 'publication_revision' => $decision['revision']]];
+        return ['result' => 'queued', 'job' => $job, 'product' => array_replace($product, ['publication_status' => $decision['status'], 'publication_revision' => $decision['revision']])];
     });
 }
 
