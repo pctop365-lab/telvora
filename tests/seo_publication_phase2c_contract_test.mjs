@@ -6,7 +6,7 @@ const worker = await readFile(new URL('../seo_publication_worker.php', import.me
 const publicationService = await readFile(new URL('../seo_publication_service.php', import.meta.url), 'utf8');
 
 assert.match(workflow, /on:\r?\n\s+workflow_dispatch:/);
-assert.match(workflow, /schedule:\r?\n\s+- cron: ['"]\*\/5 \* \* \* \*['"]/);
+assert.match(workflow, /schedule:\r?\n\s+- cron: ['"]2-59\/5 \* \* \* \*['"]/);
 assert.doesNotMatch(workflow, /^\s+(push|pull_request|workflow_run|repository_dispatch):/m);
 assert.match(workflow, /concurrency:\r?\n\s+group: telvora-seo-autopublish-production\r?\n\s+cancel-in-progress: false/);
 assert.match(workflow, /Prepare exact queued SEO batch/);
