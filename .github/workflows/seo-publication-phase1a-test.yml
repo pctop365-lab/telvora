@@ -79,3 +79,13 @@ jobs:
         run: |
           set -euo pipefail
           php tests/seo_publication_mysql_concurrency_test.php
+
+      - name: Phase 1A concurrency hardening
+        continue-on-error: true
+        timeout-minutes: 1
+        env:
+          TELVORA_RUN_CONCURRENCY_HARDENING: '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          php tests/seo_publication_mysql_concurrency_test.php

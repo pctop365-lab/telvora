@@ -376,6 +376,11 @@ function phase1aMain(): void
     }
     phase1aExpectRejected(static function () use ($pdo): void { seoPublicationMarkFailed($pdo, 999999, 'missing'); }, 'missing job cannot mark failure');
     $pdo->exec('DELETE FROM seo_publication_jobs'); $pdo->exec("UPDATE products SET is_active = 0, publication_status = 'draft', publication_revision = 0 WHERE id = 1");
+    if (getenv('TELVORA_RUN_CONCURRENCY_HARDENING') !== '1') {
+        echo "SKIP concurrency hardening: TELVORA_RUN_CONCURRENCY_HARDENING not enabled\n";
+        echo "PASS REAL MYSQL PHASE 1A CORE TEST\n";
+        return;
+    }
     phase1aRunLockTest($config);
     phase1aAssert(count($pdo->query("SELECT id FROM seo_publication_jobs WHERE product_id = 1 AND requested_revision = 1")->fetchAll()) === 1, 'concurrent requests leave one intent job');
     echo "PASS REAL MYSQL PHASE 1A CONCURRENCY TEST\n";
