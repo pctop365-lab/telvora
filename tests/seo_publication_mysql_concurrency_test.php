@@ -114,6 +114,27 @@ function phase1aInsertJob(PDO $pdo, int $product, int $revision, string $operati
     return (int)$pdo->lastInsertId();
 }
 
+function phase1aColumn(PDO $pdo, string $table, string $column): array
+{
+    $stmt = $pdo->prepare('SELECT data_type, column_type, character_maximum_length, is_nullable, column_default
+        FROM information_schema.columns
+        WHERE table_schema = DATABASE() AND table_name = :table_name AND column_name = :column_name');
+    $stmt->execute([':table_name' => $table, ':column_name' => $column]);
+    $row = $stmt->fetch();
+    if (!is_array($row)) throw new RuntimeException("Missing column $table.$column");
+    return $row;
+}
+
+function phase1aIndexColumns(PDO $pdo, string $table, string $index): array
+{
+    $stmt = $pdo->prepare('SELECT non_unique, seq_in_index, column_name
+        FROM information_schema.statistics
+        WHERE table_schema = DATABASE() AND table_name = :table_name AND index_name = :index_name
+        ORDER BY seq_in_index');
+    $stmt->execute([':table_name' => $table, ':index_name' => $index]);
+    return $stmt->fetchAll();
+}
+
 function phase1aExpectRejected(callable $callback, string $message): void
 {
     try { $callback(); } catch (Throwable $error) { phase1aAssert($error instanceof SeoPublicationStateException || $error instanceof PDOException, $message); return; }
@@ -183,8 +204,37 @@ function phase1aMain(): void
     phase1aAssert((int)$a['is_active'] === $beforeA && (int)$b['is_active'] === $beforeB, 'migration preserves is_active');
     $productsDdl = (string)$pdo->query('SHOW CREATE TABLE products')->fetchColumn(1);
     $jobsDdl = (string)$pdo->query('SHOW CREATE TABLE seo_publication_jobs')->fetchColumn(1);
-    foreach (['publication_status varchar(32) NOT NULL', 'publication_revision bigint unsigned NOT NULL', 'KEY `idx_products_publication`'] as $needle) phase1aAssert(str_contains(strtolower($productsDdl), strtolower($needle)), "products DDL contains $needle");
-    foreach (['uq_seo_publication_job_intent', 'FOREIGN KEY (`product_id`) REFERENCES `products` (`id`)', 'ON DELETE RESTRICT', 'chk_seo_publication_job_operation', 'chk_seo_publication_job_status'] as $needle) phase1aAssert(str_contains(strtolower($jobsDdl), strtolower($needle)), "jobs DDL contains $needle");
+    phase1aAssert($productsDdl !== '' && $jobsDdl !== '', 'SHOW CREATE TABLE returns non-empty DDL');
+    $publicationStatus = phase1aColumn($pdo, 'products', 'publication_status');
+    phase1aAssert($publicationStatus['data_type'] === 'varchar' && (int)$publicationStatus['character_maximum_length'] === 32, 'publication_status is VARCHAR(32)');
+    phase1aAssert($publicationStatus['is_nullable'] === 'NO' && $publicationStatus['column_default'] === 'draft', 'publication_status is NOT NULL DEFAULT draft');
+    $publicationRevision = phase1aColumn($pdo, 'products', 'publication_revision');
+    phase1aAssert($publicationRevision['column_type'] === 'bigint unsigned', 'publication_revision is BIGINT UNSIGNED');
+    phase1aAssert($publicationRevision['is_nullable'] === 'NO' && (string)$publicationRevision['column_default'] === '0', 'publication_revision is NOT NULL DEFAULT 0');
+    $publicationIndex = phase1aIndexColumns($pdo, 'products', 'idx_products_publication');
+    phase1aAssert(count($publicationIndex) === 2 && (int)$publicationIndex[0]['non_unique'] === 1 && $publicationIndex[0]['column_name'] === 'publication_status' && $publicationIndex[1]['column_name'] === 'is_active', 'idx_products_publication covers status and active state');
+    $intentIndex = phase1aIndexColumns($pdo, 'seo_publication_jobs', 'uq_seo_publication_job_intent');
+    phase1aAssert(count($intentIndex) === 3 && (int)$intentIndex[0]['non_unique'] === 0 && array_column($intentIndex, 'column_name') === ['product_id', 'requested_revision', 'operation'], 'unique intent index covers product/revision/operation');
+    $fkStmt = $pdo->prepare('SELECT kcu.referenced_table_name, kcu.referenced_column_name, rc.delete_rule
+        FROM information_schema.key_column_usage kcu
+        JOIN information_schema.referential_constraints rc
+          ON rc.constraint_schema = kcu.constraint_schema AND rc.constraint_name = kcu.constraint_name
+        WHERE kcu.constraint_schema = DATABASE() AND kcu.table_name = :table_name AND kcu.constraint_name = :constraint_name');
+    $fkStmt->execute([':table_name' => 'seo_publication_jobs', ':constraint_name' => 'fk_seo_publication_job_product']);
+    $fk = $fkStmt->fetch();
+    phase1aAssert(is_array($fk) && $fk['referenced_table_name'] === 'products' && $fk['referenced_column_name'] === 'id' && $fk['delete_rule'] === 'RESTRICT', 'publication job product FK is ON DELETE RESTRICT');
+    $checkStmt = $pdo->prepare('SELECT tc.constraint_name, cc.check_clause
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.check_constraints cc
+          ON cc.constraint_schema = tc.constraint_schema AND cc.constraint_name = tc.constraint_name
+        WHERE tc.constraint_schema = DATABASE() AND tc.table_name = :table_name AND tc.constraint_type = \'CHECK\'');
+    $checkStmt->execute([':table_name' => 'seo_publication_jobs']);
+    $checks = $checkStmt->fetchAll();
+    $checkText = strtolower(implode(' ', array_map(static fn(array $row): string => (string)$row['constraint_name'] . ' ' . (string)$row['check_clause'], $checks)));
+    phase1aAssert(str_contains($checkText, 'chk_seo_publication_job_operation') && str_contains($checkText, 'publish') && str_contains($checkText, 'unpublish'), 'operation CHECK metadata is present');
+    phase1aAssert(str_contains($checkText, 'chk_seo_publication_job_status') && str_contains($checkText, 'queued') && str_contains($checkText, 'running') && str_contains($checkText, 'completed') && str_contains($checkText, 'failed') && str_contains($checkText, 'superseded'), 'status CHECK metadata is present');
+    phase1aExpectRejected(static function () use ($pdo): void { $pdo->prepare("INSERT INTO seo_publication_jobs (product_id, operation, requested_revision, status, batch_id) VALUES (1, 'invalid', 1001, 'queued', :batch)")->execute([':batch' => seoPublicationNewBatchId()]); }, 'operation CHECK rejects invalid value');
+    phase1aExpectRejected(static function () use ($pdo): void { $pdo->prepare("INSERT INTO seo_publication_jobs (product_id, operation, requested_revision, status, batch_id) VALUES (1, 'publish', 1002, 'invalid', :batch)")->execute([':batch' => seoPublicationNewBatchId()]); }, 'status CHECK rejects invalid value');
     $published = seoPublicationRequestPublish($pdo, 1, 0);
     phase1aAssert($published['result'] === 'queued' && (int)$published['product']['publication_revision'] === 1, 'request publish queues revision 1');
     phase1aAssert(phase1aFetch($pdo, 1)['publication_status'] === 'pending_publish', 'request publish enters pending_publish');
