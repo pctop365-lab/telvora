@@ -100,9 +100,27 @@ jobs:
           TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
         run: |
           set -euo pipefail
+          [[ "$REMOTE_SNAPSHOT" =~ ^/var/www/u3609206/data/seo-runtime/snapshots/[A-Za-z0-9._-]+\.json$ ]]
+          SNAPSHOT_FILE_SHA256="$(ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$REMOTE_SNAPSHOT" <<'REMOTE'
+          set -euo pipefail
+          snapshot="$1"
+          case "$snapshot" in /var/www/u3609206/data/seo-runtime/snapshots/*.json) ;; *) exit 1;; esac
+          test -f "$snapshot"
+          sha256sum -- "$snapshot" | awk '{print $1}'
+          REMOTE
+          )"
+          [[ "$SNAPSHOT_FILE_SHA256" =~ ^[a-f0-9]{64}$ ]]
+          echo "SNAPSHOT_FILE_SHA256=$SNAPSHOT_FILE_SHA256" >> "$GITHUB_ENV"
           scp -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST:$REMOTE_SNAPSHOT" "$RUNNER_TEMP/seo-snapshot.json"
           test -s "$RUNNER_TEMP/seo-snapshot.json"
-          test "$(sha256sum "$RUNNER_TEMP/seo-snapshot.json" | awk '{print $1}')" = "$SNAPSHOT_HASH"
+          test "$(sha256sum "$RUNNER_TEMP/seo-snapshot.json" | awk '{print $1}')" = "$SNAPSHOT_FILE_SHA256"
+          python3 - "$RUNNER_TEMP/seo-snapshot.json" "$BATCH_ID" "$SNAPSHOT_HASH" <<'PY'
+          import json, sys
+          snapshot = json.load(open(sys.argv[1], encoding='utf-8'))
+          if snapshot.get('version') != 1: raise SystemExit('invalid snapshot version')
+          if snapshot.get('batch_id') != sys.argv[2]: raise SystemExit('snapshot batch binding mismatch')
+          if snapshot.get('snapshot_hash') != sys.argv[3]: raise SystemExit('snapshot semantic hash mismatch')
+          PY
           echo "TELVORA_SEO_SNAPSHOT_FILE=$RUNNER_TEMP/seo-snapshot.json" >> "$GITHUB_ENV"
 
       - name: Build and package exact desired snapshot

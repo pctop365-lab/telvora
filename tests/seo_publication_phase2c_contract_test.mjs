@@ -9,6 +9,12 @@ assert.doesNotMatch(workflow, /^\s+(push|schedule|workflow_run|repository_dispat
 assert.match(workflow, /Prepare exact queued SEO batch/);
 assert.match(workflow, /php .*seo_publication_worker\.php.* prepare/);
 assert.match(workflow, /TELVORA_SEO_SNAPSHOT_FILE=/);
+assert.match(workflow, /SNAPSHOT_FILE_SHA256/);
+assert.match(workflow, /sha256sum[\s\S]*SNAPSHOT_FILE_SHA256/);
+assert.doesNotMatch(workflow, /sha256sum[^\n]*SNAPSHOT_HASH/);
+assert.match(workflow, /snapshot\.get\('version'\) != 1/);
+assert.match(workflow, /snapshot\.get\('batch_id'\) != sys\.argv\[2\]/);
+assert.match(workflow, /snapshot\.get\('snapshot_hash'\) != sys\.argv\[3\]/);
 assert.match(workflow, /npm run build:seo[\s\S]*npm run seo:package[\s\S]*npm run seo:validate-package/);
 assert.match(workflow, /Validate batch immediately before deployment/);
 assert.match(workflow, /existing deployment engine/);
