@@ -178,6 +178,34 @@ function phase1aChild(array $config, string $mode, string $dir, string $resultNa
     return 0;
 }
 
+function phase1aStopProcess($process, array $pipes): void
+{
+    if (!is_resource($process)) return;
+    $status = proc_get_status($process);
+    if ($status['running']) {
+        proc_terminate($process);
+        $deadline = microtime(true) + 2;
+        do {
+            usleep(50000);
+            $status = proc_get_status($process);
+        } while ($status['running'] && microtime(true) < $deadline);
+        if ($status['running']) proc_terminate($process, 9);
+    }
+    foreach ($pipes as $pipe) if (is_resource($pipe)) fclose($pipe);
+    @proc_close($process);
+}
+
+function phase1aProcessOutput(array $pipes): string
+{
+    $output = [];
+    foreach ([1, 2] as $index) {
+        if (!isset($pipes[$index]) || !is_resource($pipes[$index])) continue;
+        stream_set_blocking($pipes[$index], false);
+        $output[] = (string)stream_get_contents($pipes[$index]);
+    }
+    return implode('', $output);
+}
+
 function phase1aRunLockTest(array $config): void
 {
     $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'telvora-phase1a-' . bin2hex(random_bytes(5));
@@ -185,34 +213,49 @@ function phase1aRunLockTest(array $config): void
     $descriptor = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
     $command = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__FILE__);
     $env = array_merge($_ENV, ['TELVORA_TEST_DB_HOST' => $config[0], 'TELVORA_TEST_DB_PORT' => (string)$config[1], 'TELVORA_TEST_DB_NAME' => $config[2], 'TELVORA_TEST_DB_USER' => $config[3], 'TELVORA_TEST_DB_PASSWORD' => $config[4]]);
-    $holder = proc_open("$command --holder " . escapeshellarg($dir), $descriptor, $pipes, dirname(__DIR__), $env);
-    if (!is_resource($holder)) throw new RuntimeException('Could not start lock holder');
-    $deadline = microtime(true) + 5;
-    while (!is_file("$dir/holder-ready") && !is_file("$dir/holder-error") && microtime(true) < $deadline) {
-        $status = proc_get_status($holder);
-        if (!$status['running']) break;
-        usleep(50000);
+    $holder = $contender = $contender2 = null;
+    $pipes = $pipes2 = $pipes3 = [];
+    $deadline = microtime(true) + 30;
+    try {
+        $holder = proc_open("$command --holder " . escapeshellarg($dir), $descriptor, $pipes, dirname(__DIR__), $env);
+        if (!is_resource($holder)) throw new RuntimeException('Could not start lock holder');
+        $readyDeadline = microtime(true) + 5;
+        while (!is_file("$dir/holder-ready") && !is_file("$dir/holder-error") && microtime(true) < $readyDeadline) {
+            $status = proc_get_status($holder);
+            if (!$status['running']) break;
+            usleep(50000);
+        }
+        if (!is_file("$dir/holder-ready")) {
+            $status = proc_get_status($holder);
+            $detail = is_file("$dir/holder-error") ? (string)file_get_contents("$dir/holder-error") : 'no holder marker';
+            throw new RuntimeException("Connection A did not acquire product lock: $detail; exit=" . (string)($status['exitcode'] ?? 'unknown') . '; output=' . phase1aProcessOutput($pipes));
+        }
+        $contender = proc_open("$command --contender " . escapeshellarg($dir) . ' contender-1', $descriptor, $pipes2, dirname(__DIR__), $env);
+        $contender2 = proc_open("$command --contender " . escapeshellarg($dir) . ' contender-2', $descriptor, $pipes3, dirname(__DIR__), $env);
+        if (!is_resource($contender) || !is_resource($contender2)) throw new RuntimeException('Could not start lock contender');
+        usleep(1500000);
+        phase1aAssert(!is_file("$dir/contender-1") && !is_file("$dir/contender-2"), 'connections B and C are blocked while product lock is held');
+        phase1aWriteMarker("$dir/release", 'release');
+        while ((!is_file("$dir/contender-1") || !is_file("$dir/contender-2") || proc_get_status($holder)['running'] || proc_get_status($contender)['running'] || proc_get_status($contender2)['running']) && microtime(true) < $deadline) usleep(50000);
+        if (microtime(true) >= $deadline) {
+            throw new RuntimeException('Concurrency processes exceeded 30-second deadline; output=' . phase1aProcessOutput($pipes) . phase1aProcessOutput($pipes2) . phase1aProcessOutput($pipes3));
+        }
+        $holderCode = proc_close($holder); $holder = null;
+        $contenderCode = proc_close($contender); $contender = null;
+        $contenderCode2 = proc_close($contender2); $contender2 = null;
+        phase1aAssert(microtime(true) < $deadline, 'concurrency processes finish within 30 seconds');
+        phase1aAssert($holderCode === 0 && $contenderCode === 0 && $contenderCode2 === 0, 'lock holder and contenders exit cleanly');
+        phase1aAssert(is_file("$dir/contender-1") && is_file("$dir/contender-2"), 'both concurrent requests complete after lock release');
+        $result1 = json_decode((string)file_get_contents("$dir/contender-1"), true, 512, JSON_THROW_ON_ERROR);
+        $result2 = json_decode((string)file_get_contents("$dir/contender-2"), true, 512, JSON_THROW_ON_ERROR);
+        phase1aAssert((($result1['ok'] ?? false) xor ($result2['ok'] ?? false)), 'duplicate request race has one winner and one stale/conflict result');
+    } finally {
+        phase1aWriteMarker("$dir/release", 'release');
+        phase1aStopProcess($holder, $pipes);
+        phase1aStopProcess($contender, $pipes2);
+        phase1aStopProcess($contender2, $pipes3);
+        @unlink("$dir/holder-ready"); @unlink("$dir/holder-error"); @unlink("$dir/release"); @unlink("$dir/contender-1"); @unlink("$dir/contender-2"); @rmdir($dir);
     }
-    if (!is_file("$dir/holder-ready")) {
-        $stdout = stream_get_contents($pipes[1]); $stderr = stream_get_contents($pipes[2]);
-        $status = proc_get_status($holder);
-        $detail = is_file("$dir/holder-error") ? (string)file_get_contents("$dir/holder-error") : 'no holder marker';
-        proc_close($holder);
-        throw new RuntimeException("Connection A did not acquire product lock: $detail; exit=" . (string)($status['exitcode'] ?? 'unknown') . "; stdout=$stdout; stderr=$stderr");
-    }
-    $contender = proc_open("$command --contender " . escapeshellarg($dir) . ' contender-1', $descriptor, $pipes2, dirname(__DIR__), $env);
-    $contender2 = proc_open("$command --contender " . escapeshellarg($dir) . ' contender-2', $descriptor, $pipes3, dirname(__DIR__), $env);
-    if (!is_resource($contender) || !is_resource($contender2)) throw new RuntimeException('Could not start lock contender');
-    usleep(1500000);
-    phase1aAssert(!is_file("$dir/contender-1") && !is_file("$dir/contender-2"), 'connections B and C are blocked while product lock is held');
-    file_put_contents("$dir/release", 'release');
-    $holderCode = proc_close($holder); $contenderCode = proc_close($contender); $contenderCode2 = proc_close($contender2);
-    phase1aAssert($holderCode === 0 && $contenderCode === 0 && $contenderCode2 === 0, 'lock holder and contenders exit cleanly');
-    phase1aAssert(is_file("$dir/contender-1") && is_file("$dir/contender-2"), 'both concurrent requests complete after lock release');
-    $result1 = json_decode((string)file_get_contents("$dir/contender-1"), true, 512, JSON_THROW_ON_ERROR);
-    $result2 = json_decode((string)file_get_contents("$dir/contender-2"), true, 512, JSON_THROW_ON_ERROR);
-    phase1aAssert((($result1['ok'] ?? false) xor ($result2['ok'] ?? false)), 'duplicate request race has one winner and one stale/conflict result');
-    @unlink("$dir/holder-ready"); @unlink("$dir/release"); @unlink("$dir/contender-1"); @unlink("$dir/contender-2"); @rmdir($dir);
 }
 
 function phase1aMain(): void
