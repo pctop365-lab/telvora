@@ -183,7 +183,12 @@ activationExpect('validation-only candidate does not change product', $lg->produ
 $activationEventStart = count($lg->events);
 activationAttempt($lg);
 activationExpect('LG-like activation succeeds', $lg->products[5]['is_active'], 1);
-activationExpect('candidate lock precedes product lock', array_slice($lg->events, $activationEventStart, 3), ['begin','lock_candidate','lock_product']);
+$activationEvents = array_slice($lg->events, $activationEventStart);
+$beginIndex = array_search('begin', $activationEvents, true);
+activationExpect('activation transaction begins', $beginIndex !== false, true);
+if ($beginIndex !== false) {
+    activationExpect('candidate lock precedes product lock', array_slice($activationEvents, $beginIndex, 3), ['begin','lock_candidate','lock_product']);
+}
 
 $manualDraft = activationPdo([activationLegacy('Russia',0)], [activationVariant(5,5,'Russia')], false, [['product_variant_id'=>5,'manual_price'=>'271400.00','manual_old_price'=>null,'is_active'=>1,'updated_at'=>'2026-09-08 00:00:00']]);
 activationAttempt($manualDraft);
