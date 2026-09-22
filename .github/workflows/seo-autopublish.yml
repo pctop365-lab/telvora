@@ -151,7 +151,7 @@ jobs:
           set -euo pipefail
           archive="$(find seo-artifacts -maxdepth 1 -type f -name 'telvora-seo-release-*.tar.gz' -print -quit)"; test -n "$archive"
           PACKAGE_SHA256="$(sha256sum "$archive" | awk '{print $1}')"; echo "PACKAGE_SHA256=$PACKAGE_SHA256" >> "$GITHUB_ENV"
-          RELEASE_SHA="$(node -e "console.log(require('./seo-artifacts/deployment-manifest.json').commitSha)")"
+          RELEASE_SHA="$GITHUB_SHA"
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
           echo "RELEASE_SHA=$RELEASE_SHA" >> "$GITHUB_ENV"
           STAGE_ID="telvora-seo-autopublish-${GITHUB_RUN_ID}-${BATCH_ID}"; [[ "$STAGE_ID" =~ ^telvora-seo-autopublish-[0-9]+-[0-9a-f-]+$ ]]

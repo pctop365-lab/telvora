@@ -10,10 +10,11 @@ assert.doesNotMatch(workflow, /^\s+(push|schedule|workflow_run|repository_dispat
 assert.match(workflow, /Prepare exact queued SEO batch/);
 assert.match(workflow, /php .*seo_publication_worker\.php.* prepare/);
 assert.match(workflow, /TELVORA_SEO_SNAPSHOT_FILE=/);
-assert.match(workflow, /RELEASE_SHA=.*deployment-manifest/);
+assert.match(workflow, /RELEASE_SHA="\$GITHUB_SHA"/);
 assert.match(workflow, /PACKAGE_SHA256=.*sha256sum/);
 assert.match(workflow, /BACKUP_REFERENCE=.*cat/);
-assert.doesNotMatch(workflow, /release_sha=.*deployment-manifest/);
+assert.doesNotMatch(workflow, /(?:require|cat|readFile)[^\n]*deployment-manifest\.json/);
+assert.doesNotMatch(workflow, /RELEASE_SHA[^\n]*deployment-manifest\.json/);
 assert.match(workflow, /complete --batch-id=.*--release-sha=\'\$RELEASE_SHA\'/);
 assert.match(workflow, /complete --batch-id=.*--backup-reference=\'\$BACKUP_REFERENCE\'/);
 assert.match(workflow, /SNAPSHOT_FILE_SHA256/);
