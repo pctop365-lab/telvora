@@ -299,8 +299,11 @@ function phase1aMain(): void
     $pdo->exec("UPDATE products SET is_active = 1, publication_status = 'pending_unpublish', publication_revision = 60 WHERE id = 2");
     $matchingUnpublish = phase1aInsertJob($pdo, 2, 60, 'unpublish', 'running'); seoPublicationMarkFailed($pdo, $matchingUnpublish, 'test failure');
     phase1aAssert(phase1aFetch($pdo, 2)['publication_status'] === 'unpublish_failed' && (int)phase1aFetch($pdo, 2)['is_active'] === 1, 'running unpublish job preserves active product on failure');
-    foreach (['queued', 'superseded', 'completed', 'failed'] as $status) {
-        $revision = 70 + strlen($status); $pdo->exec("UPDATE products SET is_active = 0, publication_status = 'pending_publish', publication_revision = $revision WHERE id = 1");
+    foreach (['queued', 'superseded', 'completed', 'failed'] as $statusIndex => $status) {
+        // Keep each rejection fixture on its own deterministic intent generation.
+        // These rows are independent scenarios and must not collide with jobs
+        // created by the earlier request/finalization checks.
+        $revision = 700 + $statusIndex; $pdo->exec("UPDATE products SET is_active = 0, publication_status = 'pending_publish', publication_revision = $revision WHERE id = 1");
         $id = phase1aInsertJob($pdo, 1, $revision, 'publish', $status); $snapshot = phase1aFetch($pdo, 1);
         phase1aExpectRejected(static function () use ($pdo, $id): void { seoPublicationMarkFailed($pdo, $id, 'must reject'); }, "status $status cannot mark failure");
         phase1aAssert(phase1aFetch($pdo, 1) === $snapshot, "status $status leaves product unchanged");
