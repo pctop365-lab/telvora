@@ -116,7 +116,9 @@ function phase1aInsertJob(PDO $pdo, int $product, int $revision, string $operati
 
 function phase1aColumn(PDO $pdo, string $table, string $column): array
 {
-    $stmt = $pdo->prepare('SELECT data_type, column_type, character_maximum_length, is_nullable, column_default
+    $stmt = $pdo->prepare('SELECT DATA_TYPE AS data_type, COLUMN_TYPE AS column_type,
+        CHARACTER_MAXIMUM_LENGTH AS character_maximum_length, IS_NULLABLE AS is_nullable,
+        COLUMN_DEFAULT AS column_default
         FROM information_schema.columns
         WHERE table_schema = DATABASE() AND table_name = :table_name AND column_name = :column_name');
     $stmt->execute([':table_name' => $table, ':column_name' => $column]);
@@ -127,7 +129,8 @@ function phase1aColumn(PDO $pdo, string $table, string $column): array
 
 function phase1aIndexColumns(PDO $pdo, string $table, string $index): array
 {
-    $stmt = $pdo->prepare('SELECT non_unique, seq_in_index, column_name
+    $stmt = $pdo->prepare('SELECT NON_UNIQUE AS non_unique, SEQ_IN_INDEX AS seq_in_index,
+        COLUMN_NAME AS column_name
         FROM information_schema.statistics
         WHERE table_schema = DATABASE() AND table_name = :table_name AND index_name = :index_name
         ORDER BY seq_in_index');
@@ -215,7 +218,8 @@ function phase1aMain(): void
     phase1aAssert(count($publicationIndex) === 2 && (int)$publicationIndex[0]['non_unique'] === 1 && $publicationIndex[0]['column_name'] === 'publication_status' && $publicationIndex[1]['column_name'] === 'is_active', 'idx_products_publication covers status and active state');
     $intentIndex = phase1aIndexColumns($pdo, 'seo_publication_jobs', 'uq_seo_publication_job_intent');
     phase1aAssert(count($intentIndex) === 3 && (int)$intentIndex[0]['non_unique'] === 0 && array_column($intentIndex, 'column_name') === ['product_id', 'requested_revision', 'operation'], 'unique intent index covers product/revision/operation');
-    $fkStmt = $pdo->prepare('SELECT kcu.referenced_table_name, kcu.referenced_column_name, rc.delete_rule
+    $fkStmt = $pdo->prepare('SELECT kcu.REFERENCED_TABLE_NAME AS referenced_table_name,
+        kcu.REFERENCED_COLUMN_NAME AS referenced_column_name, rc.DELETE_RULE AS delete_rule
         FROM information_schema.key_column_usage kcu
         JOIN information_schema.referential_constraints rc
           ON rc.constraint_schema = kcu.constraint_schema AND rc.constraint_name = kcu.constraint_name
@@ -223,7 +227,8 @@ function phase1aMain(): void
     $fkStmt->execute([':table_name' => 'seo_publication_jobs', ':constraint_name' => 'fk_seo_publication_job_product']);
     $fk = $fkStmt->fetch();
     phase1aAssert(is_array($fk) && $fk['referenced_table_name'] === 'products' && $fk['referenced_column_name'] === 'id' && $fk['delete_rule'] === 'RESTRICT', 'publication job product FK is ON DELETE RESTRICT');
-    $checkStmt = $pdo->prepare('SELECT tc.constraint_name, cc.check_clause
+    $checkStmt = $pdo->prepare('SELECT tc.CONSTRAINT_NAME AS constraint_name,
+        cc.CHECK_CLAUSE AS check_clause
         FROM information_schema.table_constraints tc
         JOIN information_schema.check_constraints cc
           ON cc.constraint_schema = tc.constraint_schema AND cc.constraint_name = tc.constraint_name
