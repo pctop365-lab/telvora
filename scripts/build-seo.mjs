@@ -13,16 +13,31 @@ async function getPublic(url) {
   if (data.success !== true) throw new Error('Public API reported failure');
   return data;
 }
-const [catalog, services] = await Promise.all([
-  getPublic('https://telvora.ru/products.php?action=list'),
-  getPublic('https://telvora.ru/services.php'),
-]);
+async function getBuildInput() {
+  const snapshotFile = process.env.TELVORA_SEO_SNAPSHOT_FILE;
+  if (snapshotFile) {
+    const snapshot = JSON.parse(await readFile(snapshotFile, 'utf8'));
+    if (!snapshot || snapshot.version !== 1 || !Array.isArray(snapshot.products) || !Array.isArray(snapshot.services)) {
+      throw new Error('Invalid SEO snapshot file');
+    }
+    if (typeof snapshot.snapshot_hash !== 'string' || !/^[a-f0-9]{64}$/i.test(snapshot.snapshot_hash)) {
+      throw new Error('Invalid SEO snapshot hash');
+    }
+    return [{ success: true, count: snapshot.products.length, products: snapshot.products }, { success: true, services: snapshot.services }, snapshot.snapshot_hash];
+  }
+  return Promise.all([
+    getPublic('https://telvora.ru/products.php?action=list'),
+    getPublic('https://telvora.ru/services.php'),
+    null,
+  ]);
+}
+const [catalog, services, suppliedSnapshotHash] = await getBuildInput();
 if (!Array.isArray(catalog.products) || catalog.count !== catalog.products.length) throw new Error('Incomplete product response');
 if (!Array.isArray(services.services)) throw new Error('Invalid service response');
 await build();
 await build({ build: { ssr: 'src/entry-prerender.tsx', outDir: '.seo-build', emptyOutDir: true } });
 const { render, normalizeProduct, getCategorySlugForProduct } = await import('../.seo-build/entry-prerender.js');
-const active = catalog.products.filter(p => p.is_active === true || p.is_active === 1);
+const active = catalog.products.filter(p => p.is_active === true || p.is_active === 1 || p.publication_status === 'published' || p.publication_status === 'pending_publish' || (p.publication_status === 'unpublish_failed' && p.is_active === 1));
 // Normalization is a public-field allowlist; raw backend objects never go into HTML.
 const products = active.map(normalizeProduct).sort((a, b) => a.slug.localeCompare(b.slug, 'en'));
 const productRoutes = products.map(p => {
@@ -69,7 +84,7 @@ await writeFile('dist/client.html', shell);
 await writeFile('dist/404.html', shell.replace('<div id="root"></div>', '<div id="root"><h1>Страница не найдена</h1><p>Запрошенная страница не существует.</p><a href="/catalog">В каталог</a></div>'));
 await writeFile('dist/sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${routes.map(p => `  <url><loc>https://telvora.ru${p}</loc></url>`).join('\n')}\n</urlset>\n`);
 await mkdir('seo-artifacts', { recursive: true });
-const snapshotHash = createHash('sha256').update(json({ products, services: serviceSnapshot })).digest('hex');
+const snapshotHash = suppliedSnapshotHash || createHash('sha256').update(json({ products, services: serviceSnapshot })).digest('hex');
 const prerenderFiles = Object.fromEntries(routes.filter(p => p !== '/').map(p => [p, `/_prerender/${prerenderFileFor(p)}`]));
 await writeFile('seo-artifacts/routes.json', JSON.stringify({ routes, productRoutes, prerenderFiles, sizes, snapshotHash }, null, 2));
 await downloadProductImages(products);
