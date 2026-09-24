@@ -325,7 +325,9 @@ type SupplierOfferPublishSummary = {
 };
 
 type SupplierOfferPricingPreview = {
-  id: number;
+  id: number | null;
+  cannot_confirm: boolean;
+  blocking_reasons: string[];
   supplier_name: string;
   product_name: string;
   variant_name: string | null;
@@ -752,6 +754,9 @@ export default function AdminPage() {
   const [offerPricingPage, setOfferPricingPage] = useState(1);
   const [offerPricingPages, setOfferPricingPages] = useState(1);
   const [offerPricingLoading, setOfferPricingLoading] = useState(false);
+  const [bulkPriceLoading, setBulkPriceLoading] = useState(false);
+  const [bulkPriceResult, setBulkPriceResult] = useState<{ jobId: number; message: string; details: string[] } | null>(null);
+  const bulkPricePendingRef = useRef(false);
   const [pricePublicationPreview, setPricePublicationPreview] = useState<PricePublicationPreview | null>(null);
   const [pricePublicationLoading, setPricePublicationLoading] = useState(false);
   const [pricePublicationError, setPricePublicationError] = useState('');
@@ -772,6 +777,9 @@ export default function AdminPage() {
   const [imageUploading, setImageUploading] = useState(false);
   const [imageUploadError, setImageUploadError] = useState('');
   const [productsLoading, setProductsLoading] = useState(false);
+  const [productBulkPublishing, setProductBulkPublishing] = useState(false);
+  const productBulkPendingRef = useRef(false);
+  const [productBulkResult, setProductBulkResult] = useState<{ message: string; details: string[] } | null>(null);
   const [productsError, setProductsError] = useState('');
   const [productsNotice, setProductsNotice] = useState('');
   const [productSearch, setProductSearch] = useState('');
@@ -1591,6 +1599,7 @@ const login = async (e: React.FormEvent) => {
   };
 
   const openSupplierImportProfiles = (supplier: Supplier) => {
+    if (bulkPricePendingRef.current) return;
     profileSupplierIdRef.current = supplier.id;
     setProfileSupplier(supplier);
     setSupplierImportProfiles([]);
@@ -1617,6 +1626,7 @@ const login = async (e: React.FormEvent) => {
   };
 
   const closeSupplierImportProfiles = () => {
+    if (bulkPricePendingRef.current) return;
     profileSupplierIdRef.current = null;
     setProfileSupplier(null);
     setSupplierImportProfiles([]);
@@ -2114,6 +2124,7 @@ const login = async (e: React.FormEvent) => {
   };
 
   const preparePricePublication = async (supplierOfferId: number) => {
+    if (bulkPricePendingRef.current) return;
     setPricePublicationLoading(true);
     setPricePublicationError('');
     setPricePublicationSuccess('');
@@ -2137,7 +2148,7 @@ const login = async (e: React.FormEvent) => {
   };
 
   const publishCandidatePrice = async () => {
-    if (!pricePublicationPreview || !pricePublicationPreview.can_publish || pricePublicationPendingRef.current) return;
+    if (!pricePublicationPreview || !pricePublicationPreview.can_publish || pricePublicationPendingRef.current || bulkPricePendingRef.current) return;
     if (!window.confirm('Цена будет изменена на сайте. Опубликовать рассчитанный сервером Candidate?')) return;
     pricePublicationPendingRef.current = true;
     setPricePublicationLoading(true);
@@ -2161,6 +2172,7 @@ const login = async (e: React.FormEvent) => {
       await preparePricePublication(pricePublicationPreview.offer.id);
       setPricePublicationSuccess(data.message || 'Цена опубликована');
       await loadPricePublicationHistory(1);
+      if (selectedImportJob) await loadSupplierOfferPricing(selectedImportJob, offerPricingPage);
     } catch (err) {
       setPricePublicationError(err instanceof Error ? err.message : 'Не удалось опубликовать цену');
     } finally {
@@ -2169,7 +2181,43 @@ const login = async (e: React.FormEvent) => {
     }
   };
 
+  const confirmAllPrices = async () => {
+    if (!selectedImportJob || bulkPricePendingRef.current || pricePublicationPendingRef.current) return;
+    const job = selectedImportJob;
+    bulkPricePendingRef.current = true;
+    setBulkPriceLoading(true);
+    setBulkPriceResult(null);
+    const request = async (payload: Record<string, unknown>) => {
+      const response = await fetch(MANAGER_API, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-Token': csrfToken || '' },
+        body: JSON.stringify({ ...payload, job_id: job.id }),
+      });
+      const data = await parseSupplierResponse(response);
+      if (!response.ok || !data.success) throw new Error(data.message || 'Не удалось подтвердить цены');
+      return data;
+    };
+    try {
+      const preview = await request({ action: 'supplier_import_price_bulk_prepare' });
+      if (!window.confirm(`Подтвердить все доступные изменения цен?\nБудет применено: ${preview.eligible}\nПропущено: ${preview.total - preview.eligible}. Проверены все страницы текущего импорта.`)) return;
+      const data = await request({ action: 'supplier_import_price_bulk_confirm', preview_id: preview.preview_id, confirm: true });
+      const result = data.result as { applied: number; skipped: number; errors: number; rows: { row_id: number; reasons?: string[] }[] };
+      setBulkPriceResult({ jobId: job.id,
+        message: `Подтверждено: ${result.applied} · Пропущено: ${result.skipped} · Ошибки: ${result.errors}`,
+        details: result.rows.filter((row) => row.reasons?.length).map((row) => `Строка #${row.row_id}: ${row.reasons!.join('; ')}`),
+      });
+      setPricePublicationPreview(null);
+    } catch (error) {
+      setBulkPriceResult({ jobId: job.id, message: error instanceof Error ? error.message : 'Не удалось подтвердить цены', details: [] });
+    } finally {
+      await Promise.all([loadSupplierOfferPricing(job, offerPricingPage), loadPricePublicationHistory(1)]);
+      bulkPricePendingRef.current = false;
+      setBulkPriceLoading(false);
+    }
+  };
+
   const openSupplierImportJob = async (job: SupplierImportJob) => {
+    if (bulkPricePendingRef.current) return;
     setOfferPublishSummary(null);
     setOfferPricingRows([]);
     setPricePublicationPreview(null);
@@ -2180,7 +2228,7 @@ const login = async (e: React.FormEvent) => {
   };
 
   const publishSupplierOffers = async () => {
-    if (!selectedImportJob || !offerPublishSummary || offerPublishPendingRef.current) return;
+    if (!selectedImportJob || !offerPublishSummary || offerPublishPendingRef.current || bulkPricePendingRef.current) return;
     if (!window.confirm('Будут обновлены предложения поставщика. Цены товаров на сайте не изменятся. Продолжить?')) return;
     offerPublishPendingRef.current = true;
     setOfferPublishLoading(true);
@@ -2760,7 +2808,42 @@ if (!response.ok || !data.success || !data.image) {
       setSavingProduct(false);
     }
   };
+  const publishAllProducts = async () => {
+    if (productBulkPendingRef.current) return;
+    productBulkPendingRef.current = true;
+    setProductBulkPublishing(true);
+    setProductBulkResult(null);
+    const filters = { search: productSearch, brand: productBrandFilter, category: productCategoryFilter, country: productCountryFilter };
+    const request = async (payload: Record<string, unknown>) => {
+      const response = await fetch(PRODUCTS_API, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-Token': csrfToken || '' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.message || 'Не удалось выполнить массовую публикацию');
+      return data;
+    };
+    try {
+      const preview = await request({ action: 'bulk_publish_prepare', filters });
+      if (!window.confirm(`Опубликовать все доступные товары?\nК публикации готово: ${preview.eligible}\nВсего по выбранным фильтрам: ${preview.total}`)) return;
+      const data = await request({ action: 'bulk_publish_confirm', preview_id: preview.preview_id, confirm: true });
+      const result = data.result as { published: number; queued: number; skipped: number; errors: number; rows: { id: number; name: string; reason: string | null }[] };
+      setProductBulkResult({
+        message: `Опубликовано: ${result.published} · Передано на публикацию: ${result.queued} · Пропущено: ${result.skipped} · Ошибки: ${result.errors}`,
+        details: result.rows.filter((row) => row.reason).map((row) => `${row.name} (#${row.id}): ${row.reason}`),
+      });
+    } catch (error) {
+      setProductBulkResult({ message: error instanceof Error ? error.message : 'Не удалось выполнить массовую публикацию', details: [] });
+    } finally {
+      await loadProducts();
+      productBulkPendingRef.current = false;
+      setProductBulkPublishing(false);
+    }
+  };
+
 const toggleProductStatus = async (product: AdminProduct) => {
+  if (productBulkPendingRef.current) return;
   const operation = product.publication_status === 'published' || product.publication_status === 'unpublish_failed'
     ? 'request_unpublish'
     : 'request_publish';
@@ -3507,6 +3590,10 @@ const toggleProductStatus = async (product: AdminProduct) => {
                   </p>
                 </div>
 
+                <div className="flex flex-wrap items-center gap-3">
+                <button type="button" onClick={publishAllProducts} disabled={productBulkPublishing || productsLoading} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-accent-500 text-accent-600 font-semibold hover:bg-accent-50 disabled:opacity-40">
+                  {productBulkPublishing ? 'Публикация' : 'Опубликовать все'}
+                </button>
                 <button
                   type="button"
                   onClick={openAddProduct}
@@ -3515,7 +3602,10 @@ const toggleProductStatus = async (product: AdminProduct) => {
                   <Plus className="w-4 h-4" />
                   Добавить товар
                 </button>
+                </div>
               </div>
+
+              {productBulkResult && <div role="status" className="rounded-xl border border-gray-200 bg-white p-4 text-sm"><div className="font-semibold">{productBulkResult.message}</div><p className="mt-1 text-gray-500">Переданные товары проходят обычную процедуру публикации. Актуальный статус отображается в таблице.</p>{productBulkResult.details.length > 0 && <details className="mt-2"><summary className="cursor-pointer">Причины пропуска и ошибок</summary>{productBulkResult.details.map((detail) => <div key={detail} className="mt-1 text-amber-700">{detail}</div>)}</details>}</div>}
 
               <div className="overflow-x-auto pb-1">
                 <div className="flex w-max min-w-full items-center gap-2">
@@ -3788,7 +3878,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
   <button
     type="button"
     onClick={() => toggleProductStatus(product)}
-    disabled={product.publication_status === 'pending_publish' || product.publication_status === 'pending_unpublish'}
+    disabled={product.publication_status === 'pending_publish' || product.publication_status === 'pending_unpublish' || productBulkPublishing}
     className={`inline-flex px-2.5 py-1 rounded-full border text-xs transition ${
       product.is_active
         ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
@@ -5031,16 +5121,17 @@ const toggleProductStatus = async (product: AdminProduct) => {
                     <div className="mt-4 flex items-center justify-center gap-3"><button type="button" disabled={stagedRowsPage <= 1 || stagedRowsLoading} onClick={() => loadSupplierImportJobRows(selectedImportJob, stagedRowsPage - 1, stagedRowsFilter)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Назад</button><span className="text-sm text-gray-500">{stagedRowsPage} / {stagedRowsPages}</span><button type="button" disabled={stagedRowsPage >= stagedRowsPages || stagedRowsLoading} onClick={() => loadSupplierImportJobRows(selectedImportJob, stagedRowsPage + 1, stagedRowsFilter)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Далее</button></div>
 
                     <div className="mt-8 border-t border-gray-200 pt-5">
-                      <div><h5 className="font-semibold text-graphite-900">Расчёт цен</h5><p className="text-sm text-gray-500 mt-1">Только серверный preview. Цена на сайте не изменена.</p></div>
-                      {offerPricingLoading ? <div className="py-6 text-center text-gray-500">Расчёт цен...</div> : offerPricingRows.length === 0 ? <div className="mt-4 rounded-xl border border-dashed border-gray-300 p-5 text-center text-gray-500">Предложения из этого import job ещё не опубликованы.</div> : (
+                      <div className="flex flex-wrap items-center justify-between gap-3"><div><h5 className="font-semibold text-graphite-900">Расчёт цен</h5><p className="text-sm text-gray-500 mt-1">Серверный preview всех строк выбранного импорта. Цена меняется после подтверждения.</p></div><button type="button" onClick={confirmAllPrices} disabled={bulkPriceLoading || pricePublicationLoading || offerPricingLoading || offerPublishLoading || offerPricingRows.length === 0} className="px-4 py-2 rounded-lg bg-red-600 text-white font-semibold disabled:opacity-40">{bulkPriceLoading ? 'Подтверждение...' : 'Подтвердить все изменения'}</button></div>
+                      {bulkPriceResult?.jobId === selectedImportJob.id && <div role="status" className="mt-4 rounded-xl border border-gray-200 p-4 text-sm"><div className="font-semibold">{bulkPriceResult.message}</div>{bulkPriceResult.details.length > 0 && <details className="mt-2"><summary className="cursor-pointer">Причины пропуска и ошибок</summary>{bulkPriceResult.details.map((detail) => <div key={detail} className="mt-1 text-amber-700">{detail}</div>)}</details>}</div>}
+                      {offerPricingLoading ? <div className="py-6 text-center text-gray-500">Расчёт цен...</div> : offerPricingRows.length === 0 ? <div className="mt-4 rounded-xl border border-dashed border-gray-300 p-5 text-center text-gray-500">В выбранном импорте нет строк.</div> : (
                         <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200"><table className="w-full min-w-[1250px] text-sm"><thead className="bg-gray-50"><tr>
                           <th className="px-3 py-3 text-left">Поставщик / вариант</th><th className="px-3 py-3 text-left">Закупка</th><th className="px-3 py-3 text-left">Наличие</th><th className="px-3 py-3 text-left">Правило</th><th className="px-3 py-3 text-left">До округления</th><th className="px-3 py-3 text-left">Candidate</th><th className="px-3 py-3 text-left">Экономика</th><th className="px-3 py-3 text-left">Предупреждения</th><th className="px-3 py-3 text-right">Публикация</th>
-                        </tr></thead><tbody>{offerPricingRows.map((offer) => <tr key={offer.id} className="border-t border-gray-100 align-top">
+                        </tr></thead><tbody>{offerPricingRows.map((offer) => <tr key={offer.source_import_row_id} className="border-t border-gray-100 align-top">
                           <td className="px-3 py-3"><div>{offer.supplier_name}</div><div className="font-medium">{offer.product_name}</div><div className="text-xs text-gray-500">{offer.variant_name || offer.variant_key} · row #{offer.source_import_row_id}</div></td>
                           <td className="px-3 py-3">{offer.purchase_price} {offer.currency_code}</td><td className="px-3 py-3"><div>{supplierAvailabilityLabels[(offer.availability_status in supplierAvailabilityLabels ? offer.availability_status : 'unknown') as SupplierAvailabilityStatus]}</div><div className="text-xs text-gray-500">Количество: {offer.stock_quantity ?? 'неизвестно'} · ETA: {offer.expected_arrival_at?.slice(0, 10) || '—'}</div><div className="text-xs text-gray-500">Raw: {offer.raw_availability || '—'} · {offer.raw_arrival_info || '—'}</div><div className="text-xs text-gray-500">{offer.delivery_info || '—'}</div></td>
                           <td className="px-3 py-3"><div>{offer.pricing.rule?.name || '—'}</div>{offer.pricing.rule?.markup_percent !== null && offer.pricing.rule?.markup_percent !== undefined && <div className="text-xs text-gray-500">Наценка: {offer.pricing.rule.markup_percent}%</div>}</td><td className="px-3 py-3">{offer.pricing.price_before_rounding || '—'}</td><td className="px-3 py-3 font-semibold">{offer.pricing.candidate_retail_price || '—'}</td>
-                          <td className="px-3 py-3"><div>{offer.pricing.expected_margin ? `Валовая: ${offer.pricing.expected_margin} ₽ · ${offer.pricing.expected_margin_percent}%` : '—'}</div>{offer.pricing.estimated_expenses && <div className="mt-1 text-xs text-gray-500">Расходы 10%: {offer.pricing.estimated_expenses} ₽</div>}{offer.pricing.expected_net_profit && <div className="mt-1 text-xs font-semibold text-green-700">Чистыми: {offer.pricing.expected_net_profit} ₽ · {offer.pricing.expected_net_profit_percent}%</div>}</td><td className="px-3 py-3">{offer.pricing.warnings.map((warning) => <div key={warning} className="text-xs text-amber-700">{warning}</div>)}</td>
-                          <td className="px-3 py-3 text-right"><button type="button" disabled={!offer.pricing.calculable || pricePublicationLoading} onClick={() => preparePricePublication(offer.id)} className="px-3 py-2 rounded-lg border border-red-200 text-red-700 disabled:opacity-40">Подготовить изменение цены</button></td>
+                          <td className="px-3 py-3"><div>{offer.pricing.expected_margin ? `Валовая: ${offer.pricing.expected_margin} ₽ · ${offer.pricing.expected_margin_percent}%` : '—'}</div>{offer.pricing.estimated_expenses && <div className="mt-1 text-xs text-gray-500">Расходы 10%: {offer.pricing.estimated_expenses} ₽</div>}{offer.pricing.expected_net_profit && <div className="mt-1 text-xs font-semibold text-green-700">Чистыми: {offer.pricing.expected_net_profit} ₽ · {offer.pricing.expected_net_profit_percent}%</div>}</td><td className="px-3 py-3">{[...new Set([...offer.pricing.warnings, ...offer.blocking_reasons])].map((warning) => <div key={warning} className="text-xs text-amber-700">{warning}</div>)}</td>
+                          <td className="px-3 py-3 text-right"><button type="button" disabled={offer.cannot_confirm || !offer.id || !offer.pricing.calculable || pricePublicationLoading || bulkPriceLoading} onClick={() => { if (offer.id) void preparePricePublication(offer.id); }} className="px-3 py-2 rounded-lg border border-red-200 text-red-700 disabled:opacity-40">Подготовить изменение цены</button></td>
                         </tr>)}</tbody></table></div>
                       )}
                       {offerPricingRows.length > 0 && <div className="mt-4 flex items-center justify-center gap-3"><button type="button" disabled={offerPricingPage <= 1 || offerPricingLoading} onClick={() => loadSupplierOfferPricing(selectedImportJob, offerPricingPage - 1)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Назад</button><span className="text-sm text-gray-500">{offerPricingPage} / {offerPricingPages}</span><button type="button" disabled={offerPricingPage >= offerPricingPages || offerPricingLoading} onClick={() => loadSupplierOfferPricing(selectedImportJob, offerPricingPage + 1)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Далее</button></div>}
@@ -5068,7 +5159,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                               {pricePublicationPreview.warnings.map((warning) => <div key={warning} className="mt-3 text-sm text-amber-800">⚠ {warning}</div>)}
                               {pricePublicationPreview.blocking_reasons.map((reason) => <div key={reason} className="mt-2 text-sm font-medium text-red-700">Блокировка: {reason}</div>)}
                               <label className="block mt-4 text-sm text-gray-600">Комментарий к изменению (необязательно)<textarea maxLength={500} value={pricePublicationComment} onChange={(event) => setPricePublicationComment(event.target.value)} className="admin-input mt-2 min-h-20" /></label>
-                              <div className="mt-5 flex justify-end"><button type="button" onClick={publishCandidatePrice} disabled={!pricePublicationPreview.can_publish || pricePublicationLoading} className="px-5 py-3 rounded-xl bg-red-600 text-white font-semibold disabled:opacity-40">{pricePublicationLoading ? 'Повторная проверка...' : 'Опубликовать цену'}</button></div>
+                              <div className="mt-5 flex justify-end"><button type="button" onClick={publishCandidatePrice} disabled={!pricePublicationPreview.can_publish || pricePublicationLoading || bulkPriceLoading} className="px-5 py-3 rounded-xl bg-red-600 text-white font-semibold disabled:opacity-40">{pricePublicationLoading ? 'Повторная проверка...' : 'Опубликовать цену'}</button></div>
                             </div>
                           )}
                         </div>

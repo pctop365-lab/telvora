@@ -26,6 +26,7 @@ function pipelineDropSchema(PDO $pdo): void
 {
     $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
     foreach ([
+        'seo_publication_jobs',
         'order_items', 'orders', 'product_price_publication_audit', 'product_variant_price_overrides', 'pricing_rules',
         'supplier_offers', 'supplier_import_rows', 'supplier_product_matches',
         'supplier_availability_mappings', 'supplier_import_jobs',
@@ -40,7 +41,7 @@ function pipelineCreateSchema(PDO $pdo): void
 {
     $pdo->exec("CREATE TABLE products (
         id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, slug VARCHAR(255) NOT NULL,
-        name VARCHAR(255) NOT NULL, category VARCHAR(20) NOT NULL,
+        name VARCHAR(255) NOT NULL, category VARCHAR(20) NOT NULL, screen_size VARCHAR(50) NULL,
         price DECIMAL(12,2) NOT NULL DEFAULT 0, old_price DECIMAL(12,2) NULL,
         variants JSON NULL, is_active TINYINT(1) NOT NULL DEFAULT 0,
         updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -230,40 +231,40 @@ try {
     }
     $legacy = json_decode((string)$pdo->query('SELECT variants FROM products WHERE id=1')->fetchColumn(), true, 512, JSON_THROW_ON_ERROR);
     $prices = array_column($legacy, 'price'); sort($prices, SORT_NUMERIC);
-    pipelineAssert('storefront minimum is lower published variant price', $prices === [180000, 200000], $prices);
+    pipelineAssert('storefront minimum is lower published variant price', $prices === [180900, 200900], $prices);
 
     $cart = storefrontCartResolve($pdo, [['product_variant_id' => (int)$second['product_variant_id'], 'quantity' => 1]]);
-    pipelineAssert('cart uses published variant identity price and availability', $cart['all_orderable'] && $cart['items'][0]['price'] === 180000 && $cart['items'][0]['status'] === 'in_stock', $cart);
+    pipelineAssert('cart uses published variant identity price and availability', $cart['all_orderable'] && $cart['items'][0]['price'] === 180900 && $cart['items'][0]['status'] === 'in_stock', $cart);
     $qualifyingOffer = (int)$cart['items'][0]['_qualifying_offer_id'];
     $pdo->exec('INSERT INTO orders(id) VALUES(1)');
-    $snapshot = $pdo->prepare("INSERT INTO order_items(order_id,product_id,product_variant_id,supplier_offer_id_at_order,availability_status_at_order,product_name,quantity,price) VALUES(1,1,?,?,'in_stock','Pipeline TV',1,180000)");
+    $snapshot = $pdo->prepare("INSERT INTO order_items(order_id,product_id,product_variant_id,supplier_offer_id_at_order,availability_status_at_order,product_name,quantity,price) VALUES(1,1,?,?,'in_stock','Pipeline TV',1,180900)");
     $snapshot->execute([$second['product_variant_id'], $qualifyingOffer]);
 
     $manual = productVariantPriceSet($pdo, (int)$second['product_variant_id'], true, '175000.00', '185000.00');
     pipelineAssert('manual retail price enabled', $manual['price_source'] === 'manual' && $manual['price'] === 175000, $manual);
     $manualCart = storefrontCartResolve($pdo, [['product_variant_id' => (int)$second['product_variant_id'], 'quantity' => 1]]);
     pipelineAssert('cart uses manual retail overlay', $manualCart['all_orderable'] && $manualCart['items'][0]['price'] === 175000, $manualCart);
-    $effectivePrices = [200000, (int)$manualCart['items'][0]['price']];
+    $effectivePrices = [200900, (int)$manualCart['items'][0]['price']];
     pipelineAssert('storefront minimum includes manual effective price', min($effectivePrices) === 175000, $effectivePrices);
 
     pipelineImport($pdo, 1, 1, [pipelineRow(1, 'PIPE-PL', 'Poland', '95000.00')], 'update.csv');
     $updatedOffer = (int)$pdo->query("SELECT id FROM supplier_offers WHERE supplier_sku='PIPE-PL'")->fetchColumn();
     $context = pricePublicationContext($pdo, $updatedOffer, false);
     $result = pricePublicationPublish($pdo, $updatedOffer, $context['snapshot_token'], 'synthetic update');
-    pipelineAssert('updated supplier price republishes target variant', $result['published_price'] === '190000.00', $result);
+    pipelineAssert('updated supplier price republishes target variant', $result['published_price'] === '190900.00', $result);
     $updatedLegacy = json_decode((string)$pdo->query('SELECT variants FROM products WHERE id=1')->fetchColumn(), true, 512, JSON_THROW_ON_ERROR);
-    pipelineAssert('other assembly price is unchanged', $updatedLegacy[0]['price'] === 200000 && $updatedLegacy[1]['price'] === 190000, $updatedLegacy);
+    pipelineAssert('other assembly price is unchanged', $updatedLegacy[0]['price'] === 200900 && $updatedLegacy[1]['price'] === 190900, $updatedLegacy);
     $preservedManualCart = storefrontCartResolve($pdo, [['product_variant_id' => (int)$second['product_variant_id'], 'quantity' => 1]]);
     pipelineAssert('repeat import and Stage9 publication preserve manual retail price', $preservedManualCart['items'][0]['price'] === 175000, $preservedManualCart);
     $automatic = productVariantPriceSet($pdo, (int)$second['product_variant_id'], false);
-    pipelineAssert('explicit return to automatic exposes latest Stage9 price', $automatic['price_source'] === 'automatic' && $automatic['price'] === 190000, $automatic);
+    pipelineAssert('explicit return to automatic exposes latest Stage9 price', $automatic['price_source'] === 'automatic' && $automatic['price'] === 190900, $automatic);
     $automaticCart = storefrontCartResolve($pdo, [['product_variant_id' => (int)$second['product_variant_id'], 'quantity' => 1]]);
-    pipelineAssert('cart returns to latest automatic retail price', $automaticCart['items'][0]['price'] === 190000, $automaticCart);
+    pipelineAssert('cart returns to latest automatic retail price', $automaticCart['items'][0]['price'] === 190900, $automaticCart);
     $pdo->exec("UPDATE supplier_offers SET availability_status='out_of_stock', stock_quantity=0 WHERE supplier_sku='PIPE-PL'");
     $unavailableCart = storefrontCartResolve($pdo, [['product_variant_id' => (int)$second['product_variant_id'], 'quantity' => 1]]);
     pipelineAssert('retail price never makes unavailable variant orderable', !$unavailableCart['all_orderable'] && !$unavailableCart['items'][0]['orderable'], $unavailableCart);
     $historical = $pdo->query('SELECT product_variant_id,supplier_offer_id_at_order,availability_status_at_order,price FROM order_items WHERE id=1')->fetch();
-    pipelineAssert('historical order snapshot is immutable after price update', (int)$historical['product_variant_id'] === (int)$second['product_variant_id'] && (int)$historical['supplier_offer_id_at_order'] === $qualifyingOffer && $historical['availability_status_at_order'] === 'in_stock' && (string)$historical['price'] === '180000.00', $historical);
+    pipelineAssert('historical order snapshot is immutable after price update', (int)$historical['product_variant_id'] === (int)$second['product_variant_id'] && (int)$historical['supplier_offer_id_at_order'] === $qualifyingOffer && $historical['availability_status_at_order'] === 'in_stock' && (string)$historical['price'] === '180900.00', $historical);
     pipelineAssert('publication audit records initial and update history', (int)$pdo->query('SELECT COUNT(*) FROM product_price_publication_audit')->fetchColumn() === 3);
     $pdo->exec("INSERT INTO products(id,slug,name,category,price,old_price,variants,is_active) VALUES(2,'manual-only','Manual only','OLED',0,NULL,JSON_ARRAY(),1)");
     $manualOnly = productVariantAdd($pdo, 2, 'Japan');
@@ -274,6 +275,10 @@ try {
     } catch (ProductVariantPriceException $error) {
         pipelineAssert('automatic mode cannot remove last ready price of active product', $error->httpStatus === 409, $error->getMessage());
     }
+    require_once __DIR__ . '/import_price_preview_mysql_cases.php';
+    importPricePreviewMysqlCases($pdo);
+    require_once __DIR__ . '/product_bulk_publication_mysql_cases.php';
+    productBulkPublicationMysqlCases($pdo);
     echo "PASS Stage12L end-to-end price pipeline\n";
 } finally {
     pipelineDropSchema($pdo);

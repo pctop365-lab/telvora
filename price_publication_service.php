@@ -164,7 +164,7 @@ function pricePublicationContext(PDO $pdo, int $offerId, bool $lock): array
                 FROM supplier_import_rows WHERE id = :id$suffix
             ", [':id' => $offer['source_import_row_id']], 409, 'Строка-источник предложения недоступна');
             $sourceJob = pricePublicationFetchOne($pdo, "
-                SELECT id, supplier_id, status, created_at, finished_at
+                SELECT id, supplier_id, import_profile_id, status, created_at, finished_at
                 FROM supplier_import_jobs WHERE id = :id$suffix
             ", [':id' => $sourceRow['import_job_id']], 409, 'Import job источника недоступен');
             if (
@@ -271,6 +271,16 @@ function pricePublicationContext(PDO $pdo, int $offerId, bool $lock): array
         throw new RuntimeException('Unable to encode price publication snapshot');
     }
 
+    // Bulk rows for different variants of one product must not invalidate each
+    // other. Keep all pricing inputs and the exact target legacy variant; sibling
+    // prices and the product timestamp are not inputs to this variant's price.
+    $bulkState = $tokenState;
+    unset($bulkState['legacy_hash'], $bulkState['product_updated_at']);
+    $bulkState['product_category'] = $product['category'];
+    $bulkState['legacy_target'] = is_array($legacy)
+        ? $legacy['variants'][$legacy['target_index']] : null;
+    $bulkToken = hash('sha256', json_encode($bulkState, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+
     return [
         'can_publish' => $blocking === [],
         'blocking_reasons' => array_values(array_unique($blocking)),
@@ -306,6 +316,7 @@ function pricePublicationContext(PDO $pdo, int $offerId, bool $lock): array
         'delta_percent' => $deltaPercent === null
             ? null : ($deltaPercent < 0 ? '-' : '') . intdiv(abs($deltaPercent), 100) . '.' . str_pad((string)(abs($deltaPercent) % 100), 2, '0', STR_PAD_LEFT),
         '_internal' => [
+            'bulk_snapshot_token' => $bulkToken,
             'product' => $product,
             'variant' => $variant,
             'legacy' => $legacy,
@@ -327,12 +338,13 @@ function pricePublicationJsonNumber(int $minor): int|float
     return $minor % 100 === 0 ? intdiv($minor, 100) : (float)supplierOfferMoney($minor);
 }
 
-function pricePublicationPublish(PDO $pdo, int $offerId, string $expectedToken, ?string $comment): array
+function pricePublicationPublish(PDO $pdo, int $offerId, string $expectedToken, ?string $comment, bool $bulkSnapshot = false): array
 {
     $pdo->beginTransaction();
     try {
         $context = pricePublicationContext($pdo, $offerId, true);
-        if (!hash_equals($context['snapshot_token'], $expectedToken)) {
+        $actualToken = $bulkSnapshot ? $context['_internal']['bulk_snapshot_token'] : $context['snapshot_token'];
+        if (!hash_equals($actualToken, $expectedToken)) {
             throw new PricePublicationException(409, 'Данные изменились после проверки. Выполните preflight повторно');
         }
         if (!$context['can_publish']) {

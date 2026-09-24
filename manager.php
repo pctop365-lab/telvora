@@ -466,7 +466,9 @@ $csrfProtectedActions = [
     'pricing_rule_create',
     'pricing_rule_update',
     'pricing_rule_set_active',
-    'supplier_offer_price_publish'
+    'supplier_offer_price_publish',
+    'supplier_import_price_bulk_prepare',
+    'supplier_import_price_bulk_confirm'
 ];
 
 if (in_array($action, $csrfProtectedActions, true)) {
@@ -2113,83 +2115,56 @@ if ($action === 'supplier_offer_pricing_preview') {
         sendManagerJson(400, ['success' => false, 'message' => 'Некорректная страница']);
     }
     try {
-        require_once __DIR__ . '/supplier_offer_service.php';
-        $jobStmt = $pdo->prepare("
-            SELECT j.id, j.supplier_id, s.name AS supplier_name
-            FROM supplier_import_jobs j
-            INNER JOIN suppliers s ON s.id = j.supplier_id
-            WHERE j.id = :id LIMIT 1
-        ");
-        $jobStmt->execute([':id' => $jobId]);
-        $job = $jobStmt->fetch();
-        if (!is_array($job)) {
-            sendManagerJson(404, ['success' => false, 'message' => 'Импорт не найден']);
-        }
-        $countStmt = $pdo->prepare("
-            SELECT COUNT(*)
-            FROM supplier_offers o
-            INNER JOIN supplier_import_rows r ON r.id = o.source_import_row_id
-            WHERE r.import_job_id = :job_id
-        ");
-        $countStmt->execute([':job_id' => $jobId]);
-        $total = (int)$countStmt->fetchColumn();
-        $offersStmt = $pdo->prepare("
-            SELECT o.id, o.supplier_id, o.product_variant_id, o.supplier_sku,
-                   o.supplier_product_name, o.purchase_price, o.currency_code,
-                   o.availability_status, o.stock_quantity, o.expected_arrival_at,
-                   o.delivery_info, r.raw_availability, r.raw_arrival_info,
-                   r.import_job_id AS source_import_job_id,
-                   o.source_import_row_id, o.imported_at, o.is_active,
-                   s.name AS supplier_name, p.id AS product_id,
-                   p.name AS product_name, p.category,
-                   pv.variant_key, pv.display_name AS variant_name
-            FROM supplier_offers o
-            INNER JOIN suppliers s ON s.id = o.supplier_id
-            INNER JOIN product_variants pv ON pv.id = o.product_variant_id
-            INNER JOIN products p ON p.id = pv.product_id
-            INNER JOIN supplier_import_rows r ON r.id = o.source_import_row_id
-            WHERE r.import_job_id = :job_id
-            ORDER BY o.id ASC LIMIT $pageSize OFFSET $offset
-        ");
-        $offersStmt->execute([':job_id' => $jobId]);
-        $rulesStmt = $pdo->prepare("
-            SELECT id, name, priority, category_scope, purchase_price_min,
-                   purchase_price_max, markup_percent, minimum_margin,
-                   rounding_strategy, rounding_parameters
-            FROM pricing_rules
-            WHERE is_active = 1
-              AND (valid_from IS NULL OR valid_from <= CURRENT_TIMESTAMP)
-              AND (valid_until IS NULL OR valid_until >= CURRENT_TIMESTAMP)
-              AND additional_scope IS NULL
-            ORDER BY priority ASC, (category_scope IS NOT NULL) DESC, id ASC
-            LIMIT 200
-        ");
-        $rulesStmt->execute();
-        $activeRules = $rulesStmt->fetchAll();
-        $offers = [];
-        foreach ($offersStmt->fetchAll() as $offer) {
-            $applicableRules = supplierPricingApplicableRules($offer, $activeRules);
-            $calculation = supplierPricingCalculate($offer, $applicableRules);
-            foreach (['id', 'supplier_id', 'product_variant_id', 'source_import_row_id', 'source_import_job_id', 'product_id'] as $key) {
-                $offer[$key] = (int)$offer[$key];
-            }
-            $offer['stock_quantity'] = $offer['stock_quantity'] === null ? null : (int)$offer['stock_quantity'];
-            $offer['is_active'] = (bool)$offer['is_active'];
-            $offer['pricing'] = $calculation;
-            $offers[] = $offer;
-        }
-        sendManagerJson(200, [
-            'success' => true,
-            'job_id' => $jobId,
-            'page' => $page,
-            'page_size' => $pageSize,
-            'pages' => max(1, (int)ceil($total / $pageSize)),
-            'total' => $total,
-            'offers' => $offers
-        ]);
+        require_once __DIR__ . '/import_price_preview_service.php';
+        sendManagerJson(200, ['success' => true] + importPricePreview($pdo, $jobId, $page, $pageSize));
+    } catch (PricePublicationException $error) {
+        sendManagerJson($error->httpStatus, ['success' => false, 'message' => $error->getMessage()]);
     } catch (Throwable $error) {
         error_log('supplier offer pricing preview failed: ' . $error->getMessage());
         sendManagerJson(500, ['success' => false, 'message' => 'Не удалось рассчитать предварительные цены']);
+    }
+}
+
+// Session-owned snapshots: the client sends an opaque identifier, never prices.
+// Keep the existing PHP session lock through confirmation to serialize retries.
+if ($action === 'supplier_import_price_bulk_prepare' || $action === 'supplier_import_price_bulk_confirm') {
+    requireManagerMethod('POST');
+    requirePricingRuleJsonRequest($requestJsonIsValid);
+    $jobId = requirePositiveManagerId($data['job_id'] ?? null, 'import job');
+    try {
+        require_once __DIR__ . '/import_price_preview_service.php';
+        if ($action === 'supplier_import_price_bulk_prepare') {
+            requireOnlyPayloadKeys($data, ['action', 'job_id']);
+            $snapshot = importPriceBulkPrepare($pdo, $jobId);
+            $token = bin2hex(random_bytes(32));
+            // Bound session storage; preparing again does not invalidate another tab.
+            $snapshots = $_SESSION['import_price_snapshots'] ?? [];
+            $snapshots = array_filter($snapshots, static fn(array $item): bool => $item['expires'] >= time());
+            if (count($snapshots) >= 5) array_shift($snapshots);
+            $snapshots[$token] = ['expires' => time() + 900, 'snapshot' => $snapshot];
+            $_SESSION['import_price_snapshots'] = $snapshots;
+            sendManagerJson(200, ['success' => true, 'preview_id' => $token,
+                'eligible' => $snapshot['eligible'], 'total' => $snapshot['total']]);
+        }
+        requireOnlyPayloadKeys($data, ['action', 'job_id', 'preview_id', 'confirm']);
+        $token = $data['preview_id'] ?? null;
+        if (!is_string($token) || preg_match('/\A[a-f0-9]{64}\z/D', $token) !== 1 || ($data['confirm'] ?? null) !== true) {
+            sendManagerJson(400, ['success' => false, 'message' => 'Требуется подтверждение сформированного preview']);
+        }
+        $stored = $_SESSION['import_price_snapshots'][$token] ?? null;
+        if (!is_array($stored) || $stored['expires'] < time() || $stored['snapshot']['job_id'] !== $jobId) {
+            sendManagerJson(409, ['success' => false, 'message' => 'Preview устарел. Повторите проверку цен']);
+        }
+        if (!isset($stored['result'])) {
+            $stored['result'] = importPriceBulkConfirm($pdo, $stored['snapshot']);
+            $_SESSION['import_price_snapshots'][$token] = $stored;
+        }
+        sendManagerJson(200, ['success' => true, 'result' => $stored['result']]);
+    } catch (PricePublicationException $error) {
+        sendManagerJson($error->httpStatus, ['success' => false, 'message' => $error->getMessage()]);
+    } catch (Throwable $error) {
+        error_log('Import bulk price request failed: ' . $error->getMessage());
+        sendManagerJson(500, ['success' => false, 'message' => 'Не удалось обработать массовое подтверждение']);
     }
 }
 

@@ -421,7 +421,7 @@ if (empty($_SESSION['telvora_admin'])) {
 |--------------------------------------------------------------------------
 */
 
-if (in_array($action, ['upload_image', 'upload_gallery', 'gallery_save', 'add', 'update', 'delete', 'variant_add', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic', 'request_publish', 'request_unpublish'], true)) {
+if (in_array($action, ['upload_image', 'upload_gallery', 'gallery_save', 'add', 'update', 'delete', 'variant_add', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic', 'request_publish', 'request_unpublish', 'bulk_publish_prepare', 'bulk_publish_confirm'], true)) {
     $sessionToken = $_SESSION['csrf_token'] ?? '';
     $requestToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 
@@ -437,6 +437,41 @@ if (in_array($action, ['upload_image', 'upload_gallery', 'gallery_save', 'add', 
         ], JSON_UNESCAPED_UNICODE);
         exit;
     }
+}
+
+if (in_array($action, ['bulk_publish_prepare', 'bulk_publish_confirm'], true)) {
+    if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['success' => false, 'message' => 'Метод не поддерживается'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    try {
+        require_once __DIR__ . '/product_bulk_publication_service.php';
+        $allowed = $action === 'bulk_publish_prepare' ? ['action', 'filters'] : ['action', 'preview_id', 'confirm'];
+        if (array_diff(array_keys($data), $allowed) !== []) {
+            throw new SeoPublicationStateException(400, 'Недопустимые параметры массовой публикации');
+        }
+        if ($action === 'bulk_publish_prepare') {
+            $filters = productBulkPublicationFilters($data['filters'] ?? null);
+            $result = productBulkPublicationCreatePreview($pdo, $_SESSION, $filters);
+            echo json_encode(['success' => true] + $result, JSON_UNESCAPED_UNICODE);
+        } else {
+            $previewId = $data['preview_id'] ?? null;
+            if (!is_string($previewId) || preg_match('/\A[a-f0-9]{64}\z/D', $previewId) !== 1 || ($data['confirm'] ?? null) !== true) {
+                throw new SeoPublicationStateException(400, 'Требуется подтверждение подготовленного набора товаров');
+            }
+            $result = productBulkPublicationConfirmPreview($pdo, $_SESSION, $previewId);
+            echo json_encode(['success' => true, 'result' => $result], JSON_UNESCAPED_UNICODE);
+        }
+    } catch (SeoPublicationStateException|ProductActivationException $error) {
+        http_response_code($error->httpStatus);
+        echo json_encode(['success' => false, 'message' => $error->getMessage()], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $error) {
+        error_log('Bulk product publication request failed: ' . $error->getMessage());
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => 'Не удалось обработать массовую публикацию'], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
 }
 
 if (in_array($action, ['request_publish', 'request_unpublish'], true)) {
