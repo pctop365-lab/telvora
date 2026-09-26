@@ -39,6 +39,10 @@ const defaultProductSpecs: Spec[] = [
   { label: 'USB', value: '' },
   { label: 'Wi-Fi', value: '' },
   { label: 'Bluetooth', value: '' },
+  { label: 'Размер без подставки', value: '' },
+  { label: 'Размер с подставкой', value: '' },
+  { label: 'Вес без подставки', value: '' },
+  { label: 'Вес с подставкой', value: '' },
 ];
 
 type OrderItem = {
