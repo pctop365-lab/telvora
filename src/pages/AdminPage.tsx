@@ -5134,28 +5134,29 @@ const toggleProductStatus = async (product: AdminProduct) => {
                     <div className="mt-4 flex items-center justify-center gap-3"><button type="button" disabled={stagedRowsPage <= 1 || stagedRowsLoading} onClick={() => loadSupplierImportJobRows(selectedImportJob, stagedRowsPage - 1, stagedRowsFilter)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Назад</button><span className="text-sm text-gray-500">{stagedRowsPage} / {stagedRowsPages}</span><button type="button" disabled={stagedRowsPage >= stagedRowsPages || stagedRowsLoading} onClick={() => loadSupplierImportJobRows(selectedImportJob, stagedRowsPage + 1, stagedRowsFilter)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Далее</button></div>
 
                     <div className="mt-8 border-t border-gray-200 pt-5">
-                      <div data-testid="price-preview-toolbar" className="relative z-10 grid w-full min-w-0 grid-cols-1 items-start gap-3 overflow-visible md:grid-cols-[minmax(0,1fr)_auto] md:items-center" style={{ display: 'grid', width: '100%', minWidth: 0, overflow: 'visible' }}>
-                        <div className="min-w-0">
-                          <h5 className="font-semibold text-graphite-900">Расчёт цен</h5>
-                          <p className="text-sm text-gray-500 mt-1">Серверный preview только сопоставленных строк выбранного импорта.</p>
-                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500"><span>Сопоставлено: {offerPricingTotal}</span><span>Готово к подтверждению: {normalizedOfferPricingConfirmableTotal}</span><span>Требуют внимания: {offerPricingAttentionTotal}</span></div>
-                        </div>
-                        <button
-                          type="button"
-                          data-testid="price-preview-bulk-confirm"
-                          aria-label="Подтвердить все изменения"
-                          title={normalizedOfferPricingConfirmableTotal === 0 ? 'Нет изменений для подтверждения' : undefined}
-                          onClick={confirmAllPrices}
-                          disabled={bulkPriceLoading || pricePublicationLoading || offerPricingLoading || offerPublishLoading || normalizedOfferPricingConfirmableTotal === 0}
-                          className="!visible !inline-flex shrink-0 whitespace-nowrap px-4 py-2 rounded-lg bg-red-600 text-white font-semibold disabled:opacity-40"
-                          style={{ display: 'inline-flex', visibility: 'visible' }}
-                        >
-                          {bulkPriceLoading ? 'Подтверждение...' : 'Подтвердить все изменения'}
-                        </button>
-                      </div>
                       {bulkPriceResult?.jobId === selectedImportJob.id && <div role="status" className="mt-4 rounded-xl border border-gray-200 p-4 text-sm"><div className="font-semibold">{bulkPriceResult.message}</div>{bulkPriceResult.details.length > 0 && <details className="mt-2"><summary className="cursor-pointer">Причины пропуска и ошибок</summary>{bulkPriceResult.details.map((detail) => <div key={detail} className="mt-1 text-amber-700">{detail}</div>)}</details>}</div>}
                       {offerPricingLoading ? <div className="py-6 text-center text-gray-500">Расчёт цен...</div> : offerPricingRows.length === 0 ? <div className="mt-4 rounded-xl border border-dashed border-gray-300 p-5 text-center text-gray-500">В выбранном импорте нет строк.</div> : (
-                        <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200"><table className="w-full min-w-[1250px] text-sm"><thead className="bg-gray-50"><tr>
+                        <>
+                        <div data-testid="price-preview-toolbar" className="relative z-10 mb-4 grid w-full min-w-0 grid-cols-1 items-start gap-3 overflow-visible md:grid-cols-[minmax(0,1fr)_auto] md:items-center" style={{ display: 'grid', width: '100%', minWidth: 0, overflow: 'visible' }}>
+                          <div className="min-w-0">
+                            <h5 className="font-semibold text-graphite-900">Расчёт цен</h5>
+                            <p className="text-sm text-gray-500 mt-1">Серверный preview только сопоставленных строк выбранного импорта.</p>
+                            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500"><span>Сопоставлено: {offerPricingTotal}</span><span>Готово к подтверждению: {normalizedOfferPricingConfirmableTotal}</span><span>Требуют внимания: {offerPricingAttentionTotal}</span></div>
+                          </div>
+                          <button
+                            type="button"
+                            data-testid="price-preview-bulk-confirm"
+                            aria-label="Подтвердить все изменения"
+                            title={normalizedOfferPricingConfirmableTotal === 0 ? 'Нет изменений для подтверждения' : undefined}
+                            onClick={confirmAllPrices}
+                            disabled={bulkPriceLoading || pricePublicationLoading || offerPricingLoading || offerPublishLoading || normalizedOfferPricingConfirmableTotal === 0}
+                            className="!visible !inline-flex shrink-0 whitespace-nowrap px-4 py-2 rounded-lg bg-red-600 text-white font-semibold disabled:opacity-40"
+                            style={{ display: 'inline-flex', visibility: 'visible' }}
+                          >
+                            {bulkPriceLoading ? 'Подтверждение...' : 'Подтвердить все изменения'}
+                          </button>
+                        </div>
+                        <div className="overflow-x-auto rounded-xl border border-gray-200"><table className="w-full min-w-[1250px] text-sm"><thead className="bg-gray-50"><tr>
                           <th className="px-3 py-3 text-left">Поставщик / вариант</th><th className="px-3 py-3 text-left">Закупка</th><th className="px-3 py-3 text-left">Наличие</th><th className="px-3 py-3 text-left">Правило</th><th className="px-3 py-3 text-left">До округления</th><th className="px-3 py-3 text-left">Candidate</th><th className="px-3 py-3 text-left">Экономика</th><th className="px-3 py-3 text-left">Предупреждения</th><th className="px-3 py-3 text-right">Публикация</th>
                         </tr></thead><tbody>{offerPricingRows.map((offer) => <tr key={offer.source_import_row_id} className="border-t border-gray-100 align-top">
                           <td className="px-3 py-3"><div>{offer.supplier_name}</div><div className="font-medium">{offer.product_name}</div><div className="text-xs text-gray-500">{offer.variant_name || offer.variant_key} · row #{offer.source_import_row_id}</div></td>
@@ -5164,6 +5165,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                           <td className="px-3 py-3"><div>{offer.pricing.expected_margin ? `Валовая: ${offer.pricing.expected_margin} ₽ · ${offer.pricing.expected_margin_percent}%` : '—'}</div>{offer.pricing.estimated_expenses && <div className="mt-1 text-xs text-gray-500">Расходы 10%: {offer.pricing.estimated_expenses} ₽</div>}{offer.pricing.expected_net_profit && <div className="mt-1 text-xs font-semibold text-green-700">Чистыми: {offer.pricing.expected_net_profit} ₽ · {offer.pricing.expected_net_profit_percent}%</div>}</td><td className="px-3 py-3">{[...new Set([...offer.pricing.warnings, ...offer.blocking_reasons])].map((warning) => <div key={warning} className="text-xs text-amber-700">{warning}</div>)}</td>
                           <td className="px-3 py-3 text-right"><button type="button" disabled={offer.cannot_confirm || !offer.id || !offer.pricing.calculable || pricePublicationLoading || bulkPriceLoading} onClick={() => { if (offer.id) void preparePricePublication(offer.id); }} className="px-3 py-2 rounded-lg border border-red-200 text-red-700 disabled:opacity-40">Подготовить изменение цены</button></td>
                         </tr>)}</tbody></table></div>
+                        </>
                       )}
                       {offerPricingRows.length > 0 && <div className="mt-4 flex items-center justify-center gap-3"><button type="button" disabled={offerPricingPage <= 1 || offerPricingLoading} onClick={() => loadSupplierOfferPricing(selectedImportJob, offerPricingPage - 1)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Назад</button><span className="text-sm text-gray-500">{offerPricingPage} / {offerPricingPages}</span><button type="button" disabled={offerPricingPage >= offerPricingPages || offerPricingLoading} onClick={() => loadSupplierOfferPricing(selectedImportJob, offerPricingPage + 1)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Далее</button></div>}
 
