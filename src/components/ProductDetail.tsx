@@ -5,7 +5,7 @@ import { formatPrice } from '@/lib/format';
 import { useCart } from '@/store/cart';
 import { useUI } from '@/store/ui';
 import { getCategorySlugForProduct } from '@/services/productService';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import AvailabilityStatus from './AvailabilityStatus';
 import ProductGallery from './ProductGallery';
 import SeoMetadata from './SeoMetadata';
@@ -17,6 +17,32 @@ type ProductDetailProps = {
 
 export default function ProductDetail({ product }: ProductDetailProps) {
   const [added, setAdded] = useState(false);
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const [descriptionHasOverflow, setDescriptionHasOverflow] = useState(false);
+  const [descriptionMaxHeight, setDescriptionMaxHeight] = useState(240);
+  const descriptionRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setDescriptionExpanded(false);
+    const measureDescription = () => {
+      const element = descriptionRef.current;
+      if (!element) return;
+      const collapsedHeight = window.matchMedia('(min-width: 640px)').matches ? 330 : 240;
+      setDescriptionMaxHeight(collapsedHeight);
+      setDescriptionHasOverflow(element.scrollHeight > collapsedHeight + 1);
+    };
+
+    measureDescription();
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(measureDescription)
+      : null;
+    if (descriptionRef.current && observer) observer.observe(descriptionRef.current);
+    window.addEventListener('resize', measureDescription);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measureDescription);
+    };
+  }, [product.description]);
 
   const activeVariants: ProductVariant[] = (product.variants || []).filter(
     (variant) =>
@@ -189,9 +215,33 @@ const productUrl =
               <span className="text-sm text-graphite-400">· {product.reviews} отзывов</span>
             </div>
 
-            <p className="mt-6 text-graphite-300 leading-relaxed text-lg">
-              {product.description}
-            </p>
+            <div className="mt-6">
+              <div
+                ref={descriptionRef}
+                data-testid="product-description"
+                className="relative overflow-hidden text-lg leading-relaxed text-graphite-300 transition-[max-height] duration-300 ease-out whitespace-pre-line"
+                style={{ maxHeight: descriptionExpanded ? `${descriptionRef.current?.scrollHeight ?? descriptionMaxHeight}px` : `${descriptionMaxHeight}px` }}
+              >
+                {product.description}
+                {descriptionHasOverflow && !descriptionExpanded && (
+                  <div
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-white dark:from-graphite-900 to-transparent"
+                  />
+                )}
+              </div>
+              {descriptionHasOverflow && (
+                <button
+                  type="button"
+                  data-testid="product-description-toggle"
+                  onClick={() => setDescriptionExpanded((expanded) => !expanded)}
+                  className="mt-3 inline-flex items-center rounded-lg px-3 py-2 text-sm font-semibold text-accent-500 transition-colors hover:bg-accent-500/10 focus:outline-none focus:ring-2 focus:ring-accent-500/40"
+                  aria-expanded={descriptionExpanded}
+                >
+                  {descriptionExpanded ? 'Свернуть' : 'Показать полностью'}
+                </button>
+              )}
+            </div>
 
             {/* Highlights */}
             <div className="grid grid-cols-2 gap-3 mt-6">
