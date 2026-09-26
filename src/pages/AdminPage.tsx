@@ -5134,8 +5134,8 @@ const toggleProductStatus = async (product: AdminProduct) => {
                     <div className="mt-4 flex items-center justify-center gap-3"><button type="button" disabled={stagedRowsPage <= 1 || stagedRowsLoading} onClick={() => loadSupplierImportJobRows(selectedImportJob, stagedRowsPage - 1, stagedRowsFilter)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Назад</button><span className="text-sm text-gray-500">{stagedRowsPage} / {stagedRowsPages}</span><button type="button" disabled={stagedRowsPage >= stagedRowsPages || stagedRowsLoading} onClick={() => loadSupplierImportJobRows(selectedImportJob, stagedRowsPage + 1, stagedRowsFilter)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Далее</button></div>
 
                     <div className="mt-8 border-t border-gray-200 pt-5">
-                      <div data-testid="price-preview-toolbar" className="flex w-full flex-wrap items-center justify-between gap-3">
-                        <div>
+                      <div data-testid="price-preview-toolbar" className="relative z-10 grid w-full min-w-0 grid-cols-1 items-start gap-3 overflow-visible md:grid-cols-[minmax(0,1fr)_auto] md:items-center" style={{ display: 'grid', width: '100%', minWidth: 0, overflow: 'visible' }}>
+                        <div className="min-w-0">
                           <h5 className="font-semibold text-graphite-900">Расчёт цен</h5>
                           <p className="text-sm text-gray-500 mt-1">Серверный preview только сопоставленных строк выбранного импорта.</p>
                           <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500"><span>Сопоставлено: {offerPricingTotal}</span><span>Готово к подтверждению: {normalizedOfferPricingConfirmableTotal}</span><span>Требуют внимания: {offerPricingAttentionTotal}</span></div>
@@ -5147,7 +5147,8 @@ const toggleProductStatus = async (product: AdminProduct) => {
                           title={normalizedOfferPricingConfirmableTotal === 0 ? 'Нет изменений для подтверждения' : undefined}
                           onClick={confirmAllPrices}
                           disabled={bulkPriceLoading || pricePublicationLoading || offerPricingLoading || offerPublishLoading || normalizedOfferPricingConfirmableTotal === 0}
-                          className="shrink-0 px-4 py-2 rounded-lg bg-red-600 text-white font-semibold disabled:opacity-40"
+                          className="!visible !inline-flex shrink-0 whitespace-nowrap px-4 py-2 rounded-lg bg-red-600 text-white font-semibold disabled:opacity-40"
+                          style={{ display: 'inline-flex', visibility: 'visible' }}
                         >
                           {bulkPriceLoading ? 'Подтверждение...' : 'Подтвердить все изменения'}
                         </button>

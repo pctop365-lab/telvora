@@ -13,5 +13,9 @@ assert(source.includes('onClick={confirmAllPrices}'), 'bulk button must use the 
 assert(source.includes('normalizedOfferPricingConfirmableTotal = Number.isFinite'), 'confirmable count must be normalized');
 assert(source.includes('disabled={bulkPriceLoading || pricePublicationLoading || offerPricingLoading || offerPublishLoading || normalizedOfferPricingConfirmableTotal === 0}'), 'button must remain in DOM and disable at zero');
 assert(source.includes('title={normalizedOfferPricingConfirmableTotal === 0 ?'), 'zero confirmable state must explain why the button is disabled');
+assert(source.includes('className="relative z-10 grid w-full min-w-0'), 'toolbar must own a full-width, min-width-safe layout');
+assert(source.includes('overflow-visible md:grid-cols-[minmax(0,1fr)_auto]'), 'toolbar must keep the action outside table overflow');
+assert(source.includes('className="!visible !inline-flex shrink-0 whitespace-nowrap'), 'bulk button must remain visibly rendered');
+assert(source.includes("style={{ display: 'inline-flex', visibility: 'visible' }}"), 'bulk button must force visible inline layout');
 
 console.log('PASS import price preview UI contract');
