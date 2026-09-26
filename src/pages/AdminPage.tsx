@@ -753,6 +753,9 @@ export default function AdminPage() {
   const [offerPricingRows, setOfferPricingRows] = useState<SupplierOfferPricingPreview[]>([]);
   const [offerPricingPage, setOfferPricingPage] = useState(1);
   const [offerPricingPages, setOfferPricingPages] = useState(1);
+  const [offerPricingTotal, setOfferPricingTotal] = useState(0);
+  const [offerPricingConfirmableTotal, setOfferPricingConfirmableTotal] = useState(0);
+  const [offerPricingAttentionTotal, setOfferPricingAttentionTotal] = useState(0);
   const [offerPricingLoading, setOfferPricingLoading] = useState(false);
   const [bulkPriceLoading, setBulkPriceLoading] = useState(false);
   const [bulkPriceResult, setBulkPriceResult] = useState<{ jobId: number; message: string; details: string[] } | null>(null);
@@ -1620,6 +1623,9 @@ const login = async (e: React.FormEvent) => {
     setManualMatchRow(null);
     setOfferPublishSummary(null);
     setOfferPricingRows([]);
+    setOfferPricingTotal(0);
+    setOfferPricingConfirmableTotal(0);
+    setOfferPricingAttentionTotal(0);
     setPreviewFileInputKey((current) => current + 1);
     loadSupplierImportProfiles(supplier);
     loadSupplierImportJobs(supplier);
@@ -2098,6 +2104,9 @@ const login = async (e: React.FormEvent) => {
       setOfferPricingRows(Array.isArray(data.offers) ? data.offers : []);
       setOfferPricingPage(Number(data.page) || 1);
       setOfferPricingPages(Number(data.pages) || 1);
+      setOfferPricingTotal(Number(data.total) || 0);
+      setOfferPricingConfirmableTotal(Number(data.confirmable_total) || 0);
+      setOfferPricingAttentionTotal(Number(data.attention_total) || 0);
     } catch (err) {
       setSupplierImportProfilesError(err instanceof Error ? err.message : 'Не удалось рассчитать цены');
     } finally {
@@ -2366,6 +2375,7 @@ const login = async (e: React.FormEvent) => {
       setSupplierImportProfilesSuccess(data.message || 'Сопоставление сохранено');
       await loadSupplierImportJobRows(selectedImportJob, stagedRowsPage, stagedRowsFilter);
       await loadSupplierOfferSummary(selectedImportJob);
+      await loadSupplierOfferPricing(selectedImportJob, 1);
       if (profileSupplier) await loadSupplierImportJobs(profileSupplier);
     } catch (err) {
       setSupplierImportProfilesError(
@@ -5121,7 +5131,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                     <div className="mt-4 flex items-center justify-center gap-3"><button type="button" disabled={stagedRowsPage <= 1 || stagedRowsLoading} onClick={() => loadSupplierImportJobRows(selectedImportJob, stagedRowsPage - 1, stagedRowsFilter)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Назад</button><span className="text-sm text-gray-500">{stagedRowsPage} / {stagedRowsPages}</span><button type="button" disabled={stagedRowsPage >= stagedRowsPages || stagedRowsLoading} onClick={() => loadSupplierImportJobRows(selectedImportJob, stagedRowsPage + 1, stagedRowsFilter)} className="px-3 py-2 border rounded-lg disabled:opacity-40">Далее</button></div>
 
                     <div className="mt-8 border-t border-gray-200 pt-5">
-                      <div className="flex flex-wrap items-center justify-between gap-3"><div><h5 className="font-semibold text-graphite-900">Расчёт цен</h5><p className="text-sm text-gray-500 mt-1">Серверный preview всех строк выбранного импорта. Цена меняется после подтверждения.</p></div><button type="button" onClick={confirmAllPrices} disabled={bulkPriceLoading || pricePublicationLoading || offerPricingLoading || offerPublishLoading || offerPricingRows.length === 0} className="px-4 py-2 rounded-lg bg-red-600 text-white font-semibold disabled:opacity-40">{bulkPriceLoading ? 'Подтверждение...' : 'Подтвердить все изменения'}</button></div>
+                      <div className="flex flex-wrap items-center justify-between gap-3"><div><h5 className="font-semibold text-graphite-900">Расчёт цен</h5><p className="text-sm text-gray-500 mt-1">Серверный preview только сопоставленных строк выбранного импорта.</p><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500"><span>Сопоставлено: {offerPricingTotal}</span><span>Готово к подтверждению: {offerPricingConfirmableTotal}</span><span>Требуют внимания: {offerPricingAttentionTotal}</span></div></div><button type="button" onClick={confirmAllPrices} disabled={bulkPriceLoading || pricePublicationLoading || offerPricingLoading || offerPublishLoading || offerPricingConfirmableTotal === 0} className="shrink-0 px-4 py-2 rounded-lg bg-red-600 text-white font-semibold disabled:opacity-40">{bulkPriceLoading ? 'Подтверждение...' : 'Подтвердить все изменения'}</button></div>
                       {bulkPriceResult?.jobId === selectedImportJob.id && <div role="status" className="mt-4 rounded-xl border border-gray-200 p-4 text-sm"><div className="font-semibold">{bulkPriceResult.message}</div>{bulkPriceResult.details.length > 0 && <details className="mt-2"><summary className="cursor-pointer">Причины пропуска и ошибок</summary>{bulkPriceResult.details.map((detail) => <div key={detail} className="mt-1 text-amber-700">{detail}</div>)}</details>}</div>}
                       {offerPricingLoading ? <div className="py-6 text-center text-gray-500">Расчёт цен...</div> : offerPricingRows.length === 0 ? <div className="mt-4 rounded-xl border border-dashed border-gray-300 p-5 text-center text-gray-500">В выбранном импорте нет строк.</div> : (
                         <div className="mt-4 overflow-x-auto rounded-xl border border-gray-200"><table className="w-full min-w-[1250px] text-sm"><thead className="bg-gray-50"><tr>

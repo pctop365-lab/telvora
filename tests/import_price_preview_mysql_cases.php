@@ -25,18 +25,21 @@ function importPricePreviewMysqlCases(PDO $pdo): void
     $jobId = pipelineImport($pdo, 2, 2, $rows, 'bulk-six.csv');
     $pdo->prepare("INSERT INTO supplier_import_rows(import_job_id,source_row_number,supplier_sku,raw_product_name,purchase_price,currency_code,status)
         VALUES(?,5,'UNMATCHED','Unmatched TV',10000,'RUB','unmatched'),
-              (?,6,'NO-PRICE','No price TV',NULL,'RUB','validation_error')")->execute([$jobId, $jobId]);
+              (?,6,NULL,'No price TV',NULL,'RUB','validation_error')")->execute([$jobId, $jobId]);
 
     $preview = importPricePreview($pdo, $jobId);
-    pipelineAssert('A: all six import rows survive without two offers', $preview['total'] === 6 && count($preview['offers']) === 6);
+    pipelineAssert('A: price preview contains only the four mapped rows', $preview['total'] === 4 && count($preview['offers']) === 4 && $preview['page_size'] === 10);
     $page1 = importPricePreview($pdo, $jobId, 1, 4);
     $page2 = importPricePreview($pdo, $jobId, 2, 4);
-    pipelineAssert('B: pagination counts invalid rows', $page1['pages'] === 2 && $page2['total'] === 6 && count($page2['offers']) === 2);
-    pipelineAssert('C: unmapped row has no candidate and cannot confirm',
-        $preview['offers'][4]['cannot_confirm'] && $preview['offers'][4]['id'] === null &&
-        in_array('Не сопоставлено с вариантом товара', $preview['offers'][4]['blocking_reasons'], true) &&
-        !isset($preview['offers'][4]['pricing']['candidate_retail_price']));
-    pipelineAssert('missing purchase has explicit reason', in_array('Нет корректной закупочной цены', $preview['offers'][5]['blocking_reasons'], true));
+    pipelineAssert('B: pagination counts mapped rows only', $page1['pages'] === 1 && $page2['total'] === 4 && count($page2['offers']) === 4);
+    pipelineAssert('C: unmapped rows stay out of price preview', !array_filter($preview['offers'], static fn(array $row): bool => in_array($row['source_import_row_id'], [5, 6], true)));
+    $pdo->prepare("UPDATE supplier_import_rows SET matched_product_id=3, matched_product_variant_id=?, status='matched' WHERE import_job_id=? AND source_row_number=5")
+        ->execute([$variantIds[0], $jobId]);
+    $mappedWithoutOffer = importPricePreview($pdo, $jobId);
+    pipelineAssert('manual mapping adds a row even without an offer',
+        $mappedWithoutOffer['total'] === 5 && count(array_filter($mappedWithoutOffer['offers'], static fn(array $row): bool => $row['source_import_row_id'] === 5)) === 1 &&
+        count(array_filter($mappedWithoutOffer['offers'], static fn(array $row): bool => $row['source_import_row_id'] === 5 && $row['cannot_confirm'])) === 1);
+    $pdo->exec("UPDATE supplier_import_rows SET matched_product_id=NULL, matched_product_variant_id=NULL, status='unmatched' WHERE import_job_id=$jobId AND source_row_number=5");
     $firstOffer = $preview['offers'][0]['id'];
     $individual = pricePublicationContext($pdo, $firstOffer, false);
     $previewPricing = $preview['offers'][0]['pricing'];
@@ -50,16 +53,16 @@ function importPricePreviewMysqlCases(PDO $pdo): void
     pipelineAssert('E: unsupported rounding blocks both individual and bulk', $unsupported['eligible'] === 0 && !pricePublicationContext($pdo, $firstOffer, false)['can_publish']);
     $pdo->exec("UPDATE pricing_rules SET rounding_strategy='none',is_active=0 WHERE id=1");
     $noRule = importPricePreview($pdo, $jobId);
-    pipelineAssert('missing rule never removes rows or invents a candidate', count($noRule['offers']) === 6 && $noRule['offers'][0]['cannot_confirm'] && !isset($noRule['offers'][0]['pricing']['candidate_retail_price']));
+    pipelineAssert('missing rule never removes rows or invents a candidate', count($noRule['offers']) === 4 && $noRule['offers'][0]['cannot_confirm'] && !isset($noRule['offers'][0]['pricing']['candidate_retail_price']));
     $pdo->exec('UPDATE pricing_rules SET is_active=1 WHERE id=1');
 
     $snapshot = importPriceBulkPrepare($pdo, $jobId);
-    pipelineAssert('bulk prepares all four valid changes', $snapshot['eligible'] === 4 && $snapshot['total'] === 6);
+    pipelineAssert('bulk prepares all four valid changes', $snapshot['eligible'] === 4 && $snapshot['total'] === 4);
     $staleIndividual = pricePublicationContext($pdo, $firstOffer, false);
     $beforeAudit = (int)$pdo->query('SELECT COUNT(*) FROM product_price_publication_audit')->fetchColumn();
     $beforeOffers = $pdo->query('SELECT id,purchase_price FROM supplier_offers ORDER BY id')->fetchAll();
     $result = importPriceBulkConfirm($pdo, $snapshot);
-    pipelineAssert('D: bulk applies four variants of same product, skips two', $result['applied'] === 4 && $result['skipped'] === 2 && $result['errors'] === 0, $result);
+    pipelineAssert('D: bulk applies four variants of same product, skips two', $result['applied'] === 4 && $result['skipped'] === 0 && $result['errors'] === 0, $result);
     pipelineAssert('H: one audit per applied row with original source and economics',
         (int)$pdo->query('SELECT COUNT(*) FROM product_price_publication_audit')->fetchColumn() === $beforeAudit + 4 &&
         (int)$pdo->query("SELECT COUNT(*) FROM product_price_publication_audit WHERE product_id=3 AND source_import_job_id=$jobId AND new_live_price=16900 AND purchase_price=10000 AND pricing_rule_id=1")->fetchColumn() === 4);
@@ -67,7 +70,7 @@ function importPricePreviewMysqlCases(PDO $pdo): void
         $beforeOffers === $pdo->query('SELECT id,purchase_price FROM supplier_offers ORDER BY id')->fetchAll() &&
         (int)$pdo->query('SELECT is_active FROM products WHERE id=3')->fetchColumn() === 0);
     $repeat = importPriceBulkConfirm($pdo, $snapshot);
-    pipelineAssert('F: replay never republishes', $repeat['applied'] === 0 && $repeat['skipped'] === 6 &&
+    pipelineAssert('F: replay never republishes', $repeat['applied'] === 0 && $repeat['skipped'] === 4 &&
         (int)$pdo->query('SELECT COUNT(*) FROM product_price_publication_audit')->fetchColumn() === $beforeAudit + 4, $repeat);
     try {
         pricePublicationPublish($pdo, $firstOffer, $staleIndividual['snapshot_token'], null);
@@ -87,18 +90,18 @@ function importPricePreviewMysqlCases(PDO $pdo): void
     $published = pricePublicationPublish($pdo, $firstOffer, $current['snapshot_token'], 'individual after bulk');
     pipelineAssert('G: individual still publishes and audits', $published['status'] === 'published' && $published['published_price'] === '17900.00');
     $afterIndividual = importPriceBulkConfirm($pdo, $nextSnapshot);
-    pipelineAssert('individual first: bulk skips stale target but publishes siblings', $afterIndividual['applied'] === 3 && $afterIndividual['skipped'] === 3, $afterIndividual);
+    pipelineAssert('individual first: bulk skips stale target but publishes siblings', $afterIndividual['applied'] === 3 && $afterIndividual['skipped'] === 1, $afterIndividual);
 
     $pdo->exec('UPDATE pricing_rules SET minimum_margin=7000 WHERE id=1');
     $staleRules = importPriceBulkPrepare($pdo, $jobId);
     $pdo->exec('UPDATE pricing_rules SET minimum_margin=8000 WHERE id=1');
     $rejected = importPriceBulkConfirm($pdo, $staleRules);
-    pipelineAssert('changed rules cannot publish unapproved candidate', $rejected['applied'] === 0 && $rejected['skipped'] === 6);
+    pipelineAssert('changed rules cannot publish unapproved candidate', $rejected['applied'] === 0 && $rejected['skipped'] === 4);
     $staleMapping = importPriceBulkPrepare($pdo, $jobId);
     $pdo->exec("UPDATE supplier_import_rows SET matched_product_variant_id=NULL WHERE import_job_id=$jobId AND source_row_number=1");
     $mappingResult = importPriceBulkConfirm($pdo, $staleMapping);
-    pipelineAssert('mapping changes are revalidated independently', $mappingResult['applied'] === 3 && $mappingResult['skipped'] === 3, $mappingResult);
-    pipelineAssert('unmapped existing offer does not show false candidate', !isset(importPricePreview($pdo, $jobId)['offers'][0]['pricing']['candidate_retail_price']));
+    pipelineAssert('mapping changes are revalidated independently', $mappingResult['applied'] === 3 && $mappingResult['skipped'] === 1, $mappingResult);
+    pipelineAssert('unmapped existing offer does not show false candidate', count(importPricePreview($pdo, $jobId)['offers']) === 3);
     $pdo->prepare('UPDATE supplier_import_rows SET matched_product_variant_id=? WHERE import_job_id=? AND source_row_number=1')->execute([$variantIds[0], $jobId]);
     $pdo->exec('UPDATE pricing_rules SET minimum_margin=9000 WHERE id=1');
     $concurrentSnapshot = importPriceBulkPrepare($pdo, $jobId);
@@ -155,14 +158,21 @@ function importPricePreviewMysqlCases(PDO $pdo): void
     $pdo->commit();
     $pdo->exec('UPDATE pricing_rules SET minimum_margin=10000 WHERE id=1');
     $largePreview = importPricePreview($pdo, $largeJob);
-    pipelineAssert('505 rows have 11 UI pages, including an entirely invalid first page',
-        $largePreview['total'] === 505 && $largePreview['pages'] === 11 &&
-        count(array_filter($largePreview['offers'], static fn(array $row): bool => !$row['cannot_confirm'])) === 0);
+    pipelineAssert('only mapped rows remain in the large import preview',
+        $largePreview['total'] === 4 && $largePreview['pages'] === 1 && count($largePreview['offers']) === 4);
     $largeSnapshot = importPriceBulkPrepare($pdo, $largeJob);
-    pipelineAssert('bulk preparation includes valid rows beyond scan chunk 500', $largeSnapshot['total'] === 505 && $largeSnapshot['eligible'] === 4);
+    pipelineAssert('bulk preparation includes valid rows beyond scan chunk 500', $largeSnapshot['total'] === 4 && $largeSnapshot['eligible'] === 4);
     $largeResult = importPriceBulkConfirm($pdo, $largeSnapshot);
     pipelineAssert('bulk publishes off-page changes and reports every skipped row',
-        $largeResult['applied'] === 4 && $largeResult['skipped'] === 501 && $largeResult['errors'] === 0);
-    pipelineAssert('older import retains rows when offers advance to newer source', count(importPricePreview($pdo, $jobId)['offers']) === 6);
+        $largeResult['applied'] === 4 && $largeResult['skipped'] === 0 && $largeResult['errors'] === 0);
+    pipelineAssert('older import retains mapped rows when offers advance to newer source', count(importPricePreview($pdo, $jobId)['offers']) === 4);
+    $paginationJob = pipelineImport($pdo, 2, 2, [], 'mapped-pagination.csv');
+    $paginationInsert = $pdo->prepare("INSERT INTO supplier_import_rows(import_job_id,source_row_number,matched_product_id,matched_product_variant_id,raw_product_name,currency_code,status)
+        VALUES(?,?,3,?,'Mapped pagination row','RUB','matched')");
+    for ($number = 1; $number <= 25; $number++) $paginationInsert->execute([$paginationJob, $number, $variantIds[($number - 1) % count($variantIds)]]);
+    $paginationPreview = importPricePreview($pdo, $paginationJob);
+    $paginationLastPage = importPricePreview($pdo, $paginationJob, 3);
+    pipelineAssert('25 mapped rows paginate as 10, 10, 5',
+        $paginationPreview['total'] === 25 && $paginationPreview['pages'] === 3 && count($paginationPreview['offers']) === 10 && count($paginationLastPage['offers']) === 5);
     echo "PASS import price preview and bulk cases A-I\n";
 }

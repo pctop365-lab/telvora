@@ -2020,6 +2020,13 @@ if ($action === 'supplier_import_row_set_match') {
             ':id' => $jobId
         ]);
         $pdo->commit();
+        if (isset($_SESSION['import_price_snapshots']) && is_array($_SESSION['import_price_snapshots'])) {
+            foreach ($_SESSION['import_price_snapshots'] as $snapshotToken => $snapshotEntry) {
+                if (($snapshotEntry['snapshot']['job_id'] ?? null) === $jobId) {
+                    unset($_SESSION['import_price_snapshots'][$snapshotToken]);
+                }
+            }
+        }
         sendManagerJson(200, [
             'success' => true,
             'message' => $variantId === null
@@ -2109,7 +2116,7 @@ if ($action === 'supplier_offer_pricing_preview') {
     requireManagerMethod('GET');
     $jobId = requirePositiveManagerId($_GET['job_id'] ?? null, 'import job');
     $page = requirePositiveManagerId($_GET['page'] ?? '1', 'страница');
-    $pageSize = 50;
+    $pageSize = 10;
     $offset = ($page - 1) * $pageSize;
     if ($offset > 5000000) {
         sendManagerJson(400, ['success' => false, 'message' => 'Некорректная страница']);

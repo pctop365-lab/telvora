@@ -4,13 +4,28 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/price_publication_service.php';
 
-function importPricePreview(PDO $pdo, int $jobId, int $page = 1, int $pageSize = 50): array
+function importPricePreview(PDO $pdo, int $jobId, int $page = 1, int $pageSize = 10, bool $includeStats = true): array
 {
     $job = pricePublicationFetchOne($pdo,
         'SELECT j.id, j.supplier_id, j.import_profile_id, s.name AS supplier_name
          FROM supplier_import_jobs j LEFT JOIN suppliers s ON s.id = j.supplier_id WHERE j.id = :id',
         [':id' => $jobId], 404, 'Импорт не найден');
-    $count = $pdo->prepare('SELECT COUNT(*) FROM supplier_import_rows WHERE import_job_id = :id');
+    // Price preview is intentionally narrower than the import/matching list:
+    // only rows with a persisted, valid product + variant mapping belong here.
+    // Keep LEFT JOINs so an invalid/stale mapping can be diagnosed without
+    // making supplier offers the membership criterion.
+    $mappedWhere = '
+        r.import_job_id = :id
+        AND r.matched_product_id IS NOT NULL
+        AND r.matched_product_variant_id IS NOT NULL
+        AND p.id IS NOT NULL
+        AND pv.id IS NOT NULL
+        AND pv.product_id = p.id';
+    $count = $pdo->prepare("SELECT COUNT(*)
+        FROM supplier_import_rows r
+        LEFT JOIN products p ON p.id = r.matched_product_id
+        LEFT JOIN product_variants pv ON pv.id = r.matched_product_variant_id
+        WHERE $mappedWhere");
     $count->execute([':id' => $jobId]);
     $total = (int)$count->fetchColumn();
     $pageSize = max(1, min(500, $pageSize));
@@ -36,6 +51,11 @@ function importPricePreview(PDO $pdo, int $jobId, int $page = 1, int $pageSize =
         LEFT JOIN supplier_offers o ON o.source_import_row_id = r.id
             AND o.supplier_id = :supplier_id AND o.supplier_sku = r.supplier_sku
         WHERE r.import_job_id = :job_id
+          AND r.matched_product_id IS NOT NULL
+          AND r.matched_product_variant_id IS NOT NULL
+          AND p.id IS NOT NULL
+          AND pv.id IS NOT NULL
+          AND pv.product_id = p.id
         ORDER BY r.id ASC LIMIT $pageSize OFFSET $offset
     ");
     $statement->execute([':supplier_id' => $job['supplier_id'], ':job_id' => $jobId]);
@@ -86,8 +106,15 @@ function importPricePreview(PDO $pdo, int $jobId, int $page = 1, int $pageSize =
         $row['is_active'] = (bool)$row['is_active'];
         $offers[] = $row;
     }
-    return ['job_id' => $jobId, 'import_profile_id' => $job['import_profile_id'],
-        'page' => $page, 'page_size' => $pageSize, 'pages' => $pages, 'total' => $total, 'offers' => $offers];
+    $result = ['job_id' => $jobId, 'import_profile_id' => $job['import_profile_id'],
+        'page' => $page, 'page_size' => $pageSize, 'pages' => $pages, 'total' => $total,
+        'offers' => $offers];
+    if ($includeStats) {
+        $bulk = importPriceBulkPrepare($pdo, $jobId);
+        $result['confirmable_total'] = $bulk['eligible'];
+        $result['attention_total'] = max(0, $bulk['total'] - $bulk['eligible']);
+    }
+    return $result;
 }
 
 function importPriceBulkPrepare(PDO $pdo, int $jobId): array
@@ -97,7 +124,7 @@ function importPriceBulkPrepare(PDO $pdo, int $jobId): array
     $eligible = 0;
     $page = 1;
     do {
-        $preview = importPricePreview($pdo, $jobId, $page, 500);
+        $preview = importPricePreview($pdo, $jobId, $page, 500, false);
         foreach ($preview['offers'] as $row) {
             $entry = ['row_id' => $row['source_import_row_id'], 'offer_id' => $row['id'],
                 'reasons' => $row['blocking_reasons']];
