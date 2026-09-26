@@ -75,6 +75,24 @@ $incomingStage = normalizationStage($incoming, $profile);
 normalizationAssert('incoming staged status is expected', $incomingStage['normalized_availability'] === 'expected');
 normalizationAssert('zero incoming price is retained for history but not valid offer basis', supplierOfferMinorUnits('0') === null && supplierOfferMinorUnits('0', true) === 0);
 
+$profileAvailabilityMapping = array_replace($profile, [
+    'supplier_code' => 'timofey',
+    'availability_mappings' => [[
+        'raw_value' => 'В наличии',
+        'raw_value_hash' => hash('sha256', 'В наличии'),
+        'normalized_status' => 'in_stock',
+        'is_active' => 1,
+    ]],
+]);
+$mappedAvailability = normalizationRow($profileAvailabilityMapping, [
+    'supplier_sku' => 'TIM-1', 'model' => 'OLED42C6RLA',
+    'product_name' => 'LG OLED42C6RLA', 'purchase_price' => '19200',
+    'availability' => 'В наличии', 'arrival_info' => '', 'currency_code' => 'RUB'
+]);
+normalizationAssert('profile availability mapping resolves raw Cyrillic value', $mappedAvailability['availability_normalization']['status'] === 'in_stock');
+$mappedStage = normalizationStage($mappedAvailability, $profileAvailabilityMapping);
+normalizationAssert('staging keeps mapped availability without validation warning', $mappedStage['normalized_availability'] === 'in_stock' && !in_array('Значение наличия не сопоставлено для этого профиля', $mappedStage['warnings'], true));
+
 $outOfStock = normalizationRow($profile, [
     'supplier_sku' => '', 'model' => '55G5LW',
     'product_name' => 'LG OLED 55G5LW', 'purchase_price' => '0',

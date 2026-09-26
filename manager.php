@@ -1477,6 +1477,7 @@ if ($action === 'supplier_import_preview') {
 
         $upload = supplierPreviewValidateUpload($_FILES);
         $profile = supplierPreviewValidateProfile($profileRow);
+        $profile['availability_mappings'] = supplierAvailabilityLoadMappings($pdo, $profileId);
         $parsed = supplierPreviewParse($upload, $profile);
 
         sendManagerJson(200, [
@@ -1587,6 +1588,7 @@ if ($action === 'supplier_import_stage') {
 
         $upload = supplierPreviewValidateUpload($_FILES);
         $profile = supplierPreviewValidateProfile($profileRow);
+        $profile['availability_mappings'] = supplierAvailabilityLoadMappings($pdo, $profileId);
         $pdo->beginTransaction();
 
         $jobStmt = $pdo->prepare("

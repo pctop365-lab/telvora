@@ -126,7 +126,7 @@ function supplierStagePrepareRow(array $row, array $profile = []): array
         $values['availability'] ?? null,
         $values['arrival_info'] ?? null,
         null,
-        []
+        is_array($profile['availability_mappings'] ?? null) ? $profile['availability_mappings'] : []
     );
     array_push($warnings, ...array_map(
         static fn(array $warning): string => (string)($warning['message'] ?? ''),

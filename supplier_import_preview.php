@@ -542,7 +542,7 @@ function supplierPreviewBuildRow(
         $values['availability'] ?? null,
         $values['arrival_info'] ?? null,
         null,
-        []
+        is_array($profile['availability_mappings'] ?? null) ? $profile['availability_mappings'] : []
     );
     $skipReason = supplierPreviewNonProductReason($values, $normalized);
 
