@@ -7,6 +7,7 @@ type CartValidationItem = {
   product_variant_id: number | null;
   slug: string | null;
   assembly_country: string | null;
+  model_code: string | null;
   price: number | null;
   status: 'in_stock' | 'out_of_stock' | 'expected' | 'unknown';
   orderable: boolean;
@@ -56,6 +57,7 @@ export async function createOrder(
       category: item.category,
       quantity: item.quantity,
       assemblyCountry: item.assemblyCountry,
+      modelCode: item.modelCode,
       productVariantId: item.productVariantId,
     })),
 
@@ -114,6 +116,7 @@ export async function createOrder(
       product_variant_id: number;
       slug: string;
       assembly_country: string;
+      model_code: string | null;
       name: string;
       quantity: number;
       price: number;
@@ -151,6 +154,7 @@ export async function createOrder(
     slug: serverItem.slug,
     name: serverItem.name,
     assemblyCountry: serverItem.assembly_country,
+    modelCode: serverItem.model_code,
     quantity: serverItem.quantity,
     price: serverItem.price,
   }));

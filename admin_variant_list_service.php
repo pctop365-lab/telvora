@@ -50,6 +50,7 @@ function adminVariantListFetch(PDO $pdo, int $productId): ?array
 
     $variantStmt = $pdo->prepare("
         SELECT pv.id, pv.product_id, pv.variant_key, pv.assembly_country,
+               pv.manufacturer_part_number,
                pv.is_active,
                po.manual_price, po.manual_old_price, po.is_active AS manual_price_active,
                (SELECT MIN(o.purchase_price) FROM supplier_offers o
@@ -223,6 +224,9 @@ function adminVariantListFetch(PDO $pdo, int $productId): ?array
             'product_id' => (int)$relationalVariant['product_id'],
             'variant_key' => (string)$relationalVariant['variant_key'],
             'assembly_country' => $relationalVariant['assembly_country'],
+            'model_code' => $relationalVariant['manufacturer_part_number'] === null || trim((string)$relationalVariant['manufacturer_part_number']) === ''
+                ? null
+                : (string)$relationalVariant['manufacturer_part_number'],
             'relational_is_active' => (bool)$relationalVariant['is_active'],
             'legacy_is_active' => $legacyActive,
             'published_price' => $publishedPrice,

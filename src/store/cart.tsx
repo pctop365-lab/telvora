@@ -70,6 +70,7 @@ function cartReducer(state: CartItem[], action: CartAction): CartItem[] {
           category: action.product.category,
           quantity: qty,
           assemblyCountry: variant?.country,
+          modelCode: variant?.modelCode ?? null,
           productVariantId: variant?.productVariantId,
           availability: variant?.availability,
         },

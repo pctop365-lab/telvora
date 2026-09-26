@@ -73,6 +73,7 @@ type Order = {
 
 type ProductVariant = {
   country: string;
+  model_code?: string;
   price: string;
   old_price: string;
   is_active?: boolean;
@@ -133,6 +134,7 @@ type AdminVariantListItem = {
   product_id: number;
   variant_key: string;
   assembly_country: string | null;
+  model_code?: string | null;
   relational_is_active: boolean;
   legacy_is_active: boolean | null;
   published_price: number | string | null;
@@ -804,10 +806,12 @@ export default function AdminPage() {
   const [variantViewLoading, setVariantViewLoading] = useState(false);
   const [variantViewError, setVariantViewError] = useState('');
   const [variantCountry, setVariantCountry] = useState('');
+  const [variantModelCode, setVariantModelCode] = useState('');
   const [variantMutationError, setVariantMutationError] = useState('');
   const [variantMutationNotice, setVariantMutationNotice] = useState('');
   const [variantMutationPendingKey, setVariantMutationPendingKey] = useState<string | null>(null);
   const [variantPriceDrafts, setVariantPriceDrafts] = useState<Record<number, { price: string; oldPrice: string }>>({});
+  const [variantModelDrafts, setVariantModelDrafts] = useState<Record<number, string>>({});
   const variantViewRequestRef = useRef<AbortController | null>(null);
   const variantViewRequestSequenceRef = useRef(0);
   const variantMutationRequestRef = useRef<AbortController | null>(null);
@@ -979,6 +983,7 @@ const login = async (e: React.FormEvent) => {
       setVariantMutationError('');
       setVariantMutationNotice('');
       setVariantCountry('');
+      setVariantModelCode('');
       setVariantPriceDrafts({});
     }
     variantViewRequestRef.current?.abort();
@@ -1029,6 +1034,10 @@ const login = async (e: React.FormEvent) => {
         variant.product_variant_id,
         { price: variant.published_price === null ? '' : String(variant.published_price), oldPrice: variant.old_price === null ? '' : String(variant.old_price) },
       ])));
+      setVariantModelDrafts(Object.fromEntries((Array.isArray(data.variants) ? data.variants : []).map((variant) => [
+        variant.product_variant_id,
+        variant.model_code ?? '',
+      ])));
       return true;
     } catch (error) {
       if (
@@ -1072,7 +1081,7 @@ const login = async (e: React.FormEvent) => {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-Token': csrfToken || '' },
-        body: JSON.stringify({ action: action === 'add' ? 'variant_add' : action === 'set_active' ? 'variant_set_active' : action === 'price_manual' ? 'variant_price_set_manual' : 'variant_price_set_automatic', ...payload }),
+        body: JSON.stringify({ action: action === 'add' ? 'variant_add' : action === 'model_update' ? 'variant_model_update' : action === 'set_active' ? 'variant_set_active' : action === 'price_manual' ? 'variant_price_set_manual' : 'variant_price_set_automatic', ...payload }),
         signal: controller.signal,
       });
       const data = await response.json().catch(() => null) as { success?: boolean } | null;
@@ -1090,7 +1099,8 @@ const login = async (e: React.FormEvent) => {
       if (!isCurrentVariantMutation(requestSequence, variantMutationRequestSequenceRef.current, controller.signal.aborted)) return;
       if (refreshed) {
         setVariantCountry('');
-        setVariantMutationNotice(action === 'add' ? 'Вариант добавлен как черновик. Цена ещё не опубликована.' : action === 'set_active' ? 'Статус варианта обновлён.' : action === 'price_manual' ? 'Ручная розничная цена сохранена.' : 'Восстановлен автоматический режим цены.');
+        setVariantModelCode('');
+        setVariantMutationNotice(action === 'add' ? 'Вариант добавлен как черновик. Цена ещё не опубликована.' : action === 'model_update' ? 'Модель варианта сохранена.' : action === 'set_active' ? 'Статус варианта обновлён.' : action === 'price_manual' ? 'Ручная розничная цена сохранена.' : 'Восстановлен автоматический режим цены.');
       } else {
         setVariantMutationError('Изменение принято сервером, но подтвердить новое состояние не удалось. Повторите загрузку списка.');
       }
@@ -1126,7 +1136,9 @@ const login = async (e: React.FormEvent) => {
     setVariantMutationError('');
     setVariantMutationNotice('');
     setVariantCountry('');
+    setVariantModelCode('');
     setVariantPriceDrafts({});
+    setVariantModelDrafts({});
   };
 
   const loadSuppliers = async () => {
@@ -2688,6 +2700,7 @@ if (!response.ok || !data.success || !data.image) {
       ...current,
       {
         country: '',
+        model_code: '',
         price: '',
         old_price: '',
         is_active: true,
@@ -2697,7 +2710,7 @@ if (!response.ok || !data.success || !data.image) {
 
   const updateFormVariant = (
     index: number,
-    field: 'country' | 'price' | 'old_price',
+    field: 'country' | 'model_code' | 'price' | 'old_price',
     value: string
   ) => {
     setVariants((current) =>
@@ -2741,6 +2754,7 @@ if (!response.ok || !data.success || !data.image) {
 
     const normalizedVariants = variants.map((variant) => ({
       country: String(variant.country || '').trim(),
+      model_code: String(variant.model_code || '').trim() || null,
       price: 0,
       old_price: null,
       is_active: true,
@@ -5272,7 +5286,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                           event.preventDefault();
                           const country = variantCountry.trim();
                           if (!country || variantMutationPendingRef.current) return;
-                          void mutateAdminVariant(variantViewProduct, 'add', { product_id: variantViewProduct.id, assembly_country: country }, `add:${variantViewProduct.id}`);
+                          void mutateAdminVariant(variantViewProduct, 'add', { product_id: variantViewProduct.id, assembly_country: country, model_code: variantModelCode }, `add:${variantViewProduct.id}`);
                         }}
                       >
                         <label className="flex-1 text-sm text-graphite-300">
@@ -5285,6 +5299,18 @@ const toggleProductStatus = async (product: AdminProduct) => {
                             autoComplete="off"
                             className="mt-2 w-full rounded-lg border border-white/15 bg-graphite-900 px-3 py-2.5 text-white outline-none transition placeholder:text-graphite-500 focus:border-accent-500"
                             placeholder="Например, Россия"
+                          />
+                        </label>
+                        <label className="flex-1 text-sm text-graphite-300">
+                          Модель варианта
+                          <input
+                            value={variantModelCode}
+                            onChange={(event) => setVariantModelCode(event.target.value)}
+                            disabled={variantMutationPendingKey !== null}
+                            maxLength={191}
+                            autoComplete="off"
+                            className="mt-2 w-full rounded-lg border border-white/15 bg-graphite-900 px-3 py-2.5 text-white outline-none transition placeholder:text-graphite-500 focus:border-accent-500"
+                            placeholder="Например, OLED48C6RLA"
                           />
                         </label>
                         <button
@@ -5327,6 +5353,25 @@ const toggleProductStatus = async (product: AdminProduct) => {
                               {variant.relational_is_active ? 'Активен' : 'Отключён'}
                             </span>
                           </div>
+                          <label className="mt-4 block text-sm text-graphite-300">
+                            Модель варианта
+                            <div className="mt-1 flex gap-2">
+                              <input
+                                value={variantModelDrafts[variant.product_variant_id] ?? ''}
+                                onChange={(event) => setVariantModelDrafts((current) => ({ ...current, [variant.product_variant_id]: event.target.value }))}
+                                disabled={variantMutationPendingKey !== null}
+                                maxLength={191}
+                                className="min-w-0 flex-1 rounded-lg border border-white/15 bg-graphite-900 px-3 py-2 text-white"
+                                placeholder="Не задана"
+                              />
+                              <button
+                                type="button"
+                                disabled={variantMutationPendingKey !== null}
+                                onClick={() => void mutateAdminVariant(variantViewProduct, 'model_update', { product_id: variantViewProduct.id, product_variant_id: variant.product_variant_id, model_code: variantModelDrafts[variant.product_variant_id] ?? '' }, `model:${variant.product_variant_id}`)}
+                                className="rounded-lg border border-accent-300/30 px-3 py-2 text-sm text-accent-100 disabled:opacity-40"
+                              >Сохранить</button>
+                            </div>
+                          </label>
                           <div className={`mt-4 text-lg font-bold ${variant.identity_ready && variant.has_published_price ? 'text-white' : 'text-graphite-300'}`}>{formatPublishedVariantPrice(variant)}</div>
                           {variant.identity_ready && (
                             <div className="mt-4 rounded-lg border border-white/10 bg-black/10 p-3">
@@ -5971,7 +6016,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                       {variants.map((variant, index) => (
                         <div
                           key={index}
-                          className="grid grid-cols-1 items-end gap-3 rounded-xl border border-white/10 bg-graphite-950/60 p-4 md:grid-cols-[1fr_auto]"
+                          className="grid grid-cols-1 items-end gap-3 rounded-xl border border-white/10 bg-graphite-950/60 p-4 md:grid-cols-[1fr_1fr_auto]"
                         >
                           <div>
                             <label className="block text-sm text-gray-600 mb-2">
@@ -5990,7 +6035,21 @@ const toggleProductStatus = async (product: AdminProduct) => {
   }
   className="admin-input"
   placeholder="Например: США"
-/>
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-sm text-gray-600 mb-2">
+                              Модель варианта
+                            </label>
+                            <input
+                              type="text"
+                              value={variant.model_code || ''}
+                              onChange={(event) => updateFormVariant(index, 'model_code', event.target.value)}
+                              maxLength={191}
+                              className="admin-input"
+                              placeholder="Например: OLED48C6RLA"
+                            />
                           </div>
 
                           <button

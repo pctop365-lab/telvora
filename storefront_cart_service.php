@@ -10,6 +10,16 @@ final class StorefrontCartException extends RuntimeException
 {
 }
 
+function storefrontCartVariantName(array $item): string
+{
+    $name = (string)($item['name'] ?? '');
+    $modelCode = trim((string)($item['model_code'] ?? ''));
+    if ($modelCode === '') return $name;
+    $pattern = '/(?<![\p{L}\p{N}])(?=[\p{L}\p{N}-]*\d)[\p{L}\p{N}-]{5,}(?![\p{L}\p{N}])/u';
+    $updated = preg_replace($pattern, static fn(): string => $modelCode, $name, 1);
+    return is_string($updated) && $updated !== $name ? $updated : $name . ' — модель: ' . $modelCode;
+}
+
 function storefrontCartResolve(PDO $pdo, array $items, bool $lock = false): array
 {
     if ($items === [] || count($items) > 100) throw new StorefrontCartException('Invalid cart');
@@ -31,7 +41,7 @@ function storefrontCartResolve(PDO $pdo, array $items, bool $lock = false): arra
     if ($variantIds !== []) { $conditions[] = 'pv.id IN (' . implode(',', array_fill(0, count($variantIds), '?')) . ')'; array_push($params, ...$variantIds); }
     if ($legacySlugs !== []) { $conditions[] = 'p.slug IN (' . implode(',', array_fill(0, count($legacySlugs), '?')) . ')'; array_push($params, ...$legacySlugs); }
     $sql = "SELECT pv.id AS product_variant_id, p.id AS id, pv.product_id, pv.variant_key, pv.assembly_country,
-                   pv.display_name, pv.is_active AS variant_active, p.slug, p.name, p.screen_size, p.variants,
+                   pv.manufacturer_part_number, pv.display_name, pv.is_active AS variant_active, p.slug, p.name, p.screen_size, p.variants,
                    p.is_active AS product_active
             FROM product_variants pv INNER JOIN products p ON p.id = pv.product_id
             WHERE (" . implode(' OR ', $conditions) . ')';
@@ -75,7 +85,7 @@ function storefrontCartResolve(PDO $pdo, array $items, bool $lock = false): arra
         $lockIds = array_values(array_unique(array_map('intval', $resolvedVariantIds)));
         sort($lockIds, SORT_NUMERIC);
         $lockSql = "SELECT pv.id AS product_variant_id, p.id AS id, pv.product_id, pv.variant_key, pv.assembly_country,
-                           pv.display_name, pv.is_active AS variant_active, p.slug, p.name, p.screen_size, p.variants,
+                           pv.manufacturer_part_number, pv.display_name, pv.is_active AS variant_active, p.slug, p.name, p.screen_size, p.variants,
                            p.is_active AS product_active
                     FROM product_variants pv INNER JOIN products p ON p.id = pv.product_id
                     WHERE pv.id IN (" . implode(',', array_fill(0, count($lockIds), '?')) . ")
@@ -124,7 +134,9 @@ function storefrontCartResolve(PDO $pdo, array $items, bool $lock = false): arra
         }
         $results[] = storefrontAvailabilityPublic($availability, $id) + [
             'product_id' => $row['product_id'], 'slug' => $row['slug'], 'name' => $row['name'],
-            'assembly_country' => $row['_identity']['target']['country'], 'screen_size' => $row['screen_size'],
+            'assembly_country' => $row['_identity']['target']['country'],
+            'model_code' => $row['manufacturer_part_number'] === null || trim((string)$row['manufacturer_part_number']) === '' ? null : (string)$row['manufacturer_part_number'],
+            'screen_size' => $row['screen_size'],
             'quantity' => $item['quantity'], 'price' => $effectivePrice['price'],
             '_qualifying_offer_id' => $availability['qualifying_offer_id']
         ];
@@ -137,6 +149,7 @@ function storefrontCartPublic(array $resolved): array
     return ['all_orderable' => $resolved['all_orderable'], 'items' => array_map(static fn(array $item): array => [
         'product_id' => $item['product_id'] ?? null, 'product_variant_id' => $item['product_variant_id'],
         'slug' => $item['slug'] ?? null, 'assembly_country' => $item['assembly_country'] ?? null,
+        'model_code' => $item['model_code'] ?? null,
         'price' => $item['price'] ?? null,
         'status' => $item['status'], 'orderable' => $item['orderable'],
         'expected_arrival_at' => $item['expected_arrival_at'],

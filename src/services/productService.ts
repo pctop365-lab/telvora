@@ -41,6 +41,7 @@ type ApiProduct = {
   storefront_variants?: Array<{
     product_variant_id: number;
     country: string;
+    model_code?: string | null;
     display_name?: string | null;
     price: number | string;
     old_price?: number | string | null;
@@ -100,6 +101,9 @@ export function normalizeProduct(product: ApiProduct): Product {
       ? product.storefront_variants.map((variant) => ({
           productVariantId: Number(variant.product_variant_id),
           country: String(variant.country || ''),
+          modelCode: variant.model_code === null || variant.model_code === undefined || variant.model_code === ''
+            ? null
+            : String(variant.model_code),
           displayName: variant.display_name ? String(variant.display_name) : undefined,
           price: Number(variant.price || 0),
           oldPrice:

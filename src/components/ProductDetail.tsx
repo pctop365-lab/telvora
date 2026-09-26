@@ -11,6 +11,13 @@ import ProductGallery from './ProductGallery';
 import SeoMetadata from './SeoMetadata';
 import { absoluteTelvoraUrl } from '@/lib/seo';
 
+export function formatVariantProductName(productName: string, modelCode?: string | null): string {
+  const code = modelCode?.trim();
+  if (!code) return productName;
+  const modelToken = productName.match(/\b(?=[A-Za-zА-Яа-я0-9-]*[A-Za-zА-Яа-я])(?=[A-Za-zА-Яа-я0-9-]*\d)[A-Za-zА-Яа-я0-9-]{5,}\b/)?.[0];
+  return modelToken ? productName.replace(modelToken, code) : productName;
+}
+
 type ProductDetailProps = {
   product: Product;
 };
@@ -54,6 +61,7 @@ export default function ProductDetail({ product }: ProductDetailProps) {
   // Keep only the choice, so API revalidation cannot leave a stale price/availability object.
   const [selectedVariantId, setSelectedVariantId] = useState<number | undefined>(activeVariants[0]?.productVariantId);
   const selectedVariant = activeVariants.find(variant => variant.productVariantId === selectedVariantId) ?? activeVariants[0];
+  const displayedProductName = formatVariantProductName(product.name, selectedVariant?.modelCode);
 
   const currentPrice = selectedVariant
   ? Number(selectedVariant.price)
@@ -195,8 +203,11 @@ const productUrl =
             </div>
 
             <h1 className="font-display font-extrabold text-3xl sm:text-4xl text-white leading-tight">
-              {product.name}
+              {displayedProductName}
             </h1>
+            {selectedVariant?.modelCode && displayedProductName === product.name && (
+              <div className="mt-2 text-sm text-graphite-400">Модель: <span className="font-medium text-graphite-200">{selectedVariant.modelCode}</span></div>
+            )}
 
             <div className="flex items-center gap-2 mt-4">
               <div className="flex items-center gap-0.5">

@@ -29,6 +29,18 @@ function productVariantMutationCountry(PDO $pdo, mixed $value): array
     }
 }
 
+function productVariantMutationModelCode(mixed $value): ?string
+{
+    if ($value === null) return null;
+    if (!is_string($value)) throw new ProductVariantMutationException(400, 'Некорректная модель варианта');
+    $code = trim($value);
+    if ($code === '') return null;
+    if (!mb_check_encoding($code, 'UTF-8') || mb_strlen($code, 'UTF-8') > 191 || preg_match('/[\x00-\x1F\x7F]/u', $code) === 1) {
+        throw new ProductVariantMutationException(400, 'Некорректная модель варианта');
+    }
+    return $code;
+}
+
 function productVariantMutationLegacy(PDO $pdo, array $product): array
 {
     $raw = $product['variants'] ?? null;
@@ -70,13 +82,14 @@ function productVariantMutationRun(PDO $pdo, callable $operation, int $maxAttemp
     throw new LogicException('Variant mutation retry loop exhausted');
 }
 
-function productVariantAdd(PDO $pdo, int $productId, string $country): array
+function productVariantAdd(PDO $pdo, int $productId, string $country, ?string $modelCode = null): array
 {
     $countryDetail = productVariantMutationCountry($pdo, $country);
-    return productVariantMutationRun($pdo, static function () use ($pdo,$productId,$countryDetail): array {
+    $modelCode = productVariantMutationModelCode($modelCode);
+    return productVariantMutationRun($pdo, static function () use ($pdo,$productId,$countryDetail,$modelCode): array {
         try {
-            $stmt=$pdo->prepare("INSERT INTO product_variants (product_id,variant_key,assembly_country,display_name,classification_status,classification_evidence,is_active) VALUES (:product_id,:variant_key,:assembly_country,:display_name,'requires_classification',NULL,1)");
-            $stmt->execute([':product_id'=>$productId,':variant_key'=>'legacy-country-sha256-'.hash('sha256',$countryDetail['country']),':assembly_country'=>$countryDetail['country'],':display_name'=>$countryDetail['country']]);
+            $stmt=$pdo->prepare("INSERT INTO product_variants (product_id,variant_key,assembly_country,manufacturer_part_number,display_name,classification_status,classification_evidence,is_active) VALUES (:product_id,:variant_key,:assembly_country,:model_code,:display_name,'requires_classification',NULL,1)");
+            $stmt->execute([':product_id'=>$productId,':variant_key'=>'legacy-country-sha256-'.hash('sha256',$countryDetail['country']),':assembly_country'=>$countryDetail['country'],':model_code'=>$modelCode,':display_name'=>$countryDetail['country']]);
         } catch (PDOException $error) {
             if ((int)($error->errorInfo[1] ?? 0) === 1062) throw new ProductVariantMutationException(409, 'Такая страна сборки уже существует');
             if ((int)($error->errorInfo[1] ?? 0) === 1452) throw new ProductVariantMutationException(404, 'Товар не найден');
@@ -92,7 +105,22 @@ function productVariantAdd(PDO $pdo, int $productId, string $country): array
         $legacy['variants'][]=['country'=>$countryDetail['country'],'price'=>0,'old_price'=>null,'is_active'=>true];
         $encoded=json_encode($legacy['variants'],JSON_UNESCAPED_UNICODE|JSON_PRESERVE_ZERO_FRACTION|JSON_THROW_ON_ERROR);
         $pdo->prepare('UPDATE products SET variants=:variants WHERE id=:id')->execute([':variants'=>$encoded,':id'=>$productId]);
-        return ['product_id'=>$productId,'product_variant_id'=>$variantId,'variant_key'=>'legacy-country-sha256-'.hash('sha256',$countryDetail['country']),'assembly_country'=>$countryDetail['country'],'is_active'=>true];
+        return ['product_id'=>$productId,'product_variant_id'=>$variantId,'variant_key'=>'legacy-country-sha256-'.hash('sha256',$countryDetail['country']),'assembly_country'=>$countryDetail['country'],'model_code'=>$modelCode,'is_active'=>true];
+    });
+}
+
+function productVariantUpdateModelCode(PDO $pdo, int $productId, int $variantId, mixed $rawModelCode): array
+{
+    $modelCode = productVariantMutationModelCode($rawModelCode);
+    return productVariantMutationRun($pdo, static function () use ($pdo, $productId, $variantId, $modelCode): array {
+        $lock = $pdo->prepare('SELECT id, product_id FROM product_variants WHERE id = :id FOR UPDATE');
+        $lock->execute([':id' => $variantId]);
+        $variant = $lock->fetch();
+        if (!is_array($variant)) throw new ProductVariantMutationException(404, 'Вариант не найден');
+        if ((int)$variant['product_id'] !== $productId) throw new ProductVariantMutationException(404, 'Вариант не найден');
+        $update = $pdo->prepare('UPDATE product_variants SET manufacturer_part_number = :model_code WHERE id = :id AND product_id = :product_id');
+        $update->execute([':model_code' => $modelCode, ':id' => $variantId, ':product_id' => $productId]);
+        return ['product_id' => $productId, 'product_variant_id' => $variantId, 'model_code' => $modelCode];
     });
 }
 

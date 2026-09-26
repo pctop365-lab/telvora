@@ -111,6 +111,7 @@ export default function CartDrawer() {
                     <p className="text-xs text-graphite-600 dark:text-graphite-400 mt-0.5">
                       {item.screenSize} · {item.category}
                     </p>
+                    {item.modelCode && <p className="text-xs text-graphite-600 dark:text-graphite-400 mt-0.5">Модель: {item.modelCode}</p>}
                     {item.availability && <div className="mt-1"><AvailabilityStatus availability={item.availability} compact /></div>}
                     {item.validationError && <p className="mt-1 text-xs text-red-500">{item.validationError}</p>}
 

@@ -269,7 +269,7 @@ function attachStorefrontVariants(PDO $pdo, array $products): array
     $productIds = array_values(array_map(static fn(array $product): int => (int)$product['id'], $products));
     if ($productIds === []) return $products;
     $placeholders = implode(',', array_fill(0, count($productIds), '?'));
-    $stmt = $pdo->prepare("SELECT id, product_id, variant_key, assembly_country, display_name, is_active
+    $stmt = $pdo->prepare("SELECT id, product_id, variant_key, assembly_country, manufacturer_part_number, display_name, is_active
                            FROM product_variants
                            WHERE product_id IN ($placeholders) AND is_active = 1
                            ORDER BY product_id ASC, id ASC");
@@ -312,6 +312,9 @@ function attachStorefrontVariants(PDO $pdo, array $products): array
             $publicVariants[] = [
                 'product_variant_id' => $variant['id'],
                 'country' => $identity['target']['country'],
+                'model_code' => $variant['manufacturer_part_number'] === null || trim((string)$variant['manufacturer_part_number']) === ''
+                    ? null
+                    : (string)$variant['manufacturer_part_number'],
                 'display_name' => $variant['display_name'],
                 'price' => $effectivePrice['price'],
                 'old_price' => $effectivePrice['old_price'],
@@ -421,7 +424,7 @@ if (empty($_SESSION['telvora_admin'])) {
 |--------------------------------------------------------------------------
 */
 
-if (in_array($action, ['upload_image', 'upload_gallery', 'gallery_save', 'add', 'update', 'delete', 'variant_add', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic', 'request_publish', 'request_unpublish', 'bulk_publish_prepare', 'bulk_publish_confirm'], true)) {
+if (in_array($action, ['upload_image', 'upload_gallery', 'gallery_save', 'add', 'update', 'delete', 'variant_add', 'variant_model_update', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic', 'request_publish', 'request_unpublish', 'bulk_publish_prepare', 'bulk_publish_confirm'], true)) {
     $sessionToken = $_SESSION['csrf_token'] ?? '';
     $requestToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 
@@ -507,7 +510,7 @@ if (in_array($action, ['request_publish', 'request_unpublish'], true)) {
     exit;
 }
 
-if (in_array($action, ['variant_add', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic'], true)) {
+if (in_array($action, ['variant_add', 'variant_model_update', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic'], true)) {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         http_response_code(405);
         echo json_encode(['success'=>false,'message'=>'Метод не поддерживается'],JSON_UNESCAPED_UNICODE);
@@ -518,7 +521,10 @@ if (in_array($action, ['variant_add', 'variant_set_active', 'variant_price_set_m
     try {
         if ($action === 'variant_add') {
             if ($productId===null) throw new ProductVariantMutationException(400,'Некорректный ID товара');
-            $result=productVariantAdd($pdo,$productId,$data['assembly_country'] ?? null);
+            $result=productVariantAdd($pdo,$productId,$data['assembly_country'] ?? null,$data['model_code'] ?? null);
+        } elseif ($action === 'variant_model_update') {
+            if ($productId===null || $variantId===null) throw new ProductVariantMutationException(400,'Некорректный ID товара или варианта');
+            $result=productVariantUpdateModelCode($pdo,$productId,$variantId,$data['model_code'] ?? null);
         } elseif ($action === 'variant_set_active') {
             if ($variantId===null) throw new ProductVariantMutationException(400,'Некорректный ID варианта');
             $active=$data['is_active'] ?? null;
@@ -906,6 +912,7 @@ if ($action === 'add') {
             'SELECT HEX(WEIGHT_STRING(CAST(:value AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci))'
         );
         $canonicalVariants = [];
+        $variantModelCodes = [];
         $seenCountryWeights = [];
 
         foreach ($variants as $variant) {
@@ -932,6 +939,7 @@ if ($action === 'add') {
                 throw new InvalidArgumentException('Страны сборки не должны повторяться');
             }
             $seenCountryWeights[$countryWeight] = true;
+            $variantModelCodes[] = productVariantMutationModelCode($variant['model_code'] ?? null);
             $canonicalVariants[] = [
                 'country' => $variantCountry,
                 'price' => 0,
@@ -1060,15 +1068,16 @@ if ($action === 'add') {
                 display_name, classification_status, classification_evidence, is_active
             ) VALUES (
                 :product_id, :variant_key, :assembly_country, NULL,
-                NULL, NULL, :display_name, 'requires_classification', NULL, 1
+                NULL, :model_code, :display_name, 'requires_classification', NULL, 1
             )
         ");
         $productVariantIds = [];
-        foreach ($canonicalVariants as $variant) {
+        foreach ($canonicalVariants as $variantIndex => $variant) {
             $variantStmt->execute([
                 ':product_id' => $productId,
                 ':variant_key' => 'legacy-country-sha256-' . hash('sha256', $variant['country']),
                 ':assembly_country' => $variant['country'],
+                ':model_code' => $variantModelCodes[$variantIndex] ?? null,
                 ':display_name' => $variant['country']
             ]);
             $productVariantIds[] = (int)$pdo->lastInsertId();

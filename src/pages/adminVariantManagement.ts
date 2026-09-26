@@ -1,4 +1,4 @@
-export type VariantMutationAction = 'add' | 'set_active' | 'price_manual' | 'price_automatic';
+export type VariantMutationAction = 'add' | 'model_update' | 'set_active' | 'price_manual' | 'price_automatic';
 
 export function variantMutationErrorMessage(status: number, action: VariantMutationAction): string {
   const priceAction = action === 'price_manual' || action === 'price_automatic';

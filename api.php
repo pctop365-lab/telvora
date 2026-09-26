@@ -348,7 +348,7 @@ try {
     $serverItems = $cartResolution['items'];
     $subtotal = 0.0;
     foreach ($serverItems as &$serverItem) {
-        $serverItem['name'] .= ' — страна сборки: ' . $serverItem['assembly_country'];
+        $serverItem['name'] = storefrontCartVariantName($serverItem) . ' — страна сборки: ' . $serverItem['assembly_country'];
         $serverItem['price'] = (float)$serverItem['price'];
         $subtotal += $serverItem['price'] * $serverItem['quantity'];
     }
@@ -387,7 +387,7 @@ try {
     if (!$lockedResolution['all_orderable']) throw new AvailabilityChangedException(storefrontCartPublic($lockedResolution));
     $serverItems = $lockedResolution['items'];
     foreach ($serverItems as &$serverItem) {
-        $serverItem['name'] .= ' — страна сборки: ' . $serverItem['assembly_country'];
+        $serverItem['name'] = storefrontCartVariantName($serverItem) . ' — страна сборки: ' . $serverItem['assembly_country'];
         $serverItem['price'] = (float)$serverItem['price'];
     }
     unset($serverItem);
@@ -605,6 +605,7 @@ echo json_encode([
         'product_variant_id' => $item['product_variant_id'],
         'slug' => $item['slug'],
         'assembly_country' => $item['assembly_country'],
+        'model_code' => $item['model_code'] ?? null,
         'name' => $item['name'],
         'quantity' => $item['quantity'],
         'price' => $item['price']

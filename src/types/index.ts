@@ -17,6 +17,7 @@ export type PublicVariantAvailability = {
 export type ProductVariant = {
   productVariantId: number;
   country: string;
+  modelCode?: string | null;
   displayName?: string;
   price: number;
   oldPrice?: number;
@@ -63,6 +64,7 @@ export type CartItem = {
   category: ProductCategory;
   quantity: number;
   assemblyCountry?: string;
+  modelCode?: string | null;
   productId: string;
   productVariantId?: number;
   availability?: PublicVariantAvailability;
