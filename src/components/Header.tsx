@@ -143,7 +143,7 @@ export default function Header() {
                   className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${
                     isLight
                       ? 'text-graphite-400 group-focus-within:text-accent-500'
-                      : 'text-graphite-500 group-focus-within:text-accent-500'
+                      : 'text-graphite-300 group-focus-within:text-accent-500'
                   }`}
                 />
 
@@ -155,7 +155,7 @@ export default function Header() {
                   className={`w-full pl-10 pr-4 py-2.5 text-sm rounded-xl focus:outline-none focus:border-accent-500/50 transition-all ${
                     isLight
                       ? 'bg-graphite-50 border border-graphite-200 text-graphite-900 placeholder:text-graphite-400 focus:bg-white'
-                      : 'bg-white/5 border border-graphite-700 text-white placeholder:text-graphite-500 focus:bg-white/10'
+                      : 'bg-white/5 border border-graphite-700 text-white placeholder:text-graphite-300 focus:bg-white/10'
                   }`}
                 />
               </div>
@@ -285,7 +285,7 @@ export default function Header() {
                 className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${
                   isLight
                     ? 'text-graphite-400'
-                    : 'text-graphite-500'
+                    : 'text-graphite-300'
                 }`}
               />
 
@@ -297,7 +297,7 @@ export default function Header() {
                 className={`w-full pl-10 pr-4 py-3 text-sm rounded-xl focus:outline-none focus:border-accent-500/50 ${
                   isLight
                     ? 'bg-graphite-50 border border-graphite-200 text-graphite-900 placeholder:text-graphite-400'
-                    : 'bg-white/5 border border-graphite-700 text-white placeholder:text-graphite-500'
+                    : 'bg-white/5 border border-graphite-700 text-white placeholder:text-graphite-300'
                 }`}
               />
             </form>

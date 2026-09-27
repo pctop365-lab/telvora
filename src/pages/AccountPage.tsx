@@ -1,72 +1,78 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
+import { AlertCircle, CheckCircle2, ChevronRight, LockKeyhole, LogOut, Mail, Phone, Save, ShieldCheck, UserRound } from 'lucide-react';
 import { useCustomer } from '@/store/customer';
 import { loadCustomerOrders, type OrderHistory } from '@/services/customerService';
 import CustomerOrders from '@/components/CustomerOrders';
 
-const inputClass = 'mt-1 w-full rounded-xl border border-graphite-200 dark:border-white/10 bg-white dark:bg-graphite-900 px-4 py-3 focus:ring-2 focus:ring-accent-500 outline-none';
-const buttonClass = 'rounded-xl bg-accent-500 hover:bg-accent-600 px-5 py-3 text-white font-medium disabled:opacity-50';
+const inputClass = 'mt-2 w-full rounded-xl border border-graphite-200 bg-white px-4 py-3 text-[15px] text-graphite-900 outline-none transition placeholder:text-graphite-400 focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 dark:border-white/10 dark:bg-graphite-900 dark:text-white dark:placeholder:text-graphite-400';
+const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-xl bg-accent-500 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-500/40 disabled:cursor-not-allowed disabled:opacity-50';
+type NoticeKind = 'success' | 'error' | 'info';
+
+function Notice({ kind, children }: { kind: NoticeKind; children: ReactNode }) {
+  const styles = { success: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200', error: 'border-red-500/25 bg-red-500/10 text-red-800 dark:text-red-200', info: 'border-accent-500/25 bg-accent-500/10 text-accent-800 dark:text-accent-200' };
+  const Icon = kind === 'success' ? CheckCircle2 : kind === 'error' ? AlertCircle : ShieldCheck;
+  return <div role={kind === 'error' ? 'alert' : 'status'} className={`flex items-start gap-3 rounded-2xl border px-4 py-3 text-sm leading-6 ${styles[kind]}`}><Icon className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" /><span>{children}</span></div>;
+}
+
 export default function AccountPage() {
   const { customer, loading, error, recoveryAvailable, refresh, act } = useCustomer();
   const [mode, setMode] = useState<'login' | 'register' | 'reset_request'>('login');
   const [login, setLogin] = useState(''); const [password, setPassword] = useState(''); const [repeat, setRepeat] = useState('');
-  const [message, setMessage] = useState(''); const [busy, setBusy] = useState(false);
-  const [profile, setProfile] = useState({ full_name: '', phone: '', email: '', address: '' });
-  const [history, setHistory] = useState<OrderHistory>({ orders: [], page: 1, total: 0 });
-  const [historyError, setHistoryError] = useState('');
-  const [token, setToken] = useState<{ purpose: 'verify' | 'reset'; value: string } | null>(() => {
-    const match = typeof window !== 'undefined' ? /^#(verify|reset)=([a-f0-9]{64})$/.exec(window.location.hash) : null;
-    return match ? { purpose: match[1] as 'verify' | 'reset', value: match[2] } : null;
-  });
+  const [message, setMessage] = useState(''); const [noticeKind, setNoticeKind] = useState<NoticeKind>('info'); const [busy, setBusy] = useState(false);
+  const [profile, setProfile] = useState({ full_name: '', phone: '', email: '', address: '' }); const [profileDirty, setProfileDirty] = useState(false);
+  const [history, setHistory] = useState<OrderHistory>({ orders: [], page: 1, total: 0 }); const [historyError, setHistoryError] = useState('');
+  const [token, setToken] = useState<{ purpose: 'verify' | 'reset'; value: string } | null>(() => { const match = typeof window !== 'undefined' ? /^#(verify|reset)=([a-f0-9]{64})$/.exec(window.location.hash) : null; return match ? { purpose: match[1] as 'verify' | 'reset', value: match[2] } : null; });
+
   useEffect(() => { if (token) window.history.replaceState(null, '', window.location.pathname); }, [token]);
-  useEffect(() => { if (customer) setProfile({ full_name: customer.full_name, phone: customer.phone, email: customer.email, address: customer.address }); }, [customer]);
-  const loadOrders = async (page: number) => { try { setHistory(await loadCustomerOrders(page)); setHistoryError(''); } catch (error) { setHistoryError(error instanceof Error ? error.message : 'Не удалось загрузить заказы.'); } };
-  useEffect(() => {
-    let cancelled = false;
-    setHistory({ orders: [], page: 1, total: 0 }); setHistoryError('');
-    if (customer) loadCustomerOrders(1).then(result => { if (!cancelled) setHistory(result); }).catch(error => { if (!cancelled) setHistoryError(error instanceof Error ? error.message : 'Не удалось загрузить заказы.'); });
-    return () => { cancelled = true; };
-  }, [customer?.id]);
+  useEffect(() => { if (customer) { setProfile({ full_name: customer.full_name, phone: customer.phone, email: customer.email, address: customer.address }); setProfileDirty(false); } }, [customer]);
+  const loadOrders = async (page: number) => { try { setHistory(await loadCustomerOrders(page)); setHistoryError(''); } catch (err) { setHistoryError(err instanceof Error ? err.message : 'Не удалось загрузить заказы.'); } };
+  useEffect(() => { let cancelled = false; setHistory({ orders: [], page: 1, total: 0 }); setHistoryError(''); if (customer) loadCustomerOrders(1).then(result => { if (!cancelled) setHistory(result); }).catch(err => { if (!cancelled) setHistoryError(err instanceof Error ? err.message : 'Не удалось загрузить заказы.'); }); return () => { cancelled = true; }; }, [customer?.id]);
+
   const run = async (action: string, data: Record<string, unknown>, success: string) => {
     setBusy(true); setMessage('');
-    try { const result = await act(action, data); setMessage(result.message || success); setPassword(''); setRepeat(''); if (['register', 'login', 'logout'].includes(action)) setMode('login'); if (action.endsWith('_token')) { setToken(null); await refresh(); } }
-    catch (error) { setMessage(error instanceof Error ? error.message : 'Не удалось выполнить действие.'); }
+    try { const result = await act(action, data); setNoticeKind('success'); setMessage(result.message || success); setPassword(''); setRepeat(''); if (action === 'profile') setProfileDirty(false); if (['register', 'login', 'logout'].includes(action)) setMode('login'); if (action.endsWith('_token')) { setToken(null); await refresh(); } }
+    catch (err) { setNoticeKind('error'); setMessage(err instanceof Error ? err.message : 'Не удалось выполнить действие.'); }
     finally { setBusy(false); }
   };
   const submitAuth = (event: FormEvent) => { event.preventDefault(); void run(mode, { login, password, password_repeat: repeat }, ''); };
-  return <div className="max-w-4xl mx-auto px-4 pt-36 pb-16">
-    <h1 className="font-display text-3xl font-bold mb-6">Личный кабинет</h1>
-    {loading ? <p>Загрузка…</p> : <>
-      {error && <p role="alert" className="mb-4">{error} <button onClick={() => void refresh()} className="text-accent-500">Повторить</button></p>}
-      {message && <p role="status" className="mb-4 rounded-xl border border-accent-500 p-4">{message}</p>}
-      {token ? <form className="space-y-4" onSubmit={event => { event.preventDefault(); void run(`${token.purpose}_token`, { token: token.value, password, password_repeat: repeat }, 'Готово.'); }}>
-        <h2 className="text-xl">{token.purpose === 'verify' ? 'Подтвердить email' : 'Новый пароль'}</h2>
-        {token.purpose === 'reset' && <><label className="block">Новый пароль<input className={inputClass} type="password" autoComplete="new-password" required minLength={10} maxLength={72} value={password} onChange={e => setPassword(e.target.value)} /></label><label className="block">Повтор пароля<input className={inputClass} type="password" autoComplete="new-password" required value={repeat} onChange={e => setRepeat(e.target.value)} /></label></>}
-        <button className={buttonClass} disabled={busy}>Подтвердить</button>
-      </form> : customer ? <>
-        <div className="flex flex-wrap justify-between gap-4 mb-6"><p className="break-all">Логин: <strong>{customer.login}</strong></p><button disabled={busy} onClick={() => void run('logout', {}, 'Вы вышли из аккаунта.')} className="text-accent-500">Выйти</button></div>
-        <form className="rounded-3xl bg-graphite-100 dark:bg-graphite-800 p-6 space-y-4" onSubmit={e => { e.preventDefault(); void run('profile', profile, 'Профиль сохранён.'); }}>
-          <h2 className="text-xl font-semibold">Данные для заказов</h2>
-          {([{ key: 'full_name', label: 'ФИО', type: 'text', auto: 'name', max: 200 }, { key: 'phone', label: 'Телефон', type: 'tel', auto: 'tel', max: 32 }, { key: 'email', label: 'Email (необязательно)', type: 'email', auto: 'email', max: 254 }, { key: 'address', label: 'Адрес доставки', type: 'text', auto: 'street-address', max: 1000 }] as const).map(field => <label key={field.key} className="block">{field.label}<input className={inputClass} type={field.type} autoComplete={field.auto} maxLength={field.max} value={profile[field.key]} onChange={e => setProfile({ ...profile, [field.key]: e.target.value })} /></label>)}
-          <button className={buttonClass} disabled={busy}>Сохранить профиль</button>
-          <p className="text-sm opacity-70">Изменение профиля не меняет ранее оформленные заказы.</p>
-        </form>
-        <div className="my-6 space-y-2"><h2 className="font-semibold">Восстановление доступа</h2>{recoveryAvailable ? customer.email_verified_at ? <p>Email подтверждён. Он доступен для восстановления пароля.</p> : <><p>Подтвердите сохранённый email, чтобы при необходимости восстановить пароль. Это необязательно.</p><button disabled={busy || !customer.email} className="text-accent-500 disabled:opacity-40" onClick={() => void run('verify_request', {}, '')}>Отправить письмо для подтверждения</button></> : <p>Восстановление по email пока не подключено.</p>}</div>
-        <h2 className="text-2xl font-display font-semibold mb-4">Мои заказы</h2>
-        {historyError && <p role="alert">{historyError} <button onClick={() => void loadOrders(history.page)}>Повторить</button></p>}
-        <CustomerOrders history={history} onPage={page => void loadOrders(page)} />
-      </> : <div className="max-w-lg rounded-3xl bg-graphite-100 dark:bg-graphite-800 p-6">
-        <div className="flex gap-6 mb-6"><button onClick={() => { setMode('login'); setMessage(''); }} className={mode === 'login' ? 'text-accent-500' : ''}>Вход</button><button onClick={() => { setMode('register'); setMessage(''); }} className={mode === 'register' ? 'text-accent-500' : ''}>Регистрация</button></div>
-        <form onSubmit={submitAuth} className="space-y-4">
-          <label className="block">Логин — никнейм или телефон<input className={inputClass} autoComplete="username" required maxLength={64} value={login} onChange={e => setLogin(e.target.value)} /></label>
-          {mode === 'register' && <p className="text-sm opacity-70">Никнейм: 3–32 латинских символа, начинается с буквы; допустимы цифры, точка, _ и -. Регистр не учитывается. Телефон — с кодом страны; 8 в начале российского номера равнозначна +7.</p>}
-          {mode !== 'reset_request' && <label className="block">Пароль<input className={inputClass} type="password" required minLength={mode === 'register' ? 10 : undefined} maxLength={72} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} /></label>}
-          {mode === 'register' && <><p className="text-sm opacity-70">Пароль: минимум 10 символов, максимум 72 байта (для кириллицы — до 36 символов).</p><label className="block">Повтор пароля<input className={inputClass} type="password" autoComplete="new-password" required value={repeat} onChange={e => setRepeat(e.target.value)} /></label><p className="text-sm">Создавая аккаунт, вы соглашаетесь с <Link className="text-accent-500" to="/privacy">политикой обработки персональных данных</Link>.</p></>}
-          <button className={buttonClass} disabled={busy || Boolean(error)}>{mode === 'register' ? 'Зарегистрироваться' : mode === 'reset_request' ? 'Восстановить доступ' : 'Войти'}</button>
-        </form>
-        {recoveryAvailable ? <button className="mt-5 text-sm text-accent-500" onClick={() => setMode('reset_request')}>Забыли пароль?</button> : <p className="mt-5 text-sm opacity-70">Восстановление по email пока не подключено.</p>}
-        <p className="mt-4 text-sm"><Link className="text-accent-500" to="/checkout">Оформить заказ без регистрации</Link></p>
-      </div>}
-    </>}
+  const updateProfile = (key: keyof typeof profile, value: string) => { setProfile(current => ({ ...current, [key]: value })); setProfileDirty(true); setMessage(''); };
+
+  if (loading) return <div className="mx-auto max-w-7xl px-4 pb-16 pt-32 sm:px-6 lg:px-8"><div className="rounded-3xl border border-graphite-200 bg-white p-8 text-center dark:border-white/10 dark:bg-graphite-800">Загрузка…</div></div>;
+
+  return <div className="mx-auto max-w-7xl px-4 pb-16 pt-32 sm:px-6 lg:px-8">
+    {token ? <section className="mx-auto max-w-xl rounded-3xl border border-graphite-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-graphite-800 sm:p-8">
+      <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-500/10 text-accent-600 dark:text-accent-300"><LockKeyhole className="h-6 w-6" aria-hidden="true" /></div>
+      <h1 className="font-display text-3xl font-bold text-graphite-950 dark:text-white">{token.purpose === 'verify' ? 'Подтвердить email' : 'Новый пароль'}</h1>
+      {token.purpose === 'reset' && <form className="mt-6 space-y-4" onSubmit={event => { event.preventDefault(); void run(`${token.purpose}_token`, { token: token.value, password, password_repeat: repeat }, 'Готово.'); }}><label className="block text-sm font-medium">Новый пароль<input className={inputClass} type="password" autoComplete="new-password" required minLength={10} maxLength={72} value={password} onChange={e => setPassword(e.target.value)} /></label><label className="block text-sm font-medium">Повтор пароля<input className={inputClass} type="password" autoComplete="new-password" required value={repeat} onChange={e => setRepeat(e.target.value)} /></label><button className={buttonClass} disabled={busy}>Подтвердить</button></form>}
+      {token.purpose === 'verify' && <button className={`${buttonClass} mt-6`} disabled={busy} onClick={() => void run('verify_token', { token: token.value }, 'Email подтверждён.')}>Подтвердить email</button>}
+      {message && <div className="mt-5"><Notice kind={noticeKind}>{message}</Notice></div>}
+    </section> : customer ? <>
+      <section className="relative overflow-hidden rounded-[2rem] border border-graphite-200 bg-white px-6 py-7 text-graphite-900 shadow-xl shadow-graphite-900/10 dark:border-white/10 dark:bg-graphite-800 dark:text-white sm:px-9 sm:py-8">
+        <div className="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-accent-500/20 blur-3xl" aria-hidden="true" />
+        <div className="relative flex flex-col justify-between gap-7 md:flex-row md:items-end">
+          <div><p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-accent-700 dark:text-accent-300">TELVORA · аккаунт покупателя</p><h1 className="font-display text-3xl font-bold tracking-tight text-graphite-950 dark:text-white sm:text-4xl">Личный кабинет</h1><p className="mt-3 max-w-xl text-sm leading-6 text-graphite-600 dark:text-graphite-200">Управляйте контактами для заказов и следите за историей покупок в одном месте.</p></div>
+          <div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent-500/10"><UserRound className="h-5 w-5 text-accent-600 dark:text-accent-300" aria-hidden="true" /></div><div className="min-w-0"><p className="truncate font-semibold text-graphite-950 dark:text-white">{customer.full_name || customer.login}</p><p className="truncate text-sm text-graphite-600 dark:text-graphite-300">@{customer.login}</p></div><button type="button" disabled={busy} onClick={() => void run('logout', {}, 'Вы вышли из аккаунта.')} className="ml-2 rounded-xl p-2 text-graphite-500 transition hover:bg-graphite-100 hover:text-accent-600 dark:text-graphite-300 dark:hover:bg-white/10 dark:hover:text-white" aria-label="Выйти" title="Выйти"><LogOut className="h-5 w-5" aria-hidden="true" /></button></div>
+        </div>
+        <div className="relative mt-7 flex flex-wrap gap-x-6 gap-y-2 border-t border-graphite-200 pt-5 text-sm text-graphite-700 dark:border-white/10 dark:text-graphite-200"><span className="inline-flex items-center gap-2"><Phone className="h-4 w-4 text-accent-600 dark:text-accent-300" aria-hidden="true" />{customer.phone || 'Телефон не указан'}</span><span className="inline-flex items-center gap-2"><Mail className="h-4 w-4 text-accent-600 dark:text-accent-300" aria-hidden="true" />{customer.email || 'Email не указан'}</span></div>
+      </section>
+      {error && <div className="mt-5"><Notice kind="error">{error} <button onClick={() => void refresh()} className="ml-1 font-semibold underline underline-offset-2">Повторить</button></Notice></div>}
+      {message && <div className="mt-5"><Notice kind={noticeKind}>{message}</Notice></div>}
+      <div className="mt-7 grid items-start gap-7 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
+        <div className="space-y-7">
+          <form className="rounded-3xl border border-graphite-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-graphite-800 sm:p-7" onSubmit={event => { event.preventDefault(); void run('profile', profile, 'Профиль сохранён.'); }}>
+            <div className="mb-6 flex items-start justify-between gap-4"><div><p className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-accent-600 dark:text-accent-300">Мои данные</p><h2 className="font-display text-2xl font-semibold text-graphite-950 dark:text-white">Контакты и доставка</h2></div><Save className="h-5 w-5 text-graphite-400" aria-hidden="true" /></div>
+            <div className="space-y-5"><label className="block text-sm font-medium">ФИО<input className={inputClass} type="text" autoComplete="name" maxLength={200} value={profile.full_name} onChange={e => updateProfile('full_name', e.target.value)} /></label><div className="grid gap-5 sm:grid-cols-2"><label className="block text-sm font-medium">Телефон<input className={inputClass} type="tel" autoComplete="tel" maxLength={32} value={profile.phone} onChange={e => updateProfile('phone', e.target.value)} /></label><label className="block text-sm font-medium">Email <span className="font-normal text-graphite-500">(необязательно)</span><input className={inputClass} type="email" autoComplete="email" maxLength={254} value={profile.email} onChange={e => updateProfile('email', e.target.value)} /></label></div><label className="block text-sm font-medium">Адрес доставки<textarea className={`${inputClass} min-h-24 resize-y`} autoComplete="street-address" maxLength={1000} value={profile.address} onChange={e => updateProfile('address', e.target.value)} /></label></div>
+            <div className="mt-6 flex flex-col gap-3 border-t border-graphite-100 pt-5 dark:border-white/10 sm:flex-row sm:items-center sm:justify-between"><p className={`text-xs ${profileDirty ? 'text-accent-600 dark:text-accent-300' : 'text-graphite-500 dark:text-graphite-300'}`}>{profileDirty ? 'Есть несохранённые изменения' : 'Данные готовы для оформления заказа'}</p><button className={buttonClass} disabled={busy}>{busy ? 'Сохраняем…' : 'Сохранить профиль'}</button></div>
+            <p className="mt-4 text-xs leading-5 text-graphite-500 dark:text-graphite-300">Изменение профиля не меняет контактные данные уже оформленных заказов.</p>
+          </form>
+          <aside className="rounded-3xl border border-graphite-200 bg-graphite-50 p-5 dark:border-white/10 dark:bg-graphite-800/60 sm:p-6"><div className="flex gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent-500" aria-hidden="true" /><div><h2 className="font-semibold text-graphite-950 dark:text-white">Восстановление доступа</h2>{recoveryAvailable ? customer.email_verified_at ? <p className="mt-2 text-sm leading-6 text-graphite-600 dark:text-graphite-200">Email подтверждён и может использоваться для восстановления пароля.</p> : <><p className="mt-2 text-sm leading-6 text-graphite-600 dark:text-graphite-200">Подтвердите сохранённый email, чтобы восстановить пароль при необходимости. Это необязательно.</p><button disabled={busy || !customer.email} className="mt-3 text-sm font-semibold text-accent-600 underline underline-offset-4 disabled:cursor-not-allowed disabled:opacity-40 dark:text-accent-300" onClick={() => void run('verify_request', {}, '')}>Отправить письмо для подтверждения</button></> : <p className="mt-2 text-sm leading-6 text-graphite-600 dark:text-graphite-200">Восстановление по email пока не подключено.</p>}</div></div></aside>
+        </div>
+        <section><div className="mb-5 flex items-end justify-between gap-4"><div><p className="mb-1 text-xs font-semibold uppercase tracking-[0.14em] text-accent-600 dark:text-accent-300">История покупок</p><h2 className="font-display text-2xl font-semibold text-graphite-950 dark:text-white">Мои заказы</h2></div><span className="rounded-full bg-graphite-100 px-3 py-1.5 text-xs font-semibold text-graphite-600 dark:bg-graphite-800 dark:text-graphite-200">{history.total} {history.total === 1 ? 'заказ' : 'заказов'}</span></div>{historyError && <div className="mb-4"><Notice kind="error">{historyError} <button onClick={() => void loadOrders(history.page)} className="ml-1 font-semibold underline underline-offset-2">Повторить</button></Notice></div>}<CustomerOrders history={history} onPage={page => void loadOrders(page)} /></section>
+      </div>
+    </> : <section className="mx-auto grid max-w-5xl overflow-hidden rounded-[2rem] border border-graphite-200 bg-white shadow-sm dark:border-white/10 dark:bg-graphite-800 md:grid-cols-[0.8fr_1.2fr]">
+      <div className="bg-graphite-50 p-7 text-graphite-900 dark:bg-graphite-900 dark:text-white sm:p-10"><p className="text-sm font-semibold uppercase tracking-[0.16em] text-accent-700 dark:text-accent-300">TELVORA</p><h1 className="mt-6 font-display text-3xl font-bold sm:text-4xl">Ваш кабинет покупателя</h1><p className="mt-4 text-sm leading-6 text-graphite-600 dark:text-graphite-200">Сохраняйте данные для оформления и возвращайтесь к истории заказов.</p><div className="mt-8 space-y-3 text-sm text-graphite-700 dark:text-graphite-200"><p className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-accent-600 dark:text-accent-300" aria-hidden="true" />Автозаполнение оформления</p><p className="flex items-center gap-2"><CheckCircle2 className="h-4 w-4 text-accent-600 dark:text-accent-300" aria-hidden="true" />История заказов в одном месте</p></div></div>
+      <div className="p-6 sm:p-10"><div className="mb-6 flex gap-1 rounded-xl bg-graphite-100 p-1 dark:bg-graphite-900"><button type="button" onClick={() => { setMode('login'); setMessage(''); }} className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${mode === 'login' ? 'bg-white text-graphite-950 shadow-sm dark:bg-graphite-700 dark:text-white' : 'text-graphite-500 hover:text-graphite-900 dark:text-graphite-300 dark:hover:text-white'}`}>Вход</button><button type="button" onClick={() => { setMode('register'); setMessage(''); }} className={`flex-1 rounded-lg px-3 py-2.5 text-sm font-semibold transition ${mode === 'register' ? 'bg-white text-graphite-950 shadow-sm dark:bg-graphite-700 dark:text-white' : 'text-graphite-500 hover:text-graphite-900 dark:text-graphite-300 dark:hover:text-white'}`}>Регистрация</button></div>{error && <div className="mb-4"><Notice kind="error">{error}</Notice></div>}{message && <div className="mb-4"><Notice kind={noticeKind}>{message}</Notice></div>}<form onSubmit={submitAuth} className="space-y-4"><label className="block text-sm font-medium">Логин — никнейм или телефон<input className={inputClass} autoComplete="username" required maxLength={64} value={login} onChange={e => setLogin(e.target.value)} /></label>{mode === 'register' && <p className="text-xs leading-5 text-graphite-500 dark:text-graphite-300">Никнейм: 3–32 латинских символа, начинается с буквы. Регистр не учитывается. Телефон вводится с кодом страны.</p>}{mode !== 'reset_request' && <label className="block text-sm font-medium">Пароль<input className={inputClass} type="password" required minLength={mode === 'register' ? 10 : undefined} maxLength={72} autoComplete={mode === 'register' ? 'new-password' : 'current-password'} value={password} onChange={e => setPassword(e.target.value)} /></label>}{mode === 'register' && <><label className="block text-sm font-medium">Повтор пароля<input className={inputClass} type="password" autoComplete="new-password" required value={repeat} onChange={e => setRepeat(e.target.value)} /></label><p className="text-xs leading-5 text-graphite-500 dark:text-graphite-300">Создавая аккаунт, вы соглашаетесь с <Link className="font-medium text-accent-600 dark:text-accent-300" to="/privacy">политикой обработки персональных данных</Link>.</p></>}<button className={`${buttonClass} w-full`} disabled={busy || Boolean(error)}>{mode === 'register' ? 'Зарегистрироваться' : mode === 'reset_request' ? 'Восстановить доступ' : 'Войти'}<ChevronRight className="h-4 w-4" aria-hidden="true" /></button></form>{recoveryAvailable ? <button className="mt-5 text-sm font-medium text-accent-600 dark:text-accent-300" onClick={() => setMode('reset_request')}>Забыли пароль?</button> : <p className="mt-5 text-sm text-graphite-500 dark:text-graphite-300">Восстановление по email пока не подключено.</p>}<p className="mt-4 text-sm"><Link className="font-medium text-accent-600 dark:text-accent-300" to="/checkout">Оформить заказ без регистрации</Link></p></div>
+    </section>}
   </div>;
 }

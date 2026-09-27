@@ -44,15 +44,15 @@ export default function Footer() {
                 <Tv className="w-7 h-7 text-white" strokeWidth={2.5} />
               </div>
             </Link>
-            <p className="text-sm text-graphite-600 dark:text-graphite-400 max-w-xs leading-relaxed">
+            <p className="text-sm text-graphite-600 dark:text-graphite-300 max-w-xs leading-relaxed">
               TELVORA — новый взгляд на технику и онлайн-покупки. Современно, понятно и без лишнего.
             </p>
             <div className="mt-5 space-y-2 text-sm">
               {publicContacts.phones.map((phone) => <a key={phone.href} href={`tel:${phone.href}`} className="block text-graphite-700 transition-colors hover:text-accent-600 dark:text-graphite-300 dark:hover:text-accent-500">{phone.display}</a>)}
-              <a href={publicContacts.ordersMailto} className="block break-all text-graphite-600 transition-colors hover:text-accent-600 dark:text-graphite-400 dark:hover:text-accent-500">Заказы: {publicContacts.ordersEmail}</a>
-              <a href={publicContacts.supportMailto} className="block break-all text-graphite-600 transition-colors hover:text-accent-600 dark:text-graphite-400 dark:hover:text-accent-500">Поддержка: {publicContacts.supportEmail}</a>
+              <a href={publicContacts.ordersMailto} className="block break-all text-graphite-600 transition-colors hover:text-accent-600 dark:text-graphite-300 dark:hover:text-accent-500">Заказы: {publicContacts.ordersEmail}</a>
+              <a href={publicContacts.supportMailto} className="block break-all text-graphite-600 transition-colors hover:text-accent-600 dark:text-graphite-300 dark:hover:text-accent-500">Поддержка: {publicContacts.supportEmail}</a>
             </div>
-            <div className="mt-5 border-t border-graphite-200 pt-4 text-xs leading-relaxed text-graphite-600 dark:border-white/10 dark:text-graphite-400">
+            <div className="mt-5 border-t border-graphite-200 pt-4 text-xs leading-relaxed text-graphite-600 dark:border-white/10 dark:text-graphite-300">
               <p>Продавец: {publicContacts.sellerShortName}</p>
               <p>ИНН {publicContacts.inn} · ОГРНИП {publicContacts.ogrnip}</p>
               <Link to="/requisites" className="mt-2 inline-block font-semibold text-accent-600 hover:text-accent-700 dark:text-accent-500">Реквизиты</Link>
@@ -65,7 +65,7 @@ export default function Footer() {
               <ul className="space-y-3">
                 {links.map((link) => (
                   <li key={link.label}>
-                    <Link to={link.to} className="text-sm text-graphite-600 dark:text-graphite-400 hover:text-accent-600 dark:hover:text-accent-500 transition-colors">
+                    <Link to={link.to} className="text-sm text-graphite-600 dark:text-graphite-300 hover:text-accent-600 dark:hover:text-accent-500 transition-colors">
                       {link.label}
                     </Link>
                   </li>
@@ -76,7 +76,7 @@ export default function Footer() {
         </div>
 
         <div className="flex items-center justify-between gap-4 pt-8 border-t border-graphite-200 dark:border-white/5">
-          <p className="text-sm text-graphite-500">© 2026 TELVORA. Все права защищены.</p>
+          <p className="text-sm text-graphite-500 dark:text-graphite-300">© 2026 TELVORA. Все права защищены.</p>
           <button type="button" onClick={scrollToTop} aria-label="Наверх" className="w-10 h-10 rounded-xl bg-white dark:bg-white/5 border border-graphite-200 dark:border-white/10 flex items-center justify-center text-graphite-600 dark:text-graphite-300 hover:text-accent-600 hover:border-accent-500/40 transition-all">
             <ArrowUp className="w-5 h-5" />
           </button>
