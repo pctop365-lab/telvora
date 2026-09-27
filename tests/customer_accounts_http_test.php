@@ -76,6 +76,13 @@ try {
     $guestId=(int)$guestOrder['order_id'];checkCustomer('browser customer_id ignored for guest',$pdo->query("SELECT customer_id FROM orders WHERE id=$guestId")->fetchColumn()===null);
     checkCustomer('authenticated checkout requires CSRF',customerHttp('/api.php',$order,$a)[0]===403);
     [$status,$first]=customerHttp('/api.php',$order,$a,$csrf);checkCustomer('authenticated checkout',$status===200 && ($first['success'] ?? false));$firstId=(int)$first['order_id'];
+    $firstOrderNumber=(string)$first['order_number'];
+    [$status,$tracked]=customerHttp('/manager.php?action=track_order',['order_number'=>$firstOrderNumber,'phone'=>'+79990000001'],$guest);
+    checkCustomer('public tracking accepts generated order number and matching phone',$status===200 && ($tracked['success'] ?? false) && (int)$tracked['order']['id']===$firstId);
+    [$status,$invalidTracking]=customerHttp('/manager.php?action=track_order',['order_number'=>'8','phone'=>'+79990000001'],$guest);
+    checkCustomer('public tracking rejects legacy numeric order format',$status===400 && !($invalidTracking['success'] ?? true));
+    [$status,$missingTracking]=customerHttp('/manager.php?action=track_order',['order_number'=>'TLV-20990101-9999','phone'=>'+79990000001'],$guest);
+    checkCustomer('public tracking hides missing or mismatched order',$status===404 && !($missingTracking['success'] ?? true));
     checkCustomer('order linked by session not supplied id',(int)$pdo->query("SELECT customer_id FROM orders WHERE id=$firstId")->fetchColumn()===$id);
     checkCustomer('unchecked checkout leaves profile intact',$pdo->query("SELECT address FROM customers WHERE id=$id")->fetchColumn()==='Profile address');
     [$status,$second]=customerHttp('/api.php',$order+['save_profile'=>true],$a,$csrf);checkCustomer('checked checkout saves profile',$status===200 && $pdo->query("SELECT address FROM customers WHERE id=$id")->fetchColumn()==='Order address');

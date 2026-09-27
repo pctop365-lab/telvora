@@ -3,6 +3,9 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, ChevronDown, CircleHelp, Headphones, PackageCheck, Search, ShieldCheck, Truck } from 'lucide-react';
 import { publicContacts } from '@/data/publicContacts';
 
+const orderNumberPattern = /^TLV-\d{8}-\d{4}$/;
+const phonePattern = /^[78]\d{10}$/;
+
 const helpItems = [
   { title: 'Доставка', description: 'Узнайте о доступных способах получения заказа и о том, где уточняются сроки доставки.', action: 'Подробнее о доставке', to: '/delivery', icon: Truck },
   { title: 'Гарантия', description: 'Посмотрите общую информацию о гарантийном обслуживании и дальнейших действиях.', action: 'Условия гарантии', to: '/warranty', icon: ShieldCheck },
@@ -25,11 +28,18 @@ export default function SupportPage() {
   const [trackingResult, setTrackingResult] = useState<{ id: number; status: string } | null>(null);
 
   const trackOrder = async () => {
-    const value = orderNumber.trim();
+    const value = orderNumber.trim().toUpperCase();
     const phoneValue = phone.trim();
+    const phoneDigits = phoneValue.replace(/\D/g, '');
 
-    if (!value || !phoneValue) {
-      setTrackingError('Введите номер заказа и телефон');
+    if (!orderNumberPattern.test(value)) {
+      setTrackingError('\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043d\u043e\u043c\u0435\u0440 \u0437\u0430\u043a\u0430\u0437\u0430 \u0432 \u0444\u043e\u0440\u043c\u0430\u0442\u0435 TLV-\u0413\u0413\u0413\u0413\u041c\u041c\u0414\u0414-0000');
+      setTrackingResult(null);
+      return;
+    }
+
+    if (!phonePattern.test(phoneDigits)) {
+      setTrackingError('\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u0442\u0435\u043b\u0435\u0444\u043e\u043d \u0432 \u0444\u043e\u0440\u043c\u0430\u0442\u0435 +7XXXXXXXXXX');
       setTrackingResult(null);
       return;
     }

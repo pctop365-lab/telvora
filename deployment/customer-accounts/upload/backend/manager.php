@@ -358,9 +358,10 @@ if ($action === 'track_order') {
         (string)($data['phone'] ?? '')
     );
 
+    $orderNumber = strtoupper($orderNumber);
+
     if (
-        $orderNumber === '' ||
-        !ctype_digit($orderNumber) ||
+        !preg_match('/^TLV-[0-9]{8}-[0-9]{4}$/D', $orderNumber) ||
         $phone === ''
     ) {
         http_response_code(400);
@@ -386,17 +387,16 @@ if ($action === 'track_order') {
     };
 
     $requestedPhone = $normalizePhone($phone);
-    $orderId = (int)$orderNumber;
 
     $stmt = $pdo->prepare("
         SELECT id, status, phone
         FROM orders
-        WHERE id = :id
+        WHERE order_number = :order_number
         LIMIT 1
     ");
 
     $stmt->execute([
-        ':id' => $orderId
+        ':order_number' => $orderNumber
     ]);
 
     $order = $stmt->fetch();
