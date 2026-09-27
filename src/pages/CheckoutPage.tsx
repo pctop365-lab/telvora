@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { useCustomer } from '@/store/customer';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -64,6 +65,9 @@ const paymentOptions = [
 ];
 
 export default function CheckoutPage() {
+  const { customer } = useCustomer();
+  const editedFields = useRef(new Set<string>());
+  const [saveProfile, setSaveProfile] = useState(false);
   const { items, subtotal, services, servicesTotal, clearCart, replaceAfterValidation } = useCart();
   const navigate = useNavigate();
 
@@ -90,6 +94,19 @@ comment: '',
   });
 
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setSaveProfile(false);
+    if (!customer) return;
+    setForm(previous => {
+      const next = { ...previous };
+      const values = { fullName: customer.full_name, phone: customer.phone, email: customer.email, address: customer.address };
+      for (const key of Object.keys(values) as (keyof typeof values)[]) {
+        if (!editedFields.current.has(key) && !previous[key]) next[key] = values[key];
+      }
+      return next;
+    });
+  }, [customer]);
 
   useEffect(() => {
     if (items.length === 0 && services.length === 0) {
@@ -154,9 +171,7 @@ comment: '',
     errors.phone = 'Неверный формат телефона';
   }
 
-  if (!form.email.trim()) {
-    errors.email = 'Укажите email';
-  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
+  if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
     errors.email = 'Неверный формат email';
   }
 
@@ -170,6 +185,7 @@ comment: '',
     field: keyof (CheckoutFormData & { paymentMethod: string }),
     value: string
   ) => {
+    editedFields.current.add(field);
     setForm((prev) => ({
       ...prev,
       [field]: value,
@@ -211,7 +227,7 @@ comment: '',
           outsideMkad: form.deliveryMethod === 'courier' && outsideMkad,
           outsideMkadKm: outsideMkadKm ? Number(outsideMkadKm) : undefined,
         } as CheckoutFormData,
-        items, services
+        items, services, { saveProfile: Boolean(customer) && saveProfile, customerId: customer?.id ?? null }
       );
 
       clearCart();
@@ -322,6 +338,7 @@ comment: '',
               <h2 className="font-display font-semibold text-lg text-graphite-900 dark:text-white mb-5">
                 Контактные данные
               </h2>
+              {customer ? <div className="mb-5 space-y-2 text-sm"><p>Можно изменить получателя и адрес для этого заказа.</p><label className="flex items-center gap-2"><input type="checkbox" checked={saveProfile} onChange={event => setSaveProfile(event.target.checked)} />Сохранить для следующих заказов</label></div> : <p className="mb-5 text-sm"><Link to="/account" className="text-accent-500">Войти в аккаунт</Link> для автозаполнения или продолжить без регистрации.</p>}
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
@@ -353,7 +370,7 @@ comment: '',
                 />
 
                 <FormField
-                  label="Email"
+                  label="Email (необязательно)"
                   value={form.email}
                   onChange={(v) => updateField('email', v)}
                   onBlur={() => handleBlur('email')}
@@ -826,14 +843,16 @@ function FormField({
   type = 'text',
   disabled,
 }: FormFieldProps) {
+  const fieldId = useId();
   return (
     <div>
 
-      <label className="block text-sm font-medium text-graphite-700 dark:text-graphite-300 mb-2">
+      <label htmlFor={fieldId} className="block text-sm font-medium text-graphite-700 dark:text-graphite-300 mb-2">
         {label}
       </label>
 
       <input
+        id={fieldId}
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}

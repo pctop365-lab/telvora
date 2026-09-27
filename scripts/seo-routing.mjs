@@ -7,7 +7,7 @@ export const managedRootFiles = [
   'telvora-logo-white.svg', 'telvora-mark.svg',
 ];
 export const managedDirectories = ['assets', 'images', '_prerender'];
-export const clientRoutePatterns = ['checkout', 'admin', 'soundbars', 'accessories'];
+export const clientRoutePatterns = ['checkout', 'account', 'admin', 'soundbars', 'accessories'];
 
 export function generateProductionHtaccess({ routes, productRoutes = [], prerenderFiles }) {
   const slashRules = routes.filter(path => path !== '/').map(path =>

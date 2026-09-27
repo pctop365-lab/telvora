@@ -1,6 +1,7 @@
 import type { Order, CheckoutFormData, CartItem } from '@/types';
+import { customerRequest } from './customerService';
 
-const API_URL = 'https://telvora.ru/api.php';
+const API_URL = '/api.php';
 
 type CartValidationItem = {
   product_id: number | null;
@@ -37,7 +38,8 @@ export async function validateCart(items: CartItem[]): Promise<{ allOrderable: b
 
 export async function createOrder(
   formData: CheckoutFormData,
-  cartItems: CartItem[], services: import('@/types').CartServiceItem[] = []
+  cartItems: CartItem[], services: import('@/types').CartServiceItem[] = [],
+  accountOptions: { saveProfile: boolean; customerId: number | null } = { saveProfile: false, customerId: null }
 ): Promise<Order> {
   if (cartItems.length === 0) {
     throw new Error('Корзина пуста — невозможно оформить заказ');
@@ -73,12 +75,17 @@ export async function createOrder(
   };
 
   // Отправляем заказ на сервер
+  const session = await customerRequest();
+  if (accountOptions.customerId !== null && Number(session.customer?.id) !== Number(accountOptions.customerId)) throw new Error('Сессия изменилась. Войдите заново перед оформлением заказа.');
   const response = await fetch(API_URL, {
     method: 'POST',
+    credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
+      'X-CSRF-Token': session.csrf_token || '',
     },
     body: JSON.stringify({
+      save_profile: accountOptions.saveProfile,
       customer_name: formData.fullName,
       phone: formData.phone,
       email: formData.email,

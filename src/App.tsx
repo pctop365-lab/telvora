@@ -33,13 +33,15 @@ import ReturnsPage from '@/pages/ReturnsPage';
 import ContactsPage from '@/pages/ContactsPage';
 import RequisitesPage from '@/pages/RequisitesPage';
 import SeoMetadata from '@/components/SeoMetadata';
+import { CustomerProvider } from '@/store/customer';
+import AccountPage from '@/pages/AccountPage';
 
 export default function App() {
   return (
     <ThemeProvider>
         <CartProvider>
           <UIProvider>
-            <AppContent />
+            <CustomerProvider><AppContent /></CustomerProvider>
           </UIProvider>
         </CartProvider>
     </ThemeProvider>
@@ -98,6 +100,7 @@ const isAdmin = location.pathname.startsWith('/admin');
       <main className={`flex-1 ${isAdmin ? 'admin-page' : ''}`}>
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/account" element={<><SeoMetadata title="Личный кабинет — TELVORA" description="Аккаунт покупателя TELVORA." path="/account" robots="noindex, nofollow" /><AccountPage /></>} />
           <Route path="/catalog" element={<CatalogPage />} />
           <Route path="/televisions" element={<CatalogPage />} />
 

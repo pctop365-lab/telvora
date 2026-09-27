@@ -1,0 +1,6 @@
+# Flat PHP payload for deploy-backend.sh. runtime_config.php and existing helpers stay on host.
+customer_service.php
+customer_admin.php
+customer.php
+api.php
+manager.php

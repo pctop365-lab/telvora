@@ -10,11 +10,13 @@ import {
   Moon,
   Phone,
   Mail,
+  UserRound,
 } from 'lucide-react';
 import { useCart } from '@/store/cart';
 import { useUI } from '@/store/ui';
 import { useTheme } from '@/store/theme';
 import { publicContacts } from '@/data/publicContacts';
+import { useCustomer } from '@/store/customer';
 
 const navLinks = [
   { label: 'Каталог', to: '/catalog' },
@@ -26,6 +28,7 @@ const navLinks = [
 ];
 
 export default function Header() {
+  const { customer } = useCustomer();
   const { count } = useCart();
   const { openCart, searchQuery, setSearchQuery } = useUI();
   const { theme, toggleTheme } = useTheme();
@@ -186,6 +189,7 @@ export default function Header() {
 </button>
 
             {/* CART */}
+            <Link to="/account" onClick={() => setMobileOpen(false)} aria-label={customer ? 'Личный кабинет' : 'Войти в аккаунт'} title={customer ? 'Личный кабинет' : 'Войти в аккаунт'} className="shrink-0 flex items-center justify-center w-10 h-11 rounded-xl border border-graphite-200 dark:border-graphite-700 hover:text-accent-500 focus-visible:ring-2 focus-visible:ring-accent-500"><UserRound className="w-5 h-5" /><span className="sr-only">{customer ? 'Личный кабинет' : 'Вход'}</span></Link>
             <button
               onClick={openCart}
               aria-label="Корзина"

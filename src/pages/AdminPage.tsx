@@ -20,6 +20,7 @@ import {
 import { canStartVariantMutation, isCurrentVariantMutation, isVariantDraft, shouldConfirmVariantDisable, variantMutationErrorMessage, type VariantMutationAction } from './adminVariantManagement';
 import { convertProductImageForUpload } from './productImageConversion';
 import ServiceCatalogAdmin from '@/components/admin/ServiceCatalogAdmin';
+import CustomersAdmin from '@/components/admin/CustomersAdmin';
 
 type Spec = {
   label: string;
@@ -683,7 +684,7 @@ export default function AdminPage() {
   const [expanded, setExpanded] = useState<number | null>(null);
 
   const [activeTab, setActiveTab] = useState<
-    'orders' | 'products' | 'suppliers' | 'services'
+    'orders' | 'products' | 'suppliers' | 'services' | 'customers'
   >(
     'orders'
   );
@@ -3337,7 +3338,8 @@ const toggleProductStatus = async (product: AdminProduct) => {
           <button onClick={() => setActiveTab('services')} className={`px-5 py-2.5 rounded-xl text-sm font-medium border transition ${activeTab==='services'?'bg-accent-50 border-accent-200 text-accent-600':'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>Сервисные услуги</button>
         </div>
 
-        {activeTab === 'services' ? <ServiceCatalogAdmin /> : activeTab === 'orders' ? (
+        <button onClick={() => setActiveTab('customers')} className={`mb-5 px-5 py-2.5 rounded-xl text-sm font-medium border ${activeTab === 'customers' ? 'bg-accent-50 border-accent-200 text-accent-600' : 'bg-white border-gray-200 text-gray-600'}`}>Клиенты</button>
+        {activeTab === 'customers' ? <CustomersAdmin /> : activeTab === 'services' ? <ServiceCatalogAdmin /> : activeTab === 'orders' ? (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
               <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
