@@ -78,6 +78,7 @@ jobs:
           export TELVORA_RELEASE_SHA="${TELVORA_RELEASE_SHA,,}"
           npm run typecheck
           npm run build:seo
+          npm run test:seo:encoding
           npm run test:seo:physical
           npm run test:seo:htaccess
           npm run test:seo:images

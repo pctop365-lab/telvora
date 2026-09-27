@@ -39,6 +39,11 @@ for path in payload.rglob('*'):
     if not (stat.S_ISREG(mode) or stat.S_ISDIR(mode)): raise SystemExit(f'FAIL unsupported file type: {rel}')
     if stat.S_ISREG(mode) and path.stat().st_size == 0: raise SystemExit(f'FAIL empty payload file: {rel}')
     if stat.S_ISREG(mode) and (rel.lower().endswith('.php') or re.search(r'(^|/)(uploads|pdf|vendor|runtime|logs?|locks?|telegram[^/]*|\.env|\.git)(/|$)', rel, re.I)): raise SystemExit(f'FAIL forbidden payload file: {rel}')
+mojibake = re.compile(r'Р[А-Яа-яЁё]Р|С[Ѓ-џ][РС]|вЂ')
+for path in payload.rglob('*.html'):
+    html = path.read_text(encoding='utf-8')
+    if not re.search(r'<meta\s+charset=["\']UTF-8["\']', html, re.I): raise SystemExit(f'FAIL UTF-8 meta charset missing: {path.relative_to(payload)}')
+    if mojibake.search(html): raise SystemExit(f'FAIL mojibake signature in HTML: {path.relative_to(payload)}')
 for route, internal in manifest.get('prerenderFiles', {}).items():
     target = payload / internal.lstrip('/')
     if not target.is_file(): raise SystemExit(f'FAIL missing prerender: {route}')
