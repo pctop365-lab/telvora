@@ -25,6 +25,7 @@ jobs:
     outputs:
       release_sha: ${{ steps.identity.outputs.release_sha }}
       package_sha256: ${{ steps.package.outputs.checksum }}
+      product_route: ${{ steps.package.outputs.product_route }}
       stage_id: ${{ steps.stage.outputs.stage_id }}
     runs-on: ubuntu-24.04
     environment: seo-staging
@@ -109,6 +110,8 @@ jobs:
           case "$release_id" in "${REQUESTED_RELEASE_SHA:0:12}-"*) ;; *) echo 'package release ID does not belong to requested commit' >&2; exit 1;; esac
           manifest_commit="$(node -e "const fs=require('fs'); process.stdout.write(JSON.parse(fs.readFileSync('seo-release/deployment-manifest.json','utf8')).commitSha)")"
           test "$manifest_commit" = "${REQUESTED_RELEASE_SHA,,}"
+          product_route="$(node -e "const fs=require('fs'); const routes=JSON.parse(fs.readFileSync('seo-release/deployment-manifest.json','utf8')).productRoutes||[]; const route=routes.find(value=>/^\\/catalog\\/[a-z0-9-]+\\/[a-z0-9-]+$/.test(value)); if(!route) process.exit(1); process.stdout.write(route)")"
+          echo "product_route=$product_route" >> "$GITHUB_OUTPUT"
           {
             echo "archive=$archive"
             echo "checksum=$checksum"
@@ -328,6 +331,7 @@ jobs:
       REMOTE_BACKUP_ROOT: /var/www/u3609206/data/telvora-backups
       REQUESTED_RELEASE_SHA: ${{ needs.preflight.outputs.release_sha }}
       SEO_PACKAGE_SHA256: ${{ needs.preflight.outputs.package_sha256 }}
+      SMOKE_PRODUCT_ROUTE: ${{ needs.preflight.outputs.product_route }}
       STAGE_ID: ${{ needs.preflight.outputs.stage_id }}
 
     steps:
@@ -337,6 +341,7 @@ jobs:
           set -euo pipefail
           [[ "$REQUESTED_RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$SEO_PACKAGE_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          [[ "$SMOKE_PRODUCT_ROUTE" =~ ^/catalog/[a-z0-9-]+/[a-z0-9-]+$ ]] || { echo 'invalid smoke product route' >&2; exit 1; }
           [[ "$STAGE_ID" =~ ^telvora-seo-[0-9a-f]{40}-[0-9]+$ ]] || { echo 'invalid preflight staging ID' >&2; exit 1; }
           case "$STAGE_ID" in "telvora-seo-${REQUESTED_RELEASE_SHA}-"*) ;; *) echo 'preflight staging identity mismatch' >&2; exit 1;; esac
           REMOTE_STAGE="$REMOTE_BASE/staging/$STAGE_ID"
@@ -417,12 +422,12 @@ jobs:
           check_200() { local url="$1" name="$2" code; code="$(curl --fail --silent --show-error --location --max-redirs 5 --output "$smoke_dir/$name.html" --write-out '%{http_code}' "$url")"; test "$code" = 200; test -s "$smoke_dir/$name.html"; }
           check_200 https://telvora.ru/ home || smoke_status=1
           check_200 https://telvora.ru/catalog catalog || smoke_status=1
-          check_200 https://telvora.ru/catalog/oled/lg-oled77c5rla product || smoke_status=1
+          check_200 "https://telvora.ru$SMOKE_PRODUCT_ROUTE" product || smoke_status=1
           check_200 https://telvora.ru/checkout checkout || smoke_status=1
           final_www="$(curl --fail --silent --show-error --location --max-redirs 5 --output /dev/null --write-out '%{url_effective}' 'https://www.telvora.ru/catalog/oled?foo=seo-production')" || smoke_status=1
           [ "$final_www" = 'https://telvora.ru/catalog/oled?foo=seo-production' ] || smoke_status=1
           grep -qi 'index, follow' "$smoke_dir/product.html" || smoke_status=1
-          grep -q 'https://telvora.ru/catalog/oled/lg-oled77c5rla' "$smoke_dir/product.html" || smoke_status=1
+          grep -q "https://telvora.ru$SMOKE_PRODUCT_ROUTE" "$smoke_dir/product.html" || smoke_status=1
           if [ "$smoke_status" -ne 0 ]; then
             set +e
             ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$REMOTE_STAGE" "$REMOTE_DOCUMENT_ROOT" "$REMOTE_BACKUP_ROOT" "$(cat "$RUNNER_TEMP/telvora-backup-path")" <<'REMOTE'
