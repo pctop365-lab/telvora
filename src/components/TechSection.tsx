@@ -29,7 +29,7 @@ export default function TechSection() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Link
             to="/catalog"
-            className="group relative min-h-[360px] p-8 sm:p-10 rounded-4xl bg-white dark:bg-graphite-950 border border-graphite-200 dark:border-white/10 shadow-sm dark:shadow-none hover:border-accent-500/40 transition-all duration-300 overflow-hidden"
+            className="group relative min-h-[360px] p-8 sm:p-10 rounded-4xl bg-white dark:bg-graphite-950 border border-graphite-200 dark:border-white/10 shadow-sm dark:shadow-none hover:border-accent-500/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/70 transition-all duration-300 overflow-hidden"
           >
             <img
               src="/images/tech-home-cinema-light.png"
@@ -70,7 +70,7 @@ export default function TechSection() {
                 </p>
               </div>
 
-              <span className="inline-block mt-8 text-sm font-semibold text-accent-500 group-hover:text-white transition-colors">
+              <span className="inline-block mt-8 text-sm font-semibold text-accent-700 dark:text-accent-400 group-hover:text-accent-800 dark:group-hover:text-white group-focus-visible:text-accent-800 dark:group-focus-visible:text-white transition-colors">
                 Смотреть телевизоры →
               </span>
             </div>

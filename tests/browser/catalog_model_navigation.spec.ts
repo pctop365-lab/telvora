@@ -17,6 +17,6 @@ test('model groups and combined filters share catalog and televisions route',asy
 test('legacy 8k route selects resolution rather than technology',async({page})=>{
   await page.goto('/catalog/8k'); await expect(page.getByText('Найдено товаров: 1')).toBeVisible();
   await page.getByRole('button',{name:/Фильтры/}).click();
-  await expect(page.getByRole('button',{name:'7680 × 4320 (8K UHD)'})).toHaveClass(/bg-white/);
+  await expect(page.getByRole('button',{name:'7680 × 4320 (8K UHD)'})).toHaveClass(/bg-accent-500/);
   await expect(page.getByRole('heading',{name:'Технология экрана'})).toBeVisible();
 });

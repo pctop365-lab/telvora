@@ -22,11 +22,11 @@ export default function ProductGallery({ images, legacyImage, productName, badge
   }, [zoomed, multiple, move]);
   if (!items.length) return null;
   const controls = multiple && <>
-    <button type="button" onClick={() => move(-1)} aria-label="Предыдущее изображение" className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white"><ChevronLeft /></button>
-    <button type="button" onClick={() => move(1)} aria-label="Следующее изображение" className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full bg-black/60 p-2 text-white"><ChevronRight /></button>
+    <button type="button" onClick={() => move(-1)} aria-label="Предыдущее изображение" className="absolute left-3 top-1/2 -translate-y-1/2 rounded-full border border-graphite-200 bg-white/95 p-2 text-graphite-900 shadow-lg transition hover:border-accent-500 hover:text-accent-700 focus:outline-none focus:ring-2 focus:ring-accent-500/60 dark:border-white/10 dark:bg-graphite-900/90 dark:text-white dark:hover:border-accent-500 dark:hover:text-accent-300"><ChevronLeft /></button>
+    <button type="button" onClick={() => move(1)} aria-label="Следующее изображение" className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-graphite-200 bg-white/95 p-2 text-graphite-900 shadow-lg transition hover:border-accent-500 hover:text-accent-700 focus:outline-none focus:ring-2 focus:ring-accent-500/60 dark:border-white/10 dark:bg-graphite-900/90 dark:text-white dark:hover:border-accent-500 dark:hover:text-accent-300"><ChevronRight /></button>
   </>;
   return <div className="self-start">
-    <div className="relative overflow-hidden rounded-3xl border border-white/5 bg-graphite-800">
+    <div className="relative overflow-hidden rounded-3xl border border-graphite-200 bg-white shadow-sm dark:border-white/5 dark:bg-graphite-800 dark:shadow-none">
       <button type="button" onClick={() => setZoomed(true)} aria-label={`Увеличить изображение ${index + 1} товара ${productName}`} className="block aspect-video w-full cursor-zoom-in bg-white">
         <img src={items[index]} alt={`${productName}, изображение ${index + 1} из ${items.length}`} className="h-full w-full object-contain" /><ZoomIn className="absolute bottom-4 right-4 rounded bg-black/60 p-1 text-white" />
       </button>{controls}

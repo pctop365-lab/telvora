@@ -145,21 +145,21 @@ const productUrl =
     <div className="pt-24 pb-20 bg-white dark:bg-graphite-900 min-h-screen">
       <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Breadcrumbs */}
-        <nav className="flex items-center gap-2 text-sm text-graphite-400 mb-8 flex-wrap">
-          <Link to="/" className="hover:text-white transition-colors">Главная</Link>
+        <nav className="flex items-center gap-2 text-sm text-graphite-500 dark:text-graphite-400 mb-8 flex-wrap">
+          <Link to="/" className="hover:text-graphite-950 dark:hover:text-white transition-colors">Главная</Link>
           <ChevronRight className="w-4 h-4" />
-          <Link to="/catalog" className="hover:text-white transition-colors">Каталог</Link>
+          <Link to="/catalog" className="hover:text-graphite-950 dark:hover:text-white transition-colors">Каталог</Link>
           <ChevronRight className="w-4 h-4" />
-          <Link to={`/catalog/${categorySlug}`} className="hover:text-white transition-colors">
+          <Link to={`/catalog/${categorySlug}`} className="hover:text-graphite-950 dark:hover:text-white transition-colors">
             {product.category}
           </Link>
           <ChevronRight className="w-4 h-4" />
-          <span className="text-white truncate">{product.name}</span>
+          <span className="text-graphite-900 dark:text-white truncate">{product.name}</span>
         </nav>
 
         <Link
           to={`/catalog/${categorySlug}`}
-          className="inline-flex items-center gap-2 text-sm text-graphite-400 hover:text-white transition-colors mb-8"
+          className="inline-flex items-center gap-2 text-sm text-graphite-600 dark:text-graphite-400 hover:text-graphite-950 dark:hover:text-white transition-colors mb-8"
         >
           <ArrowLeft className="w-4 h-4" />
           Назад к {product.category}
@@ -202,11 +202,11 @@ const productUrl =
               </span>
             </div>
 
-            <h1 className="font-display font-extrabold text-3xl sm:text-4xl text-white leading-tight">
+            <h1 className="font-display font-extrabold text-3xl sm:text-4xl text-graphite-950 dark:text-white leading-tight">
               {displayedProductName}
             </h1>
             {selectedVariant?.modelCode && displayedProductName === product.name && (
-              <div className="mt-2 text-sm text-graphite-400">Модель: <span className="font-medium text-graphite-200">{selectedVariant.modelCode}</span></div>
+              <div className="mt-2 text-sm text-graphite-500 dark:text-graphite-400">Модель: <span className="font-medium text-graphite-800 dark:text-graphite-200">{selectedVariant.modelCode}</span></div>
             )}
 
             <div className="flex items-center gap-2 mt-4">
@@ -222,15 +222,15 @@ const productUrl =
                   />
                 ))}
               </div>
-              <span className="text-sm font-semibold text-white">{product.rating}</span>
-              <span className="text-sm text-graphite-400">· {product.reviews} отзывов</span>
+              <span className="text-sm font-semibold text-graphite-900 dark:text-white">{product.rating}</span>
+              <span className="text-sm text-graphite-600 dark:text-graphite-400">· {product.reviews} отзывов</span>
             </div>
 
             <div className="mt-6">
               <div
                 ref={descriptionRef}
                 data-testid="product-description"
-                className="relative overflow-hidden text-lg leading-relaxed text-graphite-300 transition-[max-height] duration-300 ease-out whitespace-pre-line"
+                className="relative overflow-hidden text-lg leading-relaxed text-graphite-700 dark:text-graphite-300 transition-[max-height] duration-300 ease-out whitespace-pre-line"
                 style={{ maxHeight: descriptionExpanded ? `${descriptionRef.current?.scrollHeight ?? descriptionMaxHeight}px` : `${descriptionMaxHeight}px` }}
               >
                 {product.description}
@@ -257,7 +257,7 @@ const productUrl =
             {/* Highlights */}
             <div className="grid grid-cols-2 gap-3 mt-6">
               {product.highlights.map((h) => (
-                <div key={h} className="flex items-center gap-2 text-sm text-graphite-200">
+                <div key={h} className="flex items-center gap-2 text-sm text-graphite-800 dark:text-graphite-200">
                   <div className="w-5 h-5 rounded-md bg-accent-500/10 flex items-center justify-center shrink-0">
                     <Check className="w-3 h-3 text-accent-500" />
                   </div>
@@ -274,17 +274,17 @@ const productUrl =
                 { icon: Zap, label: '120Гц+' },
                 { icon: Volume2, label: 'Atmos' },
               ].map((s, i) => (
-                <div key={i} className="flex flex-col items-center gap-1.5 p-3 bg-graphite-100 dark:bg-graphite-800 rounded-xl border border-white/5">
+                <div key={i} className="flex flex-col items-center gap-1.5 p-3 bg-white dark:bg-graphite-800 rounded-xl border border-graphite-200 dark:border-white/5">
                   <s.icon className="w-5 h-5 text-accent-500" />
-                  <span className="text-xs font-medium text-graphite-300">{s.label}</span>
+                  <span className="text-xs font-medium text-graphite-700 dark:text-graphite-300">{s.label}</span>
                 </div>
               ))}
             </div>
 
             {/* Assembly country */}
             {activeVariants.length > 0 && (
-              <div className="mt-6 p-5 bg-graphite-100 dark:bg-graphite-800 rounded-2xl border border-white/5">
-                <div className="text-sm font-semibold text-white mb-3">
+              <div className="mt-6 p-5 bg-white dark:bg-graphite-800 rounded-2xl border border-graphite-200 dark:border-white/5">
+              <div className="text-sm font-semibold text-graphite-900 dark:text-white mb-3">
                   Страна сборки
                 </div>
 
@@ -297,12 +297,13 @@ const productUrl =
 
                     setSelectedVariantId(variant?.productVariantId);
                   }}
-                  className="w-full px-4 py-3 rounded-xl bg-graphite-900 border border-white/10 text-white outline-none focus:border-accent-500/50"
+                  className="w-full px-4 py-3 rounded-xl border border-graphite-200 bg-white text-graphite-900 outline-none transition focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 dark:border-white/10 dark:bg-graphite-900 dark:text-white dark:focus:border-accent-500/50"
                 >
                   {activeVariants.map((variant) => (
                     <option
                       key={variant.country}
                       value={variant.country}
+                      className="bg-white text-graphite-900 dark:bg-graphite-900 dark:text-white"
                     >
                       {variant.country} — {formatPrice(Number(variant.price))}
                     </option>
@@ -311,7 +312,7 @@ const productUrl =
               </div>
             )}
             {/* Price */}
-            <div className="mt-8 p-6 bg-graphite-100 dark:bg-graphite-800 rounded-2xl border border-white/5">
+            <div className="mt-8 p-6 bg-white dark:bg-graphite-800 rounded-2xl border border-graphite-200 dark:border-white/5">
               <div className="flex items-end justify-between gap-4">
                 <div>
                   {currentOldPrice && currentOldPrice > currentPrice && (
@@ -319,7 +320,7 @@ const productUrl =
     {formatPrice(currentOldPrice)}
   </div>
 )}
-                  <div className="text-4xl font-bold text-white">
+                  <div className="text-4xl font-bold text-graphite-950 dark:text-white">
                     {formatPrice(currentPrice)}
                   </div>
                 </div>
@@ -338,7 +339,7 @@ const productUrl =
                   className={`flex-1 flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-semibold transition-all ${
                     added
                       ? 'bg-green-500 text-white'
-                      : 'bg-white/5 hover:bg-white/10 border border-white/10 text-white'
+                      : 'bg-graphite-50 hover:bg-graphite-100 border border-graphite-200 text-graphite-900 dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:text-white'
                   }`}
                 >
                   {added ? (
@@ -367,17 +368,17 @@ const productUrl =
 
         {/* Detailed specs */}
         <div className="mt-16">
-          <h2 className="font-display font-bold text-2xl text-white mb-6">Характеристики</h2>
-          <div className="bg-graphite-100 dark:bg-graphite-800 rounded-3xl border border-white/5 overflow-hidden">
+          <h2 className="font-display font-bold text-2xl text-graphite-950 dark:text-white mb-6">Характеристики</h2>
+          <div className="bg-white dark:bg-graphite-800 rounded-3xl border border-graphite-200 dark:border-white/5 overflow-hidden">
             {product.specs.map((spec, i) => (
               <div
                 key={spec.label}
                 className={`flex flex-col sm:flex-row sm:justify-between gap-2 px-6 py-4 text-sm ${
-                  i !== product.specs.length - 1 ? 'border-b border-white/5' : ''
-                } ${i % 2 === 0 ? 'bg-white/[0.02]' : ''}`}
+                  i !== product.specs.length - 1 ? 'border-b border-graphite-200 dark:border-white/5' : ''
+                } ${i % 2 === 0 ? 'bg-graphite-50/70 dark:bg-white/[0.02]' : ''}`}
               >
-                <span className="text-graphite-400">{spec.label}</span>
-                <span className="text-white font-medium sm:text-right">{spec.value}</span>
+                  <span className="text-graphite-600 dark:text-graphite-300">{spec.label}</span>
+                <span className="text-graphite-950 dark:text-white font-medium sm:text-right">{spec.value}</span>
               </div>
             ))}
           </div>
