@@ -63,6 +63,11 @@ type ProductsResponse = {
 };
 
 export function normalizeProduct(product: ApiProduct): Product {
+  // Product descriptions are rendered as ordinary text. Normalize source
+  // whitespace so prerendered JSON and the browser's innerText use the same
+  // canonical representation (without changing the actual words).
+  const description = String(product.description || '').replace(/\s+/g, ' ').trim();
+
   return {
     id: String(product.id),
     slug: String(product.slug || ''),
@@ -87,7 +92,7 @@ export function normalizeProduct(product: ApiProduct): Product {
       : undefined,
     rating: Number(product.rating || 0),
     reviews: Number(product.reviews || 0),
-    description: String(product.description || ''),
+    description,
     specs: Array.isArray(product.specs)
       ? product.specs.map((item) => ({
           label: String(item.label || ''),
