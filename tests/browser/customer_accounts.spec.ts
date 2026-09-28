@@ -79,9 +79,15 @@ for (const width of [320, 390, 1280]) test(`account registration/profile/logout 
   await page.getByLabel('Повтор пароля').fill('fixture-password');
   await page.getByRole('button', { name: 'Зарегистрироваться' }).click();
   await expect(page.getByRole('heading', { name: 'Мои заказы' })).toBeVisible();
+  await page.getByRole('button', { name: 'Изменить' }).click();
   await page.getByLabel('ФИО', { exact: true }).fill('Новое имя');
   await page.getByRole('button', { name: 'Сохранить профиль' }).click();
   await expect(page.getByRole('status')).toHaveText('Профиль сохранён.');
+  await expect(page.getByRole('button', { name: 'Изменить' })).toBeVisible();
+  await expect(page.locator('dd').getByText('Новое имя')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('dd').getByText('Новое имя')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Изменить' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(await page.evaluate(() => Object.keys(localStorage).some(key => /password|token|session|customer/i.test(key)))).toBe(false);
   await page.getByRole('button', { name: 'Выйти', exact: true }).click();

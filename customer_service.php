@@ -11,11 +11,13 @@ function customerSession(): void {
     if (session_status() === PHP_SESSION_ACTIVE) throw new RuntimeException('Session already active');
     ini_set('session.use_strict_mode', '1');
     ini_set('session.use_only_cookies', '1');
+    // Keep remembered sessions available for their full browser cookie lifetime.
+    ini_set('session.gc_maxlifetime', (string)(30 * 86400));
     session_name('TELVORA_CUSTOMER');
     session_set_cookie_params(['lifetime'=>0,'path'=>'/','secure'=>!telvoraRuntimeIsIsolatedHttpTest(),'httponly'=>true,'samesite'=>'Lax']);
     session_start();
     $now = time();
-    if (isset($_SESSION['customer_id']) && ($now - ($_SESSION['last_seen'] ?? 0) > 7200 || $now - ($_SESSION['signed_in'] ?? 0) > 604800)) {
+    if (isset($_SESSION['customer_id']) && ($now - ($_SESSION['last_seen'] ?? 0) > (!empty($_SESSION['remember_me']) ? 30 * 86400 : 7200) || $now - ($_SESSION['signed_in'] ?? 0) > (!empty($_SESSION['remember_me']) ? 30 * 86400 : 604800))) {
         $_SESSION = []; session_regenerate_id(true);
     }
     $_SESSION['last_seen'] = $now;
@@ -69,9 +71,10 @@ function customerCurrent(PDO $pdo): ?array {
     return $row;
 }
 
-function customerSignIn(array $row): void {
+function customerSignIn(array $row, bool $remember = false): void {
     session_regenerate_id(true);
-    $_SESSION = ['customer_id'=>(int)$row['id'],'auth_version'=>(int)$row['auth_version'], 'signed_in'=>time(),'last_seen'=>time(),'customer_csrf'=>bin2hex(random_bytes(32))];
+    $_SESSION = ['customer_id'=>(int)$row['id'],'auth_version'=>(int)$row['auth_version'], 'signed_in'=>time(),'last_seen'=>time(),'remember_me'=>$remember,'customer_csrf'=>bin2hex(random_bytes(32))];
+    if ($remember) setcookie(session_name(), session_id(), ['expires'=>time()+30*86400,'path'=>'/','secure'=>!telvoraRuntimeIsIsolatedHttpTest(),'httponly'=>true,'samesite'=>'Lax']);
 }
 
 // Atomic counters across sessions/processes; only digests, never raw IPs or logins.

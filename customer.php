@@ -39,7 +39,8 @@ try {
         $password=$data['password'] ?? '';
         if (!is_string($password) || strlen($password)>72 || !password_verify($password,$row['password_hash'] ?? '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2uheWG/igi.') || !$row) throw new CustomerError('Неверный логин или пароль.',401);
         if (password_needs_rehash($row['password_hash'],PASSWORD_DEFAULT)) $pdo->prepare('UPDATE customers SET password_hash=? WHERE id=?')->execute([password_hash($password,PASSWORD_DEFAULT),$row['id']]);
-        customerSignIn($row);
+        $remember=$action==='login' && ($data['remember_me'] ?? false) === true;
+        customerSignIn($row,$remember);
         $result=['customer'=>customerPublic($row),'csrf_token'=>$_SESSION['customer_csrf']];
     } elseif ($action==='logout') {
         $_SESSION=[]; session_regenerate_id(true); $_SESSION['customer_csrf']=bin2hex(random_bytes(32));

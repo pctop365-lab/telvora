@@ -126,7 +126,9 @@ try {
     [, $fresh]=customerHttp('/customer.php',null,$a);$csrf=$fresh['csrf_token'];
     checkCustomer('reset token single use',customerPost('reset_token',['token'=>$reset,'password'=>'fixture-new-secret','password_repeat'=>'fixture-new-secret'],$a,$csrf)[0]===422);
     checkCustomer('wrong password rejected',customerPost('login',['login'=>'FIXTUREONE','password'=>'incorrect-password'],$a,$csrf)[0]===401);
-    [$status,$logged]=customerPost('login',['login'=>'FIXTUREONE','password'=>'fixture-new-secret'],$a,$csrf);checkCustomer('login with normalized nickname and new password',$status===200);$csrf=$logged['csrf_token'];
+    [$status,$logged,$loginHeaders]=customerPost('login',['login'=>'FIXTUREONE','password'=>'fixture-new-secret','remember_me'=>true],$a,$csrf);checkCustomer('login with normalized nickname and new password',$status===200);$csrf=$logged['csrf_token'];
+    checkCustomer('remembered login sets persistent HttpOnly cookie',count(array_filter($loginHeaders,fn($header)=>str_starts_with(strtolower($header),'set-cookie: telvora_customer=') && str_contains(strtolower($header),'expires=') && str_contains(strtolower($header),'httponly'))) > 0);
+    [, $rememberedSession]=customerHttp('/customer.php',null,$a);checkCustomer('remembered session survives another request',(int)$rememberedSession['customer']['id']===$id);
     customerPost('profile',array_merge($profile,['email'=>'changed@example.invalid']),$a,$csrf);
     checkCustomer('email change clears verification',$pdo->query("SELECT email_verified_at FROM customers WHERE id=$id")->fetchColumn()===null);
     checkCustomer('email change deletes prior links',(int)$pdo->query("SELECT COUNT(*) FROM customer_tokens WHERE customer_id=$id")->fetchColumn()===0);
