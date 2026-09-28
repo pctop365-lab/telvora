@@ -3,7 +3,7 @@ import { businessDetails as b } from '@/data/publicContacts';
 
 const rows = [
   ['Продавец', b.sellerShortName], ['ИНН', b.inn], ['ОГРНИП', b.ogrnip], ['Дата регистрации', b.registrationDate],
-  ['НДС', b.vatNotice],
+  ['Регистрирующий орган', b.registrationAuthority],
   ['Расчётный счёт', b.bankAccount], ['Банк', b.bankName], ['БИК', b.bik], ['Корреспондентский счёт', b.correspondentAccount],
   ['\u0422\u0435\u043b\u0435\u0444\u043e\u043d', b.phoneDisplay], ['Заказы', b.ordersEmail], ['Поддержка', b.supportEmail], ['Сайт', b.site],
 ] as const;
