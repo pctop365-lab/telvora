@@ -1,9 +1,10 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { AlertCircle, CheckCircle2, ChevronRight, LockKeyhole, LogOut, Mail, Phone, Save, ShieldCheck, UserRound } from 'lucide-react';
+import { AlertCircle, ArrowUpRight, CheckCircle2, ChevronRight, LockKeyhole, LogOut, Mail, Phone, Save, Send, ShieldCheck, UserRound } from 'lucide-react';
 import { useCustomer } from '@/store/customer';
 import { loadCustomerOrders, type OrderHistory } from '@/services/customerService';
 import CustomerOrders from '@/components/CustomerOrders';
+import { publicLinks } from '@/data/publicLinks';
 
 const inputClass = 'mt-2 w-full rounded-xl border border-graphite-200 bg-white px-4 py-3 text-[15px] text-graphite-900 outline-none transition placeholder:text-graphite-400 focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 dark:border-white/10 dark:bg-graphite-900 dark:text-white dark:placeholder:text-graphite-400';
 const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-xl bg-accent-500 px-5 py-3 font-semibold text-white shadow-sm transition hover:bg-accent-600 focus:outline-none focus:ring-2 focus:ring-accent-500/40 disabled:cursor-not-allowed disabled:opacity-50';
@@ -58,6 +59,16 @@ export default function AccountPage() {
       </section>
       {error && <div className="mt-5"><Notice kind="error">{error} <button onClick={() => void refresh()} className="ml-1 font-semibold underline underline-offset-2">Повторить</button></Notice></div>}
       {message && <div className="mt-5"><Notice kind={noticeKind}>{message}</Notice></div>}
+      <aside aria-labelledby="account-telegram-heading" className="mt-7 flex flex-col gap-5 rounded-3xl border border-accent-500/25 bg-accent-500/10 p-5 dark:border-accent-500/30 dark:bg-accent-500/10 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+        <div className="flex items-start gap-4">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-accent-500 text-white" aria-hidden="true"><Send className="h-5 w-5" /></span>
+          <div>
+            <h2 id="account-telegram-heading" className="font-display text-xl font-semibold text-graphite-950 dark:text-white">TELVORA в Telegram</h2>
+            <p className="mt-1 max-w-xl text-sm leading-6 text-graphite-700 dark:text-graphite-200">Узнавайте первыми о новинках, полезных подборках, акциях и промокодах в нашем канале.</p>
+          </div>
+        </div>
+        <a href={publicLinks.telegramStore} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-accent-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-graphite-800">Открыть канал <ArrowUpRight className="h-4 w-4" aria-hidden="true" /></a>
+      </aside>
       <div className="mt-7 grid items-start gap-7 lg:grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)]">
         <div className="space-y-7">
           <form className="rounded-3xl border border-graphite-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-graphite-800 sm:p-7" onSubmit={event => { event.preventDefault(); void run('profile', profile, 'Профиль сохранён.'); }}>
