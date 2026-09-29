@@ -2964,12 +2964,18 @@ if ($action === 'update_status') {
 
     $stmt = $pdo->prepare("
         UPDATE orders
-        SET status = :status
+        SET status = :status,
+            completed_at = CASE
+                WHEN :completed_status = 'Выполнен'
+                    THEN COALESCE(completed_at, CURRENT_TIMESTAMP)
+                ELSE NULL
+            END
         WHERE id = :id
     ");
 
     $stmt->execute([
         ':status' => $status,
+        ':completed_status' => $status,
         ':id' => $orderId
     ]);
 

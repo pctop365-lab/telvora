@@ -528,6 +528,22 @@ $itemStmt = $pdo->prepare("
         )
     ");
 
+    // An offer is mutable: save its price and supplier while the order is created.
+    $offerSnapshotStmt = $pdo->prepare('
+        SELECT so.purchase_price, so.currency_code, so.supplier_sku,
+               s.name AS supplier_name
+        FROM supplier_offers so
+        INNER JOIN suppliers s ON s.id = so.supplier_id
+        WHERE so.id = :id LIMIT 1
+    ');
+    $snapshotStmt = $pdo->prepare('
+        INSERT INTO order_item_purchase_snapshots
+            (order_item_id, supplier_offer_id, supplier_name, supplier_sku,
+             purchase_price, currency_code)
+        VALUES (:order_item_id, :supplier_offer_id, :supplier_name,
+                :supplier_sku, :purchase_price, :currency_code)
+    ');
+
     $orderItemIds = [];
     foreach ($serverItems as $itemIndex => $item) {
 
@@ -547,6 +563,21 @@ $itemStmt = $pdo->prepare("
             ':price' => $price
         ]);
         $orderItemIds[$itemIndex] = (int)$pdo->lastInsertId();
+        if ($item['_qualifying_offer_id'] !== null) {
+            $offerSnapshotStmt->execute([':id' => $item['_qualifying_offer_id']]);
+            $offer = $offerSnapshotStmt->fetch();
+            if ($offer === false) {
+                throw new AvailabilityChangedException(storefrontCartPublic($lockedResolution));
+            }
+            $snapshotStmt->execute([
+                ':order_item_id' => $orderItemIds[$itemIndex],
+                ':supplier_offer_id' => $item['_qualifying_offer_id'],
+                ':supplier_name' => $offer['supplier_name'],
+                ':supplier_sku' => $offer['supplier_sku'],
+                ':purchase_price' => $offer['purchase_price'],
+                ':currency_code' => $offer['currency_code'],
+            ]);
+        }
     }
 
     $serviceStmt=$pdo->prepare('INSERT INTO order_services(order_id,order_item_id,service_id,service_key,service_name,service_category,television_name,screen_size,unit_price,quantity,total,metadata) VALUES(:order_id,:order_item_id,:service_id,:service_key,:service_name,:service_category,:television_name,:screen_size,:unit_price,:quantity,:total,:metadata)');
