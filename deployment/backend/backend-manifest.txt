@@ -14,3 +14,6 @@ seo_publication_batch_service.php
 seo_publication_snapshot_service.php
 seo_publication_worker.php
 service_catalog_service.php
+api.php
+manager.php
+sales_export.php
