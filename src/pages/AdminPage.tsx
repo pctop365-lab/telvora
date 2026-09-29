@@ -3302,7 +3302,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
           </div>
         )}
 
-        <div className="flex gap-2 mb-8 border-b border-gray-200 pb-3">
+        <div className="flex flex-wrap gap-2 mb-8 border-b border-gray-200 pb-3">
           <button
             onClick={() => setActiveTab('orders')}
             className={`px-5 py-2.5 rounded-xl text-sm font-medium border transition ${
@@ -3336,9 +3336,9 @@ const toggleProductStatus = async (product: AdminProduct) => {
             Поставщики
           </button>
           <button onClick={() => setActiveTab('services')} className={`px-5 py-2.5 rounded-xl text-sm font-medium border transition ${activeTab==='services'?'bg-accent-50 border-accent-200 text-accent-600':'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>Сервисные услуги</button>
+          <button onClick={() => setActiveTab('customers')} className={`px-5 py-2.5 rounded-xl text-sm font-medium border transition ${activeTab === 'customers' ? 'bg-accent-50 border-accent-200 text-accent-600' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}>Клиенты</button>
         </div>
 
-        <button onClick={() => setActiveTab('customers')} className={`mb-5 px-5 py-2.5 rounded-xl text-sm font-medium border ${activeTab === 'customers' ? 'bg-accent-50 border-accent-200 text-accent-600' : 'bg-white border-gray-200 text-gray-600'}`}>Клиенты</button>
         {activeTab === 'customers' ? <CustomersAdmin /> : activeTab === 'services' ? <ServiceCatalogAdmin /> : activeTab === 'orders' ? (
           <>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
