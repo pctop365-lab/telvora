@@ -21,7 +21,7 @@ function syncSales() {
     const data = JSON.parse(response.getContentText());
     if (data.success !== true || !Array.isArray(data.orders) ||
         !Array.isArray(data.items)) throw new Error('Неверный ответ выгрузки');
-    const book = SpreadsheetApp.getActiveSpreadsheet();
+    const book = SpreadsheetApp.openById('1VeN_Ibdp_eHXuo3yBzzzAYUARRhvU6IZjtshRyVpBPw');
     const sales = book.getSheetByName(SALES_SHEET);
     const positions = book.getSheetByName(ITEMS_SHEET);
     const settings = book.getSheetByName('Настройки');
