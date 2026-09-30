@@ -99,19 +99,19 @@ export default function AnalyticsConsent() {
 
   return <>
     {(consent === null || settings) && (
-      <section aria-label="астройки аналитики"
+      <section aria-label="Настройки аналитики"
         className="fixed bottom-4 left-4 right-4 z-[100] mx-auto max-w-3xl rounded-2xl border border-orange-200 bg-white p-5 text-gray-900 shadow-xl">
-        <p className="font-semibold">налитика TELVORA</p>
+        <p className="font-semibold">Аналитика TELVORA</p>
         <p className="mt-2 text-sm">
-          С вашего разрешения Яндекс етрика собирает данные о посещениях,
+          С вашего разрешения Яндекс Метрика собирает данные о посещениях,
           браузере и устройстве, чтобы улучшать магазин.
-          орзина и вход работают без аналитики.{' '}
-          <a href="/cookies" className="underline">одробнее</a>
+          Корзина и вход работают без аналитики.{' '}
+          <a href="/cookies" className="underline">Подробнее</a>
         </p>
         <div className="mt-4 flex flex-wrap gap-3">
           <button type="button" onClick={() => choose('yes')}
             className="rounded-xl bg-orange-500 px-4 py-2 font-medium text-white">
-            азрешить аналитику
+            Разрешить аналитику
           </button>
           <button type="button" onClick={() => choose('no')}
             className="rounded-xl border border-gray-300 px-4 py-2 font-medium">
@@ -123,7 +123,7 @@ export default function AnalyticsConsent() {
     {pathname === '/cookies' && consent !== null && !settings && (
       <button type="button" onClick={() => setSettings(true)}
         className="fixed bottom-4 right-4 z-[90] rounded-xl border border-orange-200 bg-white px-4 py-3 text-gray-900 shadow-lg">
-        астройки аналитики
+        Настройки аналитики
       </button>
     )}
   </>;
