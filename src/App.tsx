@@ -1,3 +1,4 @@
+import AnalyticsConsent from '@/components/AnalyticsConsent';
 import {
   Routes,
   Route,
@@ -95,6 +96,7 @@ const isAdmin = location.pathname.startsWith('/admin');
         : 'bg-graphite-900 text-white'
   }`}
 >
+      <AnalyticsConsent />
       {!isAdmin && <Header />}
 
       <main className={`flex-1 ${isAdmin ? 'admin-page' : ''}`}>
