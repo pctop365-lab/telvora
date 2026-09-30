@@ -1,3 +1,4 @@
+import { trackAnalyticsGoal } from '@/components/AnalyticsConsent';
 import { FormEvent, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { PhoneCall } from 'lucide-react';
@@ -30,6 +31,7 @@ export default function CallbackRequestForm() {
       });
       const data = await response.json().catch(() => null);
       if (!response.ok || !data?.success) throw new Error(data?.message || 'Не удалось принять заявку. Позвоните или напишите нам.');
+      trackAnalyticsGoal('callback_sent');
       setStatus({ kind: 'success', message: 'Заявка принята. Мы свяжемся с вами в указанное время.' });
       setName(''); setPhone(''); setPreferredTime(''); setConsent(false); setCompany(''); startedAt.current = Date.now();
     } catch (error) {

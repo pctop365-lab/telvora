@@ -1,3 +1,4 @@
+import { trackAnalyticsGoal } from '@/components/AnalyticsConsent';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useCustomer } from '@/store/customer';
 import { Link, useNavigate } from 'react-router-dom';
@@ -230,6 +231,7 @@ comment: '',
         items, services, { saveProfile: Boolean(customer) && saveProfile, customerId: customer?.id ?? null }
       );
 
+      trackAnalyticsGoal('order_created');
       clearCart();
       navigate(`/order-success/${encodeURIComponent(order.orderNumber)}`, {
         state: {

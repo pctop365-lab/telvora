@@ -45,6 +45,22 @@ function loadTag() {
   return loading;
 }
 
+export function trackAnalyticsGoal(goal: 'order_created' | 'callback_sent'): void {
+  try {
+    if (typeof window === 'undefined' || readConsent() !== 'yes') return;
+    if (!['telvora.ru', 'www.telvora.ru'].includes(location.hostname)) return;
+    if (/^\/(admin|account)(\/|$)/.test(location.pathname)) return;
+
+    void loadTag().then(() => {
+      if (active && readConsent() === 'yes') {
+        getBrowser().ym?.(ID, 'reachGoal', goal);
+      }
+    }).catch(() => {});
+  } catch {
+    // Analytics must not interrupt order or callback processing.
+  }
+}
+
 export default function AnalyticsConsent() {
   const { pathname } = useLocation();
   const [consent, setConsent] = useState<Consent>(readConsent);
@@ -53,7 +69,7 @@ export default function AnalyticsConsent() {
 
   useEffect(() => {
     let cancelled = false;
-    if (consent !== 'yes' || privatePage) {
+    if (consent !== 'yes' || /^\/(admin|account)(\/|$)/.test(pathname)) {
       if (active) getBrowser().ym?.(ID, 'destruct');
       active = false;
       lastPath = '';
@@ -66,6 +82,8 @@ export default function AnalyticsConsent() {
       if (!active) {
         getBrowser().ym?.(ID, 'init', {
           defer: true,
+          url: location.origin + '/',
+          referrer: location.origin + '/',
           webvisor: false,
           clickmap: false,
           trackLinks: false,
@@ -73,7 +91,7 @@ export default function AnalyticsConsent() {
         });
         active = true;
       }
-      if (lastPath !== pathname) {
+      if (!privatePage && lastPath !== pathname) {
         const previous = lastPath;
         lastPath = pathname;
         getBrowser().ym?.(ID, 'hit', `${location.origin}${pathname}`, {
