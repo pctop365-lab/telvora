@@ -5,7 +5,7 @@ const ID = 113224284;
 const KEY = 'telvora_analytics_consent';
 type Consent = 'yes' | 'no' | null;
 type Ym = ((...args: unknown[]) => void) & { a?: unknown[][]; l?: number };
-const browser = window as Window & { ym?: Ym };
+function getBrowser() { return window as Window & { ym?: Ym }; }
 let loading: Promise<void> | undefined;
 let active = false;
 let lastPath = '';
@@ -22,13 +22,13 @@ function readConsent(): Consent {
 function loadTag() {
   if (!loading) {
     loading = new Promise<void>((resolve, reject) => {
-      if (!browser.ym) {
+      if (!getBrowser().ym) {
         const queue: Ym = (...args) => {
           queue.a = queue.a || [];
           queue.a.push(args);
         };
         queue.l = Date.now();
-        browser.ym = queue;
+        getBrowser().ym = queue;
       }
       const script = document.createElement('script');
       script.async = true;
@@ -54,7 +54,7 @@ export default function AnalyticsConsent() {
   useEffect(() => {
     let cancelled = false;
     if (consent !== 'yes' || privatePage) {
-      if (active) browser.ym?.(ID, 'destruct');
+      if (active) getBrowser().ym?.(ID, 'destruct');
       active = false;
       lastPath = '';
       return;
@@ -64,7 +64,7 @@ export default function AnalyticsConsent() {
     void loadTag().then(() => {
       if (cancelled) return;
       if (!active) {
-        browser.ym?.(ID, 'init', {
+        getBrowser().ym?.(ID, 'init', {
           defer: true,
           webvisor: false,
           clickmap: false,
@@ -76,7 +76,7 @@ export default function AnalyticsConsent() {
       if (lastPath !== pathname) {
         const previous = lastPath;
         lastPath = pathname;
-        browser.ym?.(ID, 'hit', `${location.origin}${pathname}`, {
+        getBrowser().ym?.(ID, 'hit', `${location.origin}${pathname}`, {
           referer: previous ? `${location.origin}${previous}` : '',
         });
       }
@@ -89,7 +89,7 @@ export default function AnalyticsConsent() {
     setConsent(value);
     setSettings(false);
     if (value === 'no' && consent === 'yes') {
-      browser.ym?.(ID, 'destruct');
+      getBrowser().ym?.(ID, 'destruct');
       active = false;
       location.reload();
     }
