@@ -16,7 +16,7 @@ function storefrontCartVariantName(array $item): string
     $modelCode = trim((string)($item['model_code'] ?? ''));
     if ($modelCode === '') return $name;
     $pattern = '/(?<![\p{L}\p{N}])(?=[\p{L}\p{N}-]*\d)[\p{L}\p{N}-]{5,}(?![\p{L}\p{N}])/u';
-    $updated = preg_replace($pattern, static fn(): string => $modelCode, $name, 1);
+    $updated = preg_replace_callback($pattern, static fn(): string => $modelCode, $name, 1);
     return is_string($updated) && $updated !== $name ? $updated : $name . ' — модель: ' . $modelCode;
 }
 
