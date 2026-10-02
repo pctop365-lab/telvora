@@ -22,6 +22,33 @@ export default function ContactsPage() {
         <div className="grid md:grid-cols-3 gap-5 mb-5">
           {contactSections.map((item) => <article key={item.title} className="flex flex-col p-6 bg-white dark:bg-graphite-900 rounded-3xl border border-graphite-200 dark:border-white/5 shadow-sm"><div className="w-11 h-11 rounded-2xl bg-accent-500/10 flex items-center justify-center mb-5"><item.icon className="w-5 h-5 text-accent-600" /></div><h2 className="font-display font-bold text-xl">{item.title}</h2><p className="text-sm text-graphite-600 dark:text-graphite-400 mt-2 mb-5 flex-1">{item.text}</p><Link to={item.to} className="text-sm font-semibold text-accent-600 hover:text-accent-700">{item.action}</Link></article>)}
         </div>
+        <section aria-labelledby="pickup-title" className="mb-5 overflow-hidden rounded-3xl border border-graphite-200 bg-white shadow-sm dark:border-white/5 dark:bg-graphite-900">
+          <div className="grid lg:grid-cols-2">
+            <div className="p-6 sm:p-8">
+              <span className="text-sm font-semibold uppercase tracking-widest text-accent-600 dark:text-accent-500">Получение заказа</span>
+              <h2 id="pickup-title" className="mt-3 font-display text-2xl font-bold">Самовывоз на Горбушке</h2>
+              <p className="mt-4 font-semibold">Москва, Багратионовский проезд, 7, корпус 3</p>
+              <p className="mt-3 leading-relaxed text-graphite-600 dark:text-graphite-300">
+                Самовывоз после подтверждения заказа. Перед поездкой согласуйте время получения с менеджером. Подробности получения сообщим при подтверждении.
+              </p>
+              <a
+                href="https://yandex.ru/maps/?org=57799743091"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-6 inline-flex items-center justify-center rounded-xl bg-accent-500 px-5 py-3 font-semibold text-white transition-colors hover:bg-accent-600"
+              >
+                Открыть в Яндекс Картах
+              </a>
+            </div>
+            <iframe
+              src="https://yandex.ru/map-widget/v1/?z=16&ol=biz&oid=57799743091"
+              title="Точка самовывоза TELVORA на Яндекс Картах"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+              className="block h-[320px] w-full border-0 sm:h-[400px]"
+            />
+          </div>
+        </section>
         <CallbackRequestForm />
         <section className="mt-5 p-6 sm:p-8 bg-white dark:bg-graphite-900 rounded-3xl border border-graphite-200 dark:border-white/5 shadow-sm"><h2 className="font-display font-bold text-2xl">Продавец</h2><div className="mt-3 space-y-1 text-graphite-600 dark:text-graphite-400"><p className="font-semibold text-graphite-900 dark:text-white">{publicContacts.sellerShortName}</p><p>ИНН {publicContacts.inn}</p><p>ОГРНИП {publicContacts.ogrnip}</p><p className="pt-2"><strong>Регистрирующий орган:</strong><br />{publicContacts.registrationAuthority}</p></div><Link to="/requisites" className="mt-4 inline-block font-semibold text-accent-600 hover:text-accent-700">Полные реквизиты</Link></section>
       </div>
