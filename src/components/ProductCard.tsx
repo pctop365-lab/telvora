@@ -92,13 +92,7 @@ export default function ProductCard({
         <div className="absolute top-2 left-2 sm:top-4 sm:left-4 flex flex-col gap-1 sm:gap-2">
           {product.badge && (
             <span
-              className={`max-w-[7.5rem] truncate px-2 py-1 text-[10px] font-bold rounded-md backdrop-blur-md sm:max-w-none sm:overflow-visible sm:text-clip sm:whitespace-normal sm:px-3 sm:py-1.5 sm:text-xs sm:rounded-lg ${
-                product.badge.includes('%')
-                  ? 'bg-accent-500 text-white'
-                  : product.badge === 'Новинка'
-                  ? 'bg-white text-graphite-900'
-                  : 'bg-white/10 text-white border border-white/20'
-              }`}
+              className={`max-w-[7.5rem] truncate px-2 py-1 text-[10px] font-bold rounded-md backdrop-blur-md sm:max-w-none sm:overflow-visible sm:text-clip sm:whitespace-normal sm:px-3 sm:py-1.5 sm:text-xs sm:rounded-lg bg-accent-500 text-white`}
             >
               {product.badge}
             </span>
