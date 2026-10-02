@@ -23,7 +23,7 @@ const navLinks = [
   { label: 'Телевизоры', to: '/televisions' },
   { label: 'Доставка', to: '/delivery' },
   { label: 'Сервисные услуги', to: '/services' },
-  { label: 'Технологии', to: '/#tech' },
+  { label: 'Контакты', to: '/contacts' },
  { label: 'Поддержка', to: '/support' },
 ];
 
