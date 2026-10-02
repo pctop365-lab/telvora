@@ -2766,6 +2766,12 @@ if (!response.ok || !data.success || !data.image) {
       return;
     }
 
+    const amazonRating = Number(productForm.rating || 0);
+    if (!Number.isFinite(amazonRating) || amazonRating < 0 || amazonRating > 5 || Math.abs(amazonRating * 10 - Math.round(amazonRating * 10)) > 1e-8) {
+      setError('Укажите оценку Amazon от 0 до 5 с одним знаком после запятой');
+      return;
+    }
+
     setSavingProduct(true);
     setError('');
     setProductsError('');
@@ -2783,7 +2789,7 @@ if (!response.ok || !data.success || !data.image) {
         resolution: productForm.resolution.trim(),
         image: productForm.image.trim(),
         badge: productForm.badge.trim(),
-        rating: Number(productForm.rating || 0),
+        rating: amazonRating,
         reviews: Number(productForm.reviews || 0),
         description: productForm.description.trim(),
         specs,
@@ -3823,7 +3829,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
 </th>
 
                         <th className="w-[10%] text-left px-5 py-4 text-xs font-semibold uppercase text-gray-500">
-  Рейтинг
+  Оценка Amazon
 </th>
 
                         <th className="w-[11%] text-left px-5 py-4 text-xs font-semibold uppercase text-gray-500">
@@ -3896,13 +3902,8 @@ const toggleProductStatus = async (product: AdminProduct) => {
                             </td>
 
                             <td className="px-5 py-4">
-                              <div className="flex items-center gap-1 text-sm text-graphite-900">
-                                <span>★</span>
-                                {product.rating}
-                              </div>
-
-                              <div className="text-xs text-gray-400 mt-1">
-                                {product.reviews} отзывов
+                              <div className="text-sm text-graphite-900">
+                                {product.rating > 0 ? `★ ${product.rating.toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} / 5` : 'Не указана'}
                               </div>
                             </td>
 
@@ -5683,6 +5684,23 @@ const toggleProductStatus = async (product: AdminProduct) => {
                         className="admin-input"
                         placeholder="4K"
                       />
+                    </div>
+
+                    <div>
+                      <label htmlFor="amazon-rating" className="block text-sm text-gray-600 mb-2">Оценка на Amazon</label>
+                      <input
+                        id="amazon-rating"
+                        type="number"
+                        min="0"
+                        max="5"
+                        step="0.1"
+                        value={productForm.rating}
+                        onChange={(event) => setProductForm((current) => ({ ...current, rating: event.target.value }))}
+                        className="admin-input"
+                        aria-describedby="amazon-rating-hint"
+                        placeholder="4.7"
+                      />
+                      <p id="amazon-rating-hint" className="mt-2 text-xs text-gray-500">От 0 до 5. Введите рейтинг Amazon вручную. Оставьте 0 или пустое поле, чтобы скрыть оценку.</p>
                     </div>
 
                     <div className="rounded-2xl border border-white/10 bg-graphite-950/70 p-4 md:col-span-2 sm:p-5">

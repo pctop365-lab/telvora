@@ -1,4 +1,4 @@
-import { Star, ShoppingBag, Check } from 'lucide-react';
+import { ShoppingBag, Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import type { Product } from '@/types';
 import { formatPrice } from '@/lib/format';
@@ -6,6 +6,7 @@ import { useCart } from '@/store/cart';
 import { getCategorySlugForProduct } from '@/services/productService';
 import { useState } from 'react';
 import AvailabilityStatus from './AvailabilityStatus';
+import AmazonRating from './AmazonRating';
 
 type ProductCardProps = {
   product: Product;
@@ -127,12 +128,7 @@ export default function ProductCard({
             </h3>
           </div>
 
-          <div className="flex items-center gap-1 shrink-0">
-            <Star className="w-3.5 h-3.5 fill-accent-500 text-accent-500 sm:w-4 sm:h-4" />
-            <span className="text-xs font-semibold text-white sm:text-sm">
-              {product.rating}
-            </span>
-          </div>
+          <AmazonRating rating={product.rating} compact />
         </div>
 
         <p className="text-xs text-graphite-400 line-clamp-2 mb-3 flex-1 sm:text-sm sm:mb-4">

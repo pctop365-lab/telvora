@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Star, ShoppingBag, Check, Cpu, Monitor, Volume2, Zap, ChevronRight } from 'lucide-react';
+import { ArrowLeft, ShoppingBag, Check, Cpu, Monitor, Volume2, Zap, ChevronRight } from 'lucide-react';
 import type { Product, ProductVariant } from '@/types';
 import { formatPrice } from '@/lib/format';
 import { useCart } from '@/store/cart';
@@ -8,6 +8,7 @@ import { getCategorySlugForProduct } from '@/services/productService';
 import { useEffect, useRef, useState } from 'react';
 import AvailabilityStatus from './AvailabilityStatus';
 import ProductGallery from './ProductGallery';
+import AmazonRating from './AmazonRating';
 import SeoMetadata from './SeoMetadata';
 import { absoluteTelvoraUrl } from '@/lib/seo';
 
@@ -209,22 +210,7 @@ const productUrl =
               <div className="mt-2 text-sm text-graphite-500 dark:text-graphite-400">Модель: <span className="font-medium text-graphite-800 dark:text-graphite-200">{selectedVariant.modelCode}</span></div>
             )}
 
-            <div className="flex items-center gap-2 mt-4">
-              <div className="flex items-center gap-0.5">
-                {[1, 2, 3, 4, 5].map((s) => (
-                  <Star
-                    key={s}
-                    className={`w-5 h-5 ${
-                      s <= Math.round(product.rating)
-                        ? 'fill-accent-500 text-accent-500'
-                        : 'text-graphite-600'
-                    }`}
-                  />
-                ))}
-              </div>
-              <span className="text-sm font-semibold text-graphite-900 dark:text-white">{product.rating}</span>
-              <span className="text-sm text-graphite-600 dark:text-graphite-400">· {product.reviews} отзывов</span>
-            </div>
+            <AmazonRating rating={product.rating} />
 
             <div className="mt-6">
               <div
