@@ -456,14 +456,6 @@ const statuses = [
 
 const categories = ['OLED', 'QLED', 'LED', '8K'];
 
-const countries = [
-  'Россия',
-  'Китай',
-  'Южная Корея',
-  'Япония',
-  'Европа',
-];
-
 function formatPrice(value: string | number) {
   return new Intl.NumberFormat('ru-RU').format(Number(value)) + ' ₽';
 }
@@ -783,6 +775,9 @@ export default function AdminPage() {
   const [pricePublicationHistoryLoading, setPricePublicationHistoryLoading] = useState(false);
 
   const [products, setProducts] = useState<AdminProduct[]>([]);
+  const countries = useMemo(() => Array.from(new Set(
+    products.map((product) => (product.country || '').trim()).filter(Boolean)
+  )).sort((a, b) => a.localeCompare(b, 'ru')), [products]);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
@@ -801,6 +796,11 @@ export default function AdminPage() {
     useState('Все категории');
   const [productCountryFilter, setProductCountryFilter] =
     useState('Все страны');
+  useEffect(() => {
+    if (productCountryFilter !== 'Все страны' && !countries.includes(productCountryFilter)) {
+      setProductCountryFilter('Все страны');
+    }
+  }, [countries, productCountryFilter]);
   const [productBrandFilter, setProductBrandFilter] =
     useState('Все бренды');
   const [variantViewProduct, setVariantViewProduct] = useState<AdminProduct | null>(null);
@@ -2462,7 +2462,7 @@ const login = async (e: React.FormEvent) => {
 
       const matchesCountry =
         productCountryFilter === 'Все страны' ||
-        product.country === productCountryFilter;
+        (product.country || '').trim() === productCountryFilter;
 
       const normalizedBrand = (product.brand || '').trim().toLocaleLowerCase('ru-RU');
       const matchesBrand =
@@ -2784,7 +2784,7 @@ if (!response.ok || !data.success || !data.image) {
         slug: productForm.slug.trim(),
         brand: productForm.brand.trim(),
         series: productForm.series.trim(),
-        country: productForm.country.trim(),
+        country: productForm.country.trim() || null,
         category: productForm.category,
         screen_size: productForm.screen_size.trim(),
         resolution: productForm.resolution.trim(),
@@ -5598,11 +5598,16 @@ const toggleProductStatus = async (product: AdminProduct) => {
                     </div>
 
                     <div>
-                      <label className="block text-sm text-gray-600 mb-2">
+                      <label htmlFor="product-country" className="block text-sm text-gray-600 mb-2">
                         Страна
                       </label>
 
-                      <select
+                      <input
+                        id="product-country"
+                        type="text"
+                        list="product-country-suggestions"
+                        placeholder="Например: Япония"
+                        maxLength={100}
                         value={productForm.country}
                         onChange={(e) =>
                           setProductForm((current) => ({
@@ -5611,9 +5616,8 @@ const toggleProductStatus = async (product: AdminProduct) => {
                           }))
                         }
                         className="admin-input"
-                      >
-                        <option value="">Выберите страну</option>
-
+                      />
+                      <datalist id="product-country-suggestions">
                         {countries.map((country) => (
                           <option
                             key={country}
@@ -5622,7 +5626,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                             {country}
                           </option>
                         ))}
-                      </select>
+                      </datalist>
                     </div>
 
                     <div>

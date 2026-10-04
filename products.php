@@ -816,6 +816,24 @@ if ($action === 'admin_list') {
 |--------------------------------------------------------------------------
 */
 
+// Brand country is free text, independent of variant assembly countries.
+// Normalize only an explicitly supplied field so partial updates preserve it.
+if (in_array($action, ['add', 'update'], true) && array_key_exists('country', $data)) {
+    $countryValue = $data['country'];
+    if ($countryValue !== null && (!is_string($countryValue) || !mb_check_encoding($countryValue, 'UTF-8'))) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Некорректная страна товара'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $countryValue = preg_replace('/^[\s\p{Z}\x{FEFF}]+|[\s\p{Z}\x{FEFF}]+$/u', '', $countryValue ?? '');
+    if (mb_strlen($countryValue, 'UTF-8') > 100 || preg_match('/\p{Cc}/u', $countryValue)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Страна товара должна содержать до 100 символов без управляющих символов'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    $data['country'] = $countryValue === '' ? null : $countryValue;
+}
+
 if ($action === 'add') {
 
     $name = trim($data['name'] ?? '');
