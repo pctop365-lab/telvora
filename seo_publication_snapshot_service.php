@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/seo_publication_service.php';
 require_once __DIR__ . '/service_catalog_service.php';
+require_once __DIR__ . '/product_gallery_service.php';
 
 function seoPublicationSnapshotJson(mixed $value): string
 {
@@ -39,6 +40,7 @@ function seoPublicationBuildDesiredSnapshot(PDO $pdo, string $batchId, array $jo
         }
     }
 
+    $products = productGalleryAttach($pdo, $products);
     $products = array_map('seoPublicationSnapshotProduct', $products);
     usort($products, static function (array $a, array $b): int {
         $slugOrder = strcmp((string)$a['slug'], (string)$b['slug']);

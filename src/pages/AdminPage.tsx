@@ -21,6 +21,8 @@ import { canStartVariantMutation, isCurrentVariantMutation, isVariantDraft, shou
 import { convertProductImageForUpload } from './productImageConversion';
 import ServiceCatalogAdmin from '@/components/admin/ServiceCatalogAdmin';
 import CustomersAdmin from '@/components/admin/CustomersAdmin';
+import ProductImage from '@/components/ProductImage';
+import type { ProductImageVariants } from '@/types';
 
 type Spec = {
   label: string;
@@ -94,6 +96,7 @@ type AdminProduct = {
   old_price: number | null;
   image: string;
   images?: string[];
+  image_variants?: Record<string, ProductImageVariants>;
   badge: string | null;
   rating: number;
   reviews: number;
@@ -781,6 +784,8 @@ export default function AdminPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
+  const [galleryImageVariants, setGalleryImageVariants] = useState<Record<string, ProductImageVariants>>({});
+  const [galleryUploadProgress, setGalleryUploadProgress] = useState('');
   const galleryUploadPendingRef = useRef(false);
   const galleryContextSequenceRef = useRef(0);
   const [imageUploading, setImageUploading] = useState(false);
@@ -2494,34 +2499,40 @@ const login = async (e: React.FormEvent) => {
 
   const uploadGalleryImages = async () => {
     if (galleryUploadPendingRef.current) return;
-    if (!galleryFiles.length || galleryImages.length + galleryFiles.length > 10) {
-      setImageUploadError('В галерее может быть не более 10 изображений.');
+    if (!galleryFiles.length || galleryImages.length + galleryFiles.length > 45) {
+      setImageUploadError('В галерее может быть не более 45 изображений.');
       return;
     }
-    if (galleryFiles.some((file) => file.size > 8 * 1024 * 1024) || galleryFiles.reduce((sum, file) => sum + file.size, 0) > 32 * 1024 * 1024) {
-      setImageUploadError('Файл превышает 8 МБ или общий размер превышает 32 МБ.');
+    if (galleryFiles.some((file) => file.size > 8 * 1024 * 1024)) {
+      setImageUploadError('Размер каждого файла не должен превышать 8 МБ.');
       return;
     }
     const requestSequence = galleryContextSequenceRef.current;
     galleryUploadPendingRef.current = true;
     setImageUploading(true); setImageUploadError('');
     try {
-      const uploadFiles = await Promise.all(galleryFiles.map(convertProductImageForUpload));
-      if (uploadFiles.reduce((sum, file) => sum + file.size, 0) > 32 * 1024 * 1024) throw new Error('После преобразования общий размер превышает 32 МБ.');
-      const formData = new FormData(); formData.append('action', 'upload_gallery');
-      uploadFiles.forEach((file) => formData.append('images[]', file));
-      const response = await fetch(PRODUCTS_API, { method:'POST', credentials:'include', headers:{'X-CSRF-Token':csrfToken || ''}, body:formData });
-      const data = await response.json();
-      if (!response.ok || !data.success || !Array.isArray(data.images)) throw new Error(data.message || 'Не удалось загрузить изображения');
-      if (requestSequence !== galleryContextSequenceRef.current) return;
-      setGalleryImages((current) => {
-        const next = [...current, ...data.images].slice(0, 10);
-        setProductForm((form) => ({...form, image: next[0] || ''}));
-        return next;
-      });
-      setGalleryFiles([]);
+      // One conversion/request at a time avoids decoding 45 originals together
+      // and PHP's max_file_uploads/post_max_size limits. Completed files survive retries.
+      let uploaded = [...galleryImages];
+      for (let index = 0; index < galleryFiles.length; index++) {
+        if (requestSequence !== galleryContextSequenceRef.current) return;
+        setGalleryUploadProgress(`${index + 1} / ${galleryFiles.length}`);
+        const file = await convertProductImageForUpload(galleryFiles[index]);
+        if (requestSequence !== galleryContextSequenceRef.current) return;
+        const formData = new FormData(); formData.append('action', 'upload_gallery');
+        formData.append('images[]', file);
+        const response = await fetch(PRODUCTS_API, { method:'POST', credentials:'include', headers:{'X-CSRF-Token':csrfToken || ''}, body:formData });
+        const data = await response.json();
+        if (!response.ok || !data.success || !Array.isArray(data.images)) throw new Error(data.message || 'Не удалось загрузить изображения');
+        if (requestSequence !== galleryContextSequenceRef.current) return;
+        uploaded = [...uploaded, ...data.images];
+        setGalleryImages(uploaded);
+        setGalleryImageVariants((current) => ({ ...current, ...data.image_variants }));
+        setProductForm((form) => ({ ...form, image: uploaded[0] || '' }));
+        setGalleryFiles(galleryFiles.slice(index + 1));
+      }
     } catch (error) { if (requestSequence === galleryContextSequenceRef.current) setImageUploadError(error instanceof Error ? error.message : 'Ошибка сети при загрузке'); }
-    finally { galleryUploadPendingRef.current = false; if (requestSequence === galleryContextSequenceRef.current) setImageUploading(false); }
+    finally { galleryUploadPendingRef.current = false; if (requestSequence === galleryContextSequenceRef.current) { setImageUploading(false); setGalleryUploadProgress(''); } }
   };
 
     const uploadProductImage = async () => {
@@ -2564,6 +2575,7 @@ if (!response.ok || !data.success || !data.image) {
       }));
 
       setImageFile(null);
+      setGalleryImageVariants((current) => ({ ...current, ...data.image_variants }));
     } catch (error) {
       setImageUploadError(
         error instanceof Error ? error.message : 'Не удалось подключиться к серверу'
@@ -2585,6 +2597,9 @@ if (!response.ok || !data.success || !data.image) {
     setEditingProductId(null);
     setGalleryFiles([]);
     setGalleryImages([]);
+    setGalleryImageVariants({});
+    setGalleryUploadProgress('');
+    setImageUploading(false);
   };
 
   const openAddProduct = () => {
@@ -2618,6 +2633,7 @@ if (!response.ok || !data.success || !data.image) {
       homepage_position: product.homepage_position == null ? '' : String(product.homepage_position),
     });
     setGalleryImages(product.images?.length ? product.images : [product.image].filter(Boolean));
+    setGalleryImageVariants(product.image_variants || {});
     setGalleryFiles([]);
 
     setSpecs(
@@ -2734,6 +2750,7 @@ if (!response.ok || !data.success || !data.image) {
   };
 
   const saveProduct = async () => {
+    if (imageUploading || galleryUploadPendingRef.current) return;
     if (!productForm.name.trim()) {
       setError('Введите название товара');
       return;
@@ -5710,10 +5727,10 @@ const toggleProductStatus = async (product: AdminProduct) => {
 
                     <div className="rounded-2xl border border-white/10 bg-graphite-950/70 p-4 md:col-span-2 sm:p-5">
                       <div className="mb-3 text-sm font-semibold text-white">Галерея товара</div>
-                      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                      <fieldset disabled={imageUploading} className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                         {galleryImages.map((src, index) => (
                           <div key={src} className="rounded-xl border border-white/10 p-2">
-                            <img src={src} alt={`Превью ${index + 1}`} className="h-24 w-full rounded-lg bg-white object-contain" />
+                            <ProductImage src={src} variants={galleryImageVariants[src]} roleSize="thumbnail" sizes="160px" loading="lazy" alt={`Превью ${index + 1}`} className="h-24 w-full rounded-lg bg-white object-contain" />
                             <div className="mt-2 flex flex-wrap gap-1">
                               <button type="button" onClick={() => { const next=[...galleryImages]; [next[index-1],next[index]]=[next[index],next[index-1]]; setGalleryImages(next); setProductForm((f)=>({...f,image:next[0]})); }} disabled={index===0} className="rounded bg-white/10 px-2 py-1 text-xs text-white disabled:opacity-30">←</button>
                               <button type="button" onClick={() => { const next=[...galleryImages]; [next[index],next[index+1]]=[next[index+1],next[index]]; setGalleryImages(next); setProductForm((f)=>({...f,image:next[0]})); }} disabled={index===galleryImages.length-1} className="rounded bg-white/10 px-2 py-1 text-xs text-white disabled:opacity-30">→</button>
@@ -5722,9 +5739,9 @@ const toggleProductStatus = async (product: AdminProduct) => {
                             </div>
                           </div>
                         ))}
-                      </div>
-                      <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/avif,.avif" onChange={(e)=>{setGalleryFiles(Array.from(e.target.files || []));setImageUploadError('');}} className="mt-3 block w-full rounded-xl border border-dashed border-white/15 bg-white/5 p-3 text-sm text-graphite-300" />
-                      <button type="button" onClick={uploadGalleryImages} disabled={!galleryFiles.length || imageUploading} className="mt-3 rounded-xl bg-accent-500 px-4 py-2.5 font-semibold text-white disabled:opacity-40">{imageUploading ? 'Загрузка...' : 'Загрузить выбранные'}</button>
+                      </fieldset>
+                      <input type="file" multiple disabled={imageUploading} accept="image/jpeg,image/png,image/webp,image/avif,.avif" onChange={(e)=>{setGalleryFiles(Array.from(e.target.files || []));setImageUploadError('');}} className="mt-3 block w-full rounded-xl border border-dashed border-white/15 bg-white/5 p-3 text-sm text-graphite-300" />
+                      <button type="button" onClick={uploadGalleryImages} disabled={!galleryFiles.length || imageUploading} className="mt-3 rounded-xl bg-accent-500 px-4 py-2.5 font-semibold text-white disabled:opacity-40">{imageUploading ? `Загрузка ${galleryUploadProgress}` : 'Загрузить выбранные'}</button>
                       {imageUploadError && <p className="mt-2 text-sm text-red-500">{imageUploadError}</p>}
                     </div>
 
@@ -6110,7 +6127,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                 <button
                   type="button"
                   onClick={saveProduct}
-                  disabled={savingProduct}
+                  disabled={savingProduct || imageUploading}
                   className="inline-flex items-center gap-2 rounded-xl bg-accent-500 px-5 py-3 font-semibold text-white shadow-lg shadow-accent-900/30 transition hover:bg-accent-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <Save className="w-4 h-4" />

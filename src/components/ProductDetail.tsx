@@ -167,29 +167,7 @@ const productUrl =
         </Link>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
-          <ProductGallery images={product.images} legacyImage={product.image} productName={product.name} badge={product.badge} discount={discount} />
-          <div className="hidden">
-            <div className="aspect-[4/3] relative overflow-hidden">
-              <img
-                src={product.image}
-                alt={product.name}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-graphite-800/40 to-transparent" />
-            </div>
-            <div className="absolute top-4 left-4 flex flex-col gap-2">
-              {product.badge && (
-                <span className="px-3 py-1.5 text-xs font-bold rounded-lg bg-accent-500 text-white">
-                  {product.badge}
-                </span>
-              )}
-              {discount > 0 && (
-                <span className="px-3 py-1.5 text-xs font-bold rounded-lg bg-white text-graphite-900">
-                  Скидка {discount}%
-                </span>
-              )}
-            </div>
-          </div>
+          <ProductGallery images={product.images} imageVariants={product.imageVariants} legacyImage={product.image} productName={product.name} badge={product.badge} discount={discount} />
 
           {/* Info */}
           <div className="flex flex-col">

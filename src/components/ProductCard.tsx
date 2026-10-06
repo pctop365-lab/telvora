@@ -7,15 +7,18 @@ import { getCategorySlugForProduct } from '@/services/productService';
 import { useState } from 'react';
 import AvailabilityStatus from './AvailabilityStatus';
 import AmazonRating from './AmazonRating';
+import ProductImage from './ProductImage';
 
 type ProductCardProps = {
   product: Product;
   delay?: number;
+  priority?: boolean;
 };
 
 export default function ProductCard({
   product,
   delay = 0,
+  priority = false,
 }: ProductCardProps) {
   const [added, setAdded] = useState(false);
   const { addToCart } = useCart();
@@ -80,10 +83,14 @@ export default function ProductCard({
       }}
     >
       <div className="relative aspect-square sm:aspect-[4/3] overflow-hidden bg-white dark:bg-graphite-900">
-        <img
-          src={product.image}
+        <ProductImage
+          src={product.images?.[0] || product.image}
+          variants={product.imageVariants?.[product.images?.[0] || product.image]}
+          roleSize="catalog"
+          sizes="(min-width: 1024px) 400px, (min-width: 640px) 50vw, 50vw"
           alt={product.name}
-          loading="lazy"
+          loading={priority ? 'eager' : 'lazy'}
+          fetchPriority={priority ? 'high' : 'auto'}
           className="w-full h-full object-contain sm:object-cover transition-transform duration-700 group-hover:scale-105"
         />
 

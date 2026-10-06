@@ -38,6 +38,7 @@ export type Product = {
   oldPrice?: number;
   image: string;
   images?: string[];
+  imageVariants?: Record<string, ProductImageVariants>;
   badge?: string;
   rating: number;
   reviews: number;
@@ -46,6 +47,12 @@ export type Product = {
   highlights: string[];
   variants?: ProductVariant[];
   homepage_position?: number | null;
+};
+
+export type ProductImageVariants = {
+  width: number;
+  height: number;
+  sources: Array<{ src: string; width: number; height: number; type: string }>;
 };
 
 export type Category = {

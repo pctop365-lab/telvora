@@ -1,6 +1,8 @@
 <?php
 
-const PRODUCT_GALLERY_MAX_IMAGES = 10;
+require_once __DIR__ . '/product_image_service.php';
+
+const PRODUCT_GALLERY_MAX_IMAGES = 45;
 const PRODUCT_GALLERY_MAX_FILE_BYTES = 8388608;
 const PRODUCT_GALLERY_MAX_REQUEST_BYTES = 33554432;
 
@@ -12,7 +14,7 @@ function productGalleryNormalize(array $paths, string $legacyImage = ''): array
         $path = trim($path);
         if ($path === '' || in_array($path, $result, true)) continue;
         if (count($result) >= PRODUCT_GALLERY_MAX_IMAGES) {
-            throw new InvalidArgumentException('В галерее может быть не более 10 изображений');
+            throw new InvalidArgumentException('В галерее может быть не более 45 изображений');
         }
         $result[] = $path;
     }
@@ -37,6 +39,11 @@ function productGalleryAttach(PDO $pdo, array $products): array
     foreach ($products as &$product) {
         $gallery = productGalleryNormalize($byProduct[(int)$product['id']] ?? [], (string)($product['image'] ?? ''));
         $product['images'] = $gallery;
+        $product['image_variants'] = [];
+        foreach ($gallery as $url) {
+            $metadata = productImageMetadata($url);
+            if ($metadata !== null) $product['image_variants'][$url] = $metadata;
+        }
         if ($gallery !== []) $product['image'] = $gallery[0];
     }
     unset($product);
@@ -71,6 +78,17 @@ function productGalleryValidateUpload(array $file): array
     $head = file_get_contents($tmp);
     if ($head === false || preg_match('/<\?(?:php|=)|#!\s*\/|<script\b/i', $head)) throw new InvalidArgumentException('Исполняемое содержимое в изображении запрещено');
     return ['extension' => $allowed[$mime], 'size' => $size];
+}
+
+function productGalleryStoreUpload(array $file, string $directory): array
+{
+    $valid = productGalleryValidateUpload($file);
+    $filename = 'product_' . bin2hex(random_bytes(12)) . '.' . $valid['extension'];
+    $path = $directory . '/' . $filename;
+    $url = '/uploads/products/' . $filename;
+    if (!move_uploaded_file($file['tmp_name'], $path)) throw new RuntimeException('Upload move failed');
+    try { return ['url' => $url, 'metadata' => productImageCreateVariants($path, $url)]; }
+    catch (Throwable $e) { if (is_file($path)) unlink($path); throw $e; }
 }
 
 function productGalleryFlattenFiles(array $input): array

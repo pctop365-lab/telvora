@@ -8,6 +8,7 @@ ok('duplicates are idempotent', productGalleryNormalize(['/a.jpg','/a.jpg']) ===
 ok('managed filename accepted', productGalleryIsManagedPath('/uploads/products/product_0123456789abcdef01234567.webp'));
 ok('path traversal rejected', !productGalleryIsManagedPath('/uploads/products/../secrets.php'));
 ok('executable extension rejected', !productGalleryIsManagedPath('/uploads/products/product_0123456789abcdef01234567.php'));
-$tooMany = false; try { productGalleryNormalize(array_map(fn($i)=>"/$i.jpg", range(1,11))); } catch (InvalidArgumentException) { $tooMany=true; }
+ok('45 images accepted', count(productGalleryNormalize(array_map(fn($i)=>"/$i.jpg", range(1,45)))) === 45);
+$tooMany = false; try { productGalleryNormalize(array_map(fn($i)=>"/$i.jpg", range(1,46))); } catch (InvalidArgumentException) { $tooMany=true; }
 ok('image count limited', $tooMany);
 echo "PASS gallery unit suite\n";

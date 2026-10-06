@@ -9,6 +9,6 @@ assert.match(endpoint,/in_array\(\$path,\$allowed,true\)/);
 assert.match(endpoint,/beginTransaction\(\).*productGalleryReplace/s);
 assert.doesNotMatch(endpoint,/unlink\s*\(/);
 assert.match(service,/is_uploaded_file/); assert.match(service,/FILEINFO_MIME_TYPE/); assert.match(service,/getimagesize/);
-assert.match(service,/PRODUCT_GALLERY_MAX_IMAGES = 10/); assert.match(service,/PRODUCT_GALLERY_MAX_REQUEST_BYTES = 33554432/);
+assert.match(service,/PRODUCT_GALLERY_MAX_IMAGES = 45/); assert.match(service,/PRODUCT_GALLERY_MAX_REQUEST_BYTES = 33554432/);
 assert.match(service,/product_\[a-f0-9\]\{24\}/); assert.match(service,/path.*legacyImage/s);
 console.log('PASS product gallery HTTP security contracts');

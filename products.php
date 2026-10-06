@@ -558,26 +558,26 @@ if ($action === 'upload_gallery') {
     $input = $_FILES['images'] ?? null;
     $files = is_array($input) ? productGalleryFlattenFiles($input) : [];
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST' || $files === [] || count($files) > PRODUCT_GALLERY_MAX_IMAGES) {
-        http_response_code(400); echo json_encode(['success'=>false,'message'=>'Можно загрузить от 1 до 10 изображений'], JSON_UNESCAPED_UNICODE); exit;
+        http_response_code(400); echo json_encode(['success'=>false,'message'=>'Можно загрузить от 1 до 45 изображений'], JSON_UNESCAPED_UNICODE); exit;
     }
     if (array_sum(array_map(static fn(array $f): int => (int)($f['size'] ?? 0), $files)) > PRODUCT_GALLERY_MAX_REQUEST_BYTES) {
         http_response_code(400); echo json_encode(['success'=>false,'message'=>'Общий размер загрузки не должен превышать 32 МБ'], JSON_UNESCAPED_UNICODE); exit;
     }
     $uploadDir = __DIR__ . '/uploads/products';
     if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true)) { http_response_code(500); echo json_encode(['success'=>false,'message'=>'Не удалось создать папку изображений'], JSON_UNESCAPED_UNICODE); exit; }
-    $urls = [];
+    $urls = []; $imageVariants = [];
     try {
         $validatedFiles = [];
         foreach ($files as $file) $validatedFiles[] = [$file, productGalleryValidateUpload($file)];
         foreach ($validatedFiles as [$file, $valid]) {
-            $filename = 'product_' . bin2hex(random_bytes(12)) . '.' . $valid['extension'];
-            if (!move_uploaded_file($file['tmp_name'], $uploadDir . DIRECTORY_SEPARATOR . $filename)) throw new RuntimeException();
-            $urls[] = '/uploads/products/' . $filename;
+            $stored = productGalleryStoreUpload($file, $uploadDir);
+            $urls[] = $stored['url'];
+            $imageVariants[$stored['url']] = $stored['metadata'];
         }
     } catch (InvalidArgumentException $e) { http_response_code(400); echo json_encode(['success'=>false,'message'=>$e->getMessage()], JSON_UNESCAPED_UNICODE); exit;
     } catch (Throwable $e) { http_response_code(500); echo json_encode(['success'=>false,'message'=>'Не удалось сохранить изображение'], JSON_UNESCAPED_UNICODE); exit; }
-    $_SESSION['product_gallery_uploads'] = array_slice(array_values(array_unique(array_merge($_SESSION['product_gallery_uploads'] ?? [], $urls))), -40);
-    echo json_encode(['success'=>true,'images'=>$urls,'image'=>$urls[0]], JSON_UNESCAPED_UNICODE); exit;
+    $_SESSION['product_gallery_uploads'] = array_slice(array_values(array_unique(array_merge($_SESSION['product_gallery_uploads'] ?? [], $urls))), -180);
+    echo json_encode(['success'=>true,'images'=>$urls,'image'=>$urls[0],'image_variants'=>$imageVariants], JSON_UNESCAPED_UNICODE); exit;
 }
 
 if ($action === 'gallery_save') {
@@ -664,11 +664,13 @@ if ($action === 'upload_image') {
         }
     }
 
-    $extension = $allowedMimeTypes[$mimeType];
-    $filename = 'product_' . bin2hex(random_bytes(12)) . '.' . $extension;
-    $targetPath = $uploadDir . '/' . $filename;
-
-    if (!move_uploaded_file($file['tmp_name'], $targetPath)) {
+    try {
+        $stored = productGalleryStoreUpload($file, $uploadDir);
+    } catch (InvalidArgumentException $e) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+        exit;
+    } catch (Throwable $e) {
         http_response_code(500);
 
         echo json_encode([
@@ -679,11 +681,13 @@ if ($action === 'upload_image') {
         exit;
     }
 
-    $imageUrl = '/uploads/products/' . $filename;
+    $imageUrl = $stored['url'];
+    $_SESSION['product_gallery_uploads'] = array_slice(array_values(array_unique(array_merge($_SESSION['product_gallery_uploads'] ?? [], [$imageUrl]))), -180);
 
     echo json_encode([
         'success' => true,
-        'image' => $imageUrl
+        'image' => $imageUrl,
+        'image_variants' => [$imageUrl => $stored['metadata']]
     ], JSON_UNESCAPED_UNICODE);
 
     exit;

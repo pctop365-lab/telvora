@@ -8,6 +8,7 @@ seo_publication_job_service.php
 product_variant_mutation_service.php
 storefront_availability_service.php
 product_gallery_service.php
+product_image_service.php
 product_delete_service.php
 admin_variant_list_service.php
 seo_publication_batch_service.php

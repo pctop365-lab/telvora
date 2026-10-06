@@ -5,8 +5,9 @@ const admin=fs.readFileSync(new URL('../src/pages/AdminPage.tsx',import.meta.url
 const service=fs.readFileSync(new URL('../src/services/productService.ts',import.meta.url),'utf8');
 for (const text of ['Предыдущее изображение','Следующее изображение','Увеличить изображение','aria-modal="true"','ArrowLeft','ArrowRight','Escape']) assert.match(gallery,new RegExp(text));
 assert.match(gallery,/items\.length > 1/); assert.match(gallery,/\[productName\]/);
-for (const text of ["formData.append('action', 'upload_gallery')","action:'gallery_save'",'multiple','Главное','Удалить','32 * 1024 * 1024']) assert.ok(admin.includes(text),text);
-assert.match(admin,/galleryFiles\.map\(convertProductImageForUpload\)/);
+for (const text of ["formData.append('action', 'upload_gallery')","action:'gallery_save'",'multiple','Главное','Удалить','8 * 1024 * 1024']) assert.ok(admin.includes(text),text);
+assert.match(admin,/await convertProductImageForUpload\(galleryFiles\[index\]\)/);
+assert.doesNotMatch(admin,/Promise\.all\(galleryFiles/);
 assert.match(admin,/image\/avif,\.avif/);
 assert.match(admin,/'X-CSRF-Token':csrfToken \|\| ''/);
 assert.match(admin,/galleryUploadPendingRef\.current/); assert.match(admin,/requestSequence !== galleryContextSequenceRef\.current/);

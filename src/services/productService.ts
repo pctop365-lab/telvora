@@ -1,4 +1,4 @@
-import type { Product, ProductCategory, Category, SortKey } from '@/types';
+import type { Product, ProductCategory, Category, SortKey, ProductImageVariants } from '@/types';
 import {
   getSeedCategories,
   getCategorySlug,
@@ -21,6 +21,7 @@ type ApiProduct = {
   old_price?: number | string | null;
   image?: string;
   images?: string[];
+  image_variants?: Record<string, ProductImageVariants>;
   badge?: string;
   rating?: number | string;
   reviews?: number | string;
@@ -84,6 +85,7 @@ export function normalizeProduct(product: ApiProduct): Product {
         ? Number(product.old_price)
         : undefined,
     image: String(product.image || product.images?.[0] || ''),
+    imageVariants: product.image_variants,
     images: Array.isArray(product.images) && product.images.length > 0
       ? product.images.map(String)
       : [String(product.image || '')].filter(Boolean),
