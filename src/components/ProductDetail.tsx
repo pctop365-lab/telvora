@@ -16,7 +16,15 @@ export function formatVariantProductName(productName: string, modelCode?: string
   const code = modelCode?.trim();
   if (!code) return productName;
   const modelToken = productName.match(/\b(?=[A-Za-zА-Яа-я0-9-]*[A-Za-zА-Яа-я])(?=[A-Za-zА-Яа-я0-9-]*\d)[A-Za-zА-Яа-я0-9-]{5,}\b/)?.[0];
-  return modelToken ? productName.replace(modelToken, code) : productName;
+  if (!modelToken) return productName;
+  // A model code can include a suffix (e.g. "50E7S PRO") already in the name.
+  // Replace that suffix together with the model token instead of appending it twice.
+  const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const suffix = code.split(/\s+/).slice(1);
+  const suffixPattern = suffix.length
+    ? `(?:\\s+${suffix.map(escapeRegex).join('\\s+')}\\b)?`
+    : '';
+  return productName.replace(new RegExp(`\\b${escapeRegex(modelToken)}${suffixPattern}`, 'i'), () => code);
 }
 
 type ProductDetailProps = {
