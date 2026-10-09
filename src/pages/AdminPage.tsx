@@ -819,6 +819,7 @@ export default function AdminPage() {
   const [variantMutationPendingKey, setVariantMutationPendingKey] = useState<string | null>(null);
   const [variantPriceDrafts, setVariantPriceDrafts] = useState<Record<number, { price: string; oldPrice: string }>>({});
   const [variantModelDrafts, setVariantModelDrafts] = useState<Record<number, string>>({});
+  const [variantNameDrafts, setVariantNameDrafts] = useState<Record<number, string>>({});
   const variantViewRequestRef = useRef<AbortController | null>(null);
   const variantViewRequestSequenceRef = useRef(0);
   const variantMutationRequestRef = useRef<AbortController | null>(null);
@@ -992,6 +993,7 @@ const login = async (e: React.FormEvent) => {
       setVariantCountry('');
       setVariantModelCode('');
       setVariantPriceDrafts({});
+      setVariantNameDrafts({});
     }
     variantViewRequestRef.current?.abort();
     const controller = new AbortController();
@@ -1045,6 +1047,7 @@ const login = async (e: React.FormEvent) => {
         variant.product_variant_id,
         variant.model_code ?? '',
       ])));
+      setVariantNameDrafts(Object.fromEntries((Array.isArray(data.variants) ? data.variants : []).map((variant) => [variant.product_variant_id, variant.assembly_country ?? ''])));
       return true;
     } catch (error) {
       if (
@@ -1088,10 +1091,10 @@ const login = async (e: React.FormEvent) => {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-CSRF-Token': csrfToken || '' },
-        body: JSON.stringify({ action: action === 'add' ? 'variant_add' : action === 'model_update' ? 'variant_model_update' : action === 'set_active' ? 'variant_set_active' : action === 'price_manual' ? 'variant_price_set_manual' : 'variant_price_set_automatic', ...payload }),
+        body: JSON.stringify({ action: action === 'add' ? 'variant_add' : action === 'rename' ? 'variant_rename' : action === 'archive' ? 'variant_archive' : action === 'model_update' ? 'variant_model_update' : action === 'set_active' ? 'variant_set_active' : action === 'price_manual' ? 'variant_price_set_manual' : 'variant_price_set_automatic', ...payload }),
         signal: controller.signal,
       });
-      const data = await response.json().catch(() => null) as { success?: boolean } | null;
+      const data = await response.json().catch(() => null) as { success?: boolean; message?: string } | null;
       if (!isCurrentVariantMutation(requestSequence, variantMutationRequestSequenceRef.current, controller.signal.aborted)) return;
       shouldRefresh = !response.ok || !data?.success;
       if (!response.ok || !data?.success) {
@@ -1099,7 +1102,7 @@ const login = async (e: React.FormEvent) => {
           setAuthenticated(false);
           setCsrfToken(null);
         }
-        setVariantMutationError(variantMutationErrorMessage(response.status, action));
+        setVariantMutationError((action === 'rename' || action === 'archive') && data?.message ? data.message : variantMutationErrorMessage(response.status, action));
         return;
       }
       const refreshed = await loadAdminVariants(product, 'refresh');
@@ -1107,7 +1110,8 @@ const login = async (e: React.FormEvent) => {
       if (refreshed) {
         setVariantCountry('');
         setVariantModelCode('');
-        setVariantMutationNotice(action === 'add' ? 'Вариант добавлен как черновик. Цена ещё не опубликована.' : action === 'model_update' ? 'Модель варианта сохранена.' : action === 'set_active' ? 'Статус варианта обновлён.' : action === 'price_manual' ? 'Ручная розничная цена сохранена.' : 'Восстановлен автоматический режим цены.');
+        setVariantMutationNotice(action === 'add' ? 'Вариант добавлен как черновик. Цена ещё не опубликована.' : action === 'rename' ? 'Название сохранено. ID варианта и связь с поставщиком сохранены.' : action === 'archive' ? 'Вариант удалён из продажи через отключение. Привязки поставщиков, цены, остатки и история заказов сохранены.' : action === 'model_update' ? 'Модель варианта сохранена.' : action === 'set_active' ? 'Статус варианта обновлён.' : action === 'price_manual' ? 'Ручная розничная цена сохранена.' : 'Восстановлен автоматический режим цены.');
+        await loadProducts();
       } else {
         setVariantMutationError('Изменение принято сервером, но подтвердить новое состояние не удалось. Повторите загрузку списка.');
       }
@@ -1146,6 +1150,7 @@ const login = async (e: React.FormEvent) => {
     setVariantModelCode('');
     setVariantPriceDrafts({});
     setVariantModelDrafts({});
+    setVariantNameDrafts({});
   };
 
   const loadSuppliers = async () => {
@@ -1236,7 +1241,7 @@ const login = async (e: React.FormEvent) => {
       setSuppliers([]);
       setPricingRules([]);
       setPricingCategories([]);
-      setShowProductForm(false);
+      setShowProductForm(false); closeAdminVariants();
       setShowSupplierForm(false);
       profileSupplierIdRef.current = null;
       setProfileSupplier(null);
@@ -2609,6 +2614,7 @@ if (!response.ok || !data.success || !data.image) {
   };
 
   const openEditProduct = (product: AdminProduct) => {
+    void loadAdminVariants(product);
     setProductSlugManuallyEdited(true);
     setProductForm({
       name: product.name || '',
@@ -2855,7 +2861,7 @@ if (!response.ok || !data.success || !data.image) {
           return;
         }
       }
-      setShowProductForm(false);
+      setShowProductForm(false); closeAdminVariants();
       resetProductForm();
       await loadProducts();
     } catch {
@@ -5262,7 +5268,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
         )}
       </div>
 
-      {variantViewProduct && (
+      {variantViewProduct && !showProductForm && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/75 p-3 backdrop-blur-md sm:p-6">
           <div
             role="dialog"
@@ -5374,6 +5380,17 @@ const toggleProductStatus = async (product: AdminProduct) => {
                               {variant.relational_is_active ? 'Активен' : 'Отключён'}
                             </span>
                           </div>
+                          <label className="mt-4 block text-sm text-graphite-300">
+                            Название варианта
+                            <div className="mt-1 flex gap-2">
+                              <input value={variantNameDrafts[variant.product_variant_id] ?? ''} onChange={(event) => setVariantNameDrafts((current) => ({ ...current, [variant.product_variant_id]: event.target.value }))} disabled={!variant.identity_ready || variantMutationPendingKey !== null} maxLength={100} className="min-w-0 flex-1 rounded-lg border border-white/15 bg-graphite-900 px-3 py-2 text-white" />
+                              <button type="button" disabled={!variant.identity_ready || variantMutationPendingKey !== null} onClick={() => void mutateAdminVariant(variantViewProduct, 'rename', { product_id: variantViewProduct.id, product_variant_id: variant.product_variant_id, name: variantNameDrafts[variant.product_variant_id] ?? '', expected_name: variant.assembly_country }, `name:${variant.product_variant_id}`)} className="rounded-lg border border-accent-300/30 px-3 py-2 text-sm text-accent-100 disabled:opacity-40">Сохранить название</button>
+                            </div>
+                          </label>
+                          <button type="button" disabled={!variant.identity_ready || !variant.relational_is_active || variantMutationPendingKey !== null} onClick={() => {
+                            if (!window.confirm(`Удалить вариант «${variant.assembly_country}» из продажи? Он будет отключён. Связи с поставщиками и история заказов сохранятся. Последний готовый вариант активного товара удалить нельзя: сначала подготовьте замену либо снимите товар с публикации.`)) return;
+                            void mutateAdminVariant(variantViewProduct, 'archive', { product_id: variantViewProduct.id, product_variant_id: variant.product_variant_id }, `archive:${variant.product_variant_id}`);
+                          }} className="mt-3 rounded-lg border border-red-400/30 px-3 py-2 text-sm text-red-200 disabled:opacity-40">Удалить вариант</button>
                           <label className="mt-4 block text-sm text-graphite-300">
                             Модель варианта
                             <div className="mt-1 flex gap-2">
@@ -5505,7 +5522,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                 <button
                   type="button"
                   onClick={() => {
-                    setShowProductForm(false);
+                    setShowProductForm(false); closeAdminVariants();
                     resetProductForm();
                   }}
                   aria-label="Закрыть форму товара"
@@ -6023,8 +6040,34 @@ const toggleProductStatus = async (product: AdminProduct) => {
                 </section>
 
                 {editingProductId ? (
-                  <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5 text-sm leading-6 text-amber-200">
-                    Изменение идентичности вариантов временно недоступно после перехода на supplier variant architecture.
+                  <section className="rounded-2xl border border-white/10 bg-graphite-800/70 p-5 text-sm leading-6">
+                    <h3 className="font-semibold">Варианты товара</h3>
+                    <p className="mt-2 text-graphite-300">Название каждого варианта сохраняется отдельно. Удаление отключает вариант: привязки поставщиков, цены, остатки и история заказов сохраняются.</p>
+                    <p className="mt-1 text-graphite-400">Последний готовый вариант активного товара защищён. Сначала подготовьте другой вариант или снимите товар с публикации.</p>
+                    {variantViewLoading && <p role="status">Загрузка вариантов…</p>}
+                    {variantViewError && <p role="alert" className="text-red-300">{variantViewError}</p>}
+                    {variantMutationError && <p role="alert" className="text-red-300">{variantMutationError}</p>}
+                    {variantMutationNotice && <p role="status" className="text-emerald-300">{variantMutationNotice}</p>}
+                    {variantViewData?.variants.map((variant) => (
+                      <div key={variant.product_variant_id} className="mt-4 rounded-xl border border-white/10 p-4">
+                        <label className="block">
+                          Название варианта
+                          <input aria-label={`Название варианта #${variant.product_variant_id}`} value={variantNameDrafts[variant.product_variant_id] ?? ''} maxLength={100} disabled={!variant.identity_ready || variantMutationPendingKey !== null} onChange={(event) => setVariantNameDrafts((current) => ({ ...current, [variant.product_variant_id]: event.target.value }))} className="admin-input mt-2" />
+                        </label>
+                        <div className="mt-3 flex flex-wrap gap-3">
+                          <button type="button" disabled={!variant.identity_ready || variantMutationPendingKey !== null} onClick={() => {
+                            if (!variantViewProduct) return;
+                            void mutateAdminVariant(variantViewProduct, 'rename', { product_id: editingProductId, product_variant_id: variant.product_variant_id, name: variantNameDrafts[variant.product_variant_id] ?? '', expected_name: variant.assembly_country }, `name:${variant.product_variant_id}`);
+                          }} className="rounded-lg border border-accent-300/30 px-3 py-2 disabled:opacity-40">Сохранить название</button>
+                          <button type="button" disabled={!variant.identity_ready || !variant.relational_is_active || variantMutationPendingKey !== null} onClick={() => {
+                            if (!variantViewProduct || !window.confirm(`Удалить вариант «${variant.assembly_country}» из продажи? Он будет отключён. Привязки поставщиков, цены, остатки и история заказов сохранятся.`)) return;
+                            void mutateAdminVariant(variantViewProduct, 'archive', { product_id: editingProductId, product_variant_id: variant.product_variant_id }, `archive:${variant.product_variant_id}`);
+                          }} className="rounded-lg border border-red-400/30 px-3 py-2 text-red-200 disabled:opacity-40">Удалить вариант</button>
+                        </div>
+                        {!variant.relational_is_active && <p className="mt-2 text-graphite-400">Отключён. В продаже не отображается; связи сохранены. Восстановить можно в управлении вариантами.</p>}
+                        {!variant.identity_ready && <p className="mt-2 text-amber-200">Изменения заблокированы: сначала нужна диагностика соответствия варианта.</p>}
+                      </div>
+                    ))}
                   </section>
                 ) : (
                 <section className="rounded-2xl border border-white/10 bg-graphite-800/70 p-5 sm:p-6">
@@ -6116,7 +6159,7 @@ const toggleProductStatus = async (product: AdminProduct) => {
                 <button
                   type="button"
                   onClick={() => {
-                    setShowProductForm(false);
+                    setShowProductForm(false); closeAdminVariants();
                     resetProductForm();
                   }}
                   className="rounded-xl border border-white/15 bg-transparent px-5 py-3 text-graphite-200 transition hover:bg-white/5 hover:text-white"

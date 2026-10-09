@@ -1,4 +1,4 @@
-export type VariantMutationAction = 'add' | 'model_update' | 'set_active' | 'price_manual' | 'price_automatic';
+export type VariantMutationAction = 'add' | 'rename' | 'archive' | 'model_update' | 'set_active' | 'price_manual' | 'price_automatic';
 
 export function variantMutationErrorMessage(status: number, action: VariantMutationAction): string {
   const priceAction = action === 'price_manual' || action === 'price_automatic';
@@ -7,6 +7,7 @@ export function variantMutationErrorMessage(status: number, action: VariantMutat
   if (status === 403) return 'Запрос отклонён: обновите страницу и войдите снова.';
   if (status === 404) return action === 'add' ? 'Товар больше не существует.' : 'Вариант больше не существует.';
   if (status === 409 && priceAction) return 'Режим цены не изменён: данные варианта изменились или это последний готовый вариант активного товара. Список обновлён с сервера.';
+  if (status === 409 && action === 'rename') return 'Название уже изменилось или такой вариант существует. Список обновлён с сервера.';
   if (status === 409) return action === 'add'
     ? 'Вариант с такой страной уже существует либо данные товара изменились. Список обновлён с сервера.'
     : 'Изменение отклонено. Для активного товара нельзя отключить последний готовый вариант: сначала подготовьте другой вариант либо скройте товар.';

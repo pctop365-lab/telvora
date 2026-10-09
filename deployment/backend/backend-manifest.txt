@@ -1,5 +1,6 @@
 storefront_product_service.php
 seo_publication_release_service.php
+product_variant_mutation_service.php
 products.php
 runtime_config.php
 product_variant_identity_service.php
@@ -7,7 +8,6 @@ product_activation_service.php
 product_variant_price_service.php
 seo_publication_service.php
 seo_publication_job_service.php
-product_variant_mutation_service.php
 storefront_availability_service.php
 product_gallery_service.php
 product_image_service.php

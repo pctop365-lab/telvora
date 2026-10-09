@@ -362,7 +362,7 @@ if (empty($_SESSION['telvora_admin'])) {
 |--------------------------------------------------------------------------
 */
 
-if (in_array($action, ['upload_image', 'upload_gallery', 'gallery_save', 'add', 'update', 'delete', 'variant_add', 'variant_model_update', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic', 'request_publish', 'request_unpublish', 'bulk_publish_prepare', 'bulk_publish_confirm'], true)) {
+if (in_array($action, ['upload_image', 'upload_gallery', 'gallery_save', 'add', 'update', 'delete', 'variant_add', 'variant_rename', 'variant_archive', 'variant_model_update', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic', 'request_publish', 'request_unpublish', 'bulk_publish_prepare', 'bulk_publish_confirm'], true)) {
     $sessionToken = $_SESSION['csrf_token'] ?? '';
     $requestToken = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
 
@@ -448,7 +448,7 @@ if (in_array($action, ['request_publish', 'request_unpublish'], true)) {
     exit;
 }
 
-if (in_array($action, ['variant_add', 'variant_model_update', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic'], true)) {
+if (in_array($action, ['variant_add', 'variant_rename', 'variant_archive', 'variant_model_update', 'variant_set_active', 'variant_price_set_manual', 'variant_price_set_automatic'], true)) {
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         http_response_code(405);
         echo json_encode(['success'=>false,'message'=>'Метод не поддерживается'],JSON_UNESCAPED_UNICODE);
@@ -460,6 +460,12 @@ if (in_array($action, ['variant_add', 'variant_model_update', 'variant_set_activ
         if ($action === 'variant_add') {
             if ($productId===null) throw new ProductVariantMutationException(400,'Некорректный ID товара');
             $result=productVariantAdd($pdo,$productId,$data['assembly_country'] ?? null,$data['model_code'] ?? null);
+        } elseif ($action === 'variant_rename') {
+            if ($productId===null || $variantId===null) throw new ProductVariantMutationException(400,'Некорректный ID товара или варианта');
+            $result=productVariantRename($pdo,$productId,$variantId,$data['name'] ?? null,$data['expected_name'] ?? null);
+        } elseif ($action === 'variant_archive') {
+            if ($productId===null || $variantId===null) throw new ProductVariantMutationException(400,'Некорректный ID товара или варианта');
+            $result=productVariantSetActive($pdo,$variantId,false,$productId,true);
         } elseif ($action === 'variant_model_update') {
             if ($productId===null || $variantId===null) throw new ProductVariantMutationException(400,'Некорректный ID товара или варианта');
             $result=productVariantUpdateModelCode($pdo,$productId,$variantId,$data['model_code'] ?? null);

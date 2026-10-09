@@ -30,6 +30,14 @@ assert.match(variantMutationErrorMessage(409, 'set_active'), /последний
 const page = fs.readFileSync(new URL('../src/pages/AdminPage.tsx', import.meta.url), 'utf8');
 assert.match(page, /variant_add/);
 assert.match(page, /variant_set_active/);
+assert.match(page, /variant_rename/);
+assert.match(page, /variant_archive/);
+assert.match(page, /expected_name: variant\.assembly_country/);
+assert.match(page, /Сохранить название/);
+assert.match(page, /Удалить вариант/);
+assert.match(page, /привязки поставщиков, цены, остатки и история заказов сохраняются/i);
+assert.match(page, /await loadProducts\(\)/);
+assert.doesNotMatch(page, /Изменение идентичности вариантов временно недоступно/);
 assert.match(page, /variant_price_set_manual/);
 assert.match(page, /variant_price_set_automatic/);
 assert.match(page, /credentials: 'include'/);

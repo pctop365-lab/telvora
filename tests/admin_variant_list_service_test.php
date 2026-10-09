@@ -73,6 +73,7 @@ function fixtureVariant(int $id, int $productId, string $country, bool $active =
         'id' => $id, 'product_id' => $productId,
         'variant_key' => 'legacy-country-sha256-' . hash('sha256', $country),
         'assembly_country' => $country, 'is_active' => $active ? 1 : 0,
+        'manufacturer_part_number' => null,
         'offers_count' => 0, 'matches_count' => 0, 'import_rows_count' => 0,
         'audit_count' => 0, 'order_references_count' => 0,
         'provenance_mismatch_count' => 0,

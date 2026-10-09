@@ -124,12 +124,66 @@ function productVariantUpdateModelCode(PDO $pdo, int $productId, int $variantId,
     });
 }
 
-function productVariantSetActive(PDO $pdo, int $variantId, bool $requestedActive): array
+/** Rename the legacy label and its relational identity together; never replace the ID. */
+function productVariantRename(PDO $pdo, int $productId, int $variantId, mixed $name, mixed $expectedName): array
 {
-    return productVariantMutationRun($pdo, static function () use ($pdo,$variantId,$requestedActive): array {
+    $detail = productVariantMutationCountry($pdo, $name);
+    if (!is_string($expectedName)) throw new ProductVariantMutationException(400, 'Не указано прежнее название варианта');
+    return productVariantMutationRun($pdo, static function () use ($pdo, $productId, $variantId, $detail, $expectedName): array {
+        $q = $pdo->prepare('SELECT * FROM product_variants WHERE id=:id AND product_id=:product_id FOR UPDATE');
+        $q->execute([':id'=>$variantId, ':product_id'=>$productId]); $variant=$q->fetch(PDO::FETCH_ASSOC);
+        if (!is_array($variant)) throw new ProductVariantMutationException(404, 'Вариант не найден');
+        if ($variant['assembly_country'] !== $expectedName) throw new ProductVariantMutationException(409, 'Название уже изменилось. Обновите список вариантов.');
+        $q=$pdo->prepare('SELECT id,is_active,variants FROM products WHERE id=:id FOR UPDATE');
+        $q->execute([':id'=>$productId]); $product=$q->fetch(PDO::FETCH_ASSOC);
+        try { $identity=productVariantIdentityResolve($pdo,$product,$variant,true); }
+        catch (ProductVariantIdentityException) { throw new ProductVariantMutationException(409, 'Идентичность варианта повреждена'); }
+        $weight=$pdo->prepare('SELECT HEX(WEIGHT_STRING(CAST(:value AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci))');
+        foreach ($identity['variants'] as $index=>$entry) {
+            if ($index === $identity['target_index']) continue;
+            $other=productVariantIdentityCountry($weight,$entry,$productId,true);
+            if ($other['weight'] === $detail['weight']) throw new ProductVariantMutationException(409, 'Вариант с таким названием уже существует');
+        }
+        $variants=$identity['variants']; $variants[$identity['target_index']]['country']=$detail['country'];
+        try {
+            $q=$pdo->prepare('UPDATE product_variants SET assembly_country=:name,display_name=:display,variant_key=:key WHERE id=:id AND product_id=:product_id');
+            $q->execute([':name'=>$detail['country'],':display'=>$detail['country'],':key'=>'legacy-country-sha256-'.hash('sha256',$detail['country']),':id'=>$variantId,':product_id'=>$productId]);
+        } catch (PDOException $e) {
+            if ((int)($e->errorInfo[1]??0)===1062) throw new ProductVariantMutationException(409, 'Вариант с таким названием уже существует');
+            throw $e;
+        }
+        $pdo->prepare('UPDATE products SET variants=:variants WHERE id=:id')->execute([':variants'=>json_encode($variants,JSON_UNESCAPED_UNICODE|JSON_PRESERVE_ZERO_FRACTION|JSON_THROW_ON_ERROR),':id'=>$productId]);
+        return ['product_id'=>$productId,'product_variant_id'=>$variantId,'name'=>$detail['country']];
+    });
+}
+
+/** Include non-FK order snapshots and any additional FK introduced by another module. */
+function productVariantReferences(PDO $pdo, int $variantId): array
+{
+    $q=$pdo->query("SELECT TABLE_NAME,COLUMN_NAME FROM information_schema.columns WHERE TABLE_SCHEMA=DATABASE() AND COLUMN_NAME IN ('product_variant_id','matched_product_variant_id')
+        UNION SELECT TABLE_NAME,COLUMN_NAME FROM information_schema.key_column_usage WHERE TABLE_SCHEMA=DATABASE() AND REFERENCED_TABLE_NAME='product_variants' AND REFERENCED_COLUMN_NAME='id'");
+    $counts=[];
+    foreach ($q->fetchAll(PDO::FETCH_NUM) as [$table,$column]) {
+        $quotedTable='`'.str_replace('`','``',$table).'`'; $quotedColumn='`'.str_replace('`','``',$column).'`';
+        $stmt=$pdo->prepare('SELECT COUNT(*) FROM '.$quotedTable.' WHERE '.$quotedColumn.'=:id');
+        $stmt->execute([':id'=>$variantId]); $counts[$table.'.'.$column]=(int)$stmt->fetchColumn();
+    }
+    // Inspect stock/purchase prices as well; never use them as permission to delete history.
+    if (isset($counts['supplier_offers.product_variant_id'])) {
+        $stmt=$pdo->prepare('SELECT currency_code,COUNT(*) AS offers,SUM(is_active=1) AS active_offers,SUM(stock_quantity) AS stock_quantity,MIN(purchase_price) AS min_purchase_price,MAX(purchase_price) AS max_purchase_price FROM supplier_offers WHERE product_variant_id=:id GROUP BY currency_code');
+        $stmt->execute([':id'=>$variantId]); $counts['supplier_offer_summary']=$stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+    // Offers/overrides are retained verbatim, including their stock and price values.
+    return $counts;
+}
+
+function productVariantSetActive(PDO $pdo, int $variantId, bool $requestedActive, ?int $expectedProductId = null, bool $archive = false): array
+{
+    return productVariantMutationRun($pdo, static function () use ($pdo,$variantId,$requestedActive,$expectedProductId,$archive): array {
         $pre=$pdo->prepare('SELECT pv.id,pv.product_id,pv.variant_key,pv.assembly_country,pv.display_name,pv.is_active,p.is_active product_is_active,p.variants FROM product_variants pv JOIN products p ON p.id=pv.product_id WHERE pv.id=:id');
         $pre->execute([':id'=>$variantId]); $snapshot=$pre->fetch();
         if (!is_array($snapshot)) throw new ProductVariantMutationException(404,'Вариант не найден');
+        if ($expectedProductId !== null && (int)$snapshot['product_id'] !== $expectedProductId) throw new ProductVariantMutationException(404,'Вариант не найден');
         $alternateId=null;
         if (!$requestedActive && (bool)$snapshot['product_is_active']) {
             $stmt=$pdo->prepare('SELECT id,product_id,variant_key,assembly_country,display_name,is_active FROM product_variants WHERE product_id=:product_id AND id<>:id AND is_active=1 ORDER BY id ASC');
@@ -155,6 +209,8 @@ function productVariantSetActive(PDO $pdo, int $variantId, bool $requestedActive
         if (!is_array($product)) throw new ProductVariantMutationException(404,'Товар не найден');
         try { $identity=productVariantIdentityResolve($pdo,$product,$target,true); }
         catch (ProductVariantIdentityException) { throw new ProductVariantMutationException(409,'Идентичность варианта повреждена'); }
+        $references=$archive ? productVariantReferences($pdo,$variantId) : [];
+        if ($archive && !(bool)$target['is_active'] && !$identity['target']['is_active']) return ['product_id'=>(int)$product['id'],'product_variant_id'=>$variantId,'is_active'=>false,'removal_mode'=>'disabled','references'=>$references];
         if (!$requestedActive && (bool)$product['is_active']) {
             if ($alternateId===null || !isset($locked[$alternateId]) || !(bool)$locked[$alternateId]['is_active']) throw new ProductVariantMutationException(409,'Нельзя отключить последний готовый вариант активного товара');
             try { $alternate=productVariantIdentityResolve($pdo,$product,$locked[$alternateId],true); }
@@ -168,6 +224,6 @@ function productVariantSetActive(PDO $pdo, int $variantId, bool $requestedActive
         $encoded=json_encode($variants,JSON_UNESCAPED_UNICODE|JSON_PRESERVE_ZERO_FRACTION|JSON_THROW_ON_ERROR);
         $pdo->prepare('UPDATE products SET variants=:variants WHERE id=:id')->execute([':variants'=>$encoded,':id'=>$product['id']]);
         $pdo->prepare('UPDATE product_variants SET is_active=:active WHERE id=:id')->execute([':active'=>$requestedActive?1:0,':id'=>$variantId]);
-        return ['product_id'=>(int)$product['id'],'product_variant_id'=>$variantId,'is_active'=>$requestedActive];
+        return ['product_id'=>(int)$product['id'],'product_variant_id'=>$variantId,'is_active'=>$requestedActive]+($archive ? ['removal_mode'=>'disabled','references'=>$references] : []);
     });
 }
