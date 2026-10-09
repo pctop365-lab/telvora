@@ -79,7 +79,7 @@ function run(args, env = {}) {
   const quote = value => `'${value.replaceAll("'", "'\\''")}'`;
   const mapped = [posix(script), ...args.map(posix)];
   if (process.env.DEBUG_DEPLOY_TEST) console.error('mapped', mapped);
-  return spawnSync(bash, ['-lc', mapped.map(quote).join(' ')], { cwd: root, encoding: 'utf8', timeout: 15000, env: { ...process.env, ...(process.platform === 'win32' ? { TELVORA_NO_REALPATH: '1' } : {}), ...env } });
+  return spawnSync(bash, ['-lc', mapped.map(quote).join(' ')], { cwd: root, encoding: 'utf8', timeout: Number(process.env.TELVORA_DEPLOY_TEST_TIMEOUT_MS || 15000), env: { ...process.env, ...(process.platform === 'win32' ? { TELVORA_NO_REALPATH: '1' } : {}), ...env } });
 }
 function spawnRun(args, env = {}) {
   const quote = value => `'${value.replaceAll("'", "'\\''")}'`;

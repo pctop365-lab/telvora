@@ -70,6 +70,31 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Capture exact publication intents without changing production jobs
+        shell: bash
+        env:
+          TELVORA_SSH_PRIVATE_KEY: ${{ secrets.TELVORA_SSH_PRIVATE_KEY }}
+          TELVORA_SSH_KNOWN_HOSTS: ${{ secrets.TELVORA_SSH_KNOWN_HOSTS }}
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          umask 077
+          SSH_DIR="$RUNNER_TEMP/telvora-production-ssh-${GITHUB_RUN_ID}"
+          mkdir -p "$SSH_DIR"
+          printf '%s\n' "$TELVORA_SSH_PRIVATE_KEY" > "$SSH_DIR/id_ed25519"
+          printf '%s\n' "$TELVORA_SSH_KNOWN_HOSTS" > "$SSH_DIR/known_hosts"
+          chmod 600 "$SSH_DIR/id_ed25519" "$SSH_DIR/known_hosts"
+          echo "SSH_DIR=$SSH_DIR" >> "$GITHUB_ENV"
+          snapshot="$RUNNER_TEMP/telvora-production-snapshot.json"
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" "php '$REMOTE_DOCUMENT_ROOT/seo_publication_worker.php' capture" > "$snapshot"
+          python3 - "$snapshot" <<'PY'
+          import json,sys
+          s=json.load(open(sys.argv[1]))
+          if s.get('version') != 1 or not isinstance(s.get('publication_intents'), list): raise SystemExit('invalid publication capture')
+          PY
+          echo "TELVORA_SEO_SNAPSHOT_FILE=$snapshot" >> "$GITHUB_ENV"
+
       - name: Build and validate exact release
         env:
           TELVORA_RELEASE_SHA: ${{ inputs.release_sha }}
@@ -111,6 +136,14 @@ jobs:
           case "$release_id" in "${REQUESTED_RELEASE_SHA:0:12}-"*) ;; *) echo 'package release ID does not belong to requested commit' >&2; exit 1;; esac
           manifest_commit="$(node -e "const fs=require('fs'); process.stdout.write(JSON.parse(fs.readFileSync('seo-release/deployment-manifest.json','utf8')).commitSha)")"
           test "$manifest_commit" = "${REQUESTED_RELEASE_SHA,,}"
+          python3 - "$TELVORA_SEO_SNAPSHOT_FILE" seo-release/deployment-manifest.json <<'PY'
+          import json,sys
+          snapshot=json.load(open(sys.argv[1])); manifest=json.load(open(sys.argv[2]))
+          intents=manifest.get('publicationIntents')
+          if not isinstance(intents,list): raise SystemExit('release commit lacks publication intent binding')
+          if manifest['snapshotHash'] != snapshot['snapshot_hash']: raise SystemExit('snapshot binding mismatch')
+          if [{k:v for k,v in i.items() if k != 'path'} for i in intents] != snapshot['publication_intents']: raise SystemExit('package intent set differs from capture')
+          PY
           product_route="$(node -e "const fs=require('fs'); const routes=JSON.parse(fs.readFileSync('seo-release/deployment-manifest.json','utf8')).productRoutes||[]; const route=routes.find(value=>/^\\/catalog\\/[a-z0-9-]+\\/[a-z0-9-]+$/.test(value)); if(!route) process.exit(1); process.stdout.write(route)")"
           echo "product_route=$product_route" >> "$GITHUB_OUTPUT"
           {
@@ -318,7 +351,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          rm -rf -- "${SSH_DIR:-$RUNNER_TEMP/telvora-production-ssh-${GITHUB_RUN_ID}}"
+          rm -rf -- "${SSH_DIR:-$RUNNER_TEMP/telvora-production-ssh-${GITHUB_RUN_ID}}" "$RUNNER_TEMP/telvora-production-snapshot.json"
 
   activation:
     name: Activate reviewed SEO release in production
@@ -444,6 +477,26 @@ jobs:
           fi
           echo 'SMOKE_TEST_RESULT=PASS' >> "$GITHUB_ENV"
 
+      - name: Finalize only publication intents in the verified active package
+        if: success() && env.SMOKE_TEST_RESULT == 'PASS' && env.PRODUCTION_ACTIVATION_RESULT == 'PERFORMED'
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$REMOTE_STAGE" "$REMOTE_DOCUMENT_ROOT" "$REQUESTED_RELEASE_SHA" "$SEO_PACKAGE_SHA256" <<'REMOTE'
+          set -euo pipefail
+          stage="$1"; document="$2"; release="$3"; package="$4"
+          snapshot="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["snapshotHash"])' "$stage/engine-live/active-release.json")"
+          php "$document/seo_publication_worker.php" finalize-release --active-record="$stage/engine-live/active-release.json" --archive="$stage/release.tar.gz" --package-root="$stage/validated" --release-sha="$release" --package-sha256="$package" --snapshot-hash="$snapshot" --smoke-result=PASS --apply=yes
+          REMOTE
+          echo 'FINALIZATION_RESULT=PASS' >> "$GITHUB_ENV"
+
+      - name: Report deployment succeeded but finalization failed
+        if: failure() && env.SMOKE_TEST_RESULT == 'PASS' && env.PRODUCTION_ACTIVATION_RESULT == 'PERFORMED'
+        run: echo 'DEPLOY_SUCCEEDED_FINALIZATION_FAILED; keep the active release and retry finalization only' >> "$GITHUB_STEP_SUMMARY"
+
       - name: Production activation summary
         if: always()
         shell: bash
@@ -462,6 +515,7 @@ jobs:
             printf '%s\n' "- Backup path: ${backup##*/} (under configured SEO backup root)"
             printf '%s\n' "- Activation result: $activation"
             printf '%s\n' "- Smoke tests: ${SMOKE_TEST_RESULT:-FAIL/NOT COMPLETED}"
+            printf '%s\n' "- Publication finalization: ${FINALIZATION_RESULT:-NOT COMPLETED}"
             printf '%s\n' "- Yandex verification: ${YANDEX_VERIFICATION_RESULT:-NOT CHECKED}"
             printf '%s\n' "- **PRODUCTION ACTIVATION: $activation**"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -71,6 +71,26 @@ for (const route of snapshot.routes) {
 assert.match(await readFile(resolve(payload, 'client.html'), 'utf8'), /noindex/);
 assert.match(await readFile(resolve(payload, '404.html'), 'utf8'), /noindex/);
 const sitemap = await readFile(resolve(payload, 'sitemap.xml'), 'utf8');
+const intentProducts = new Set(), intentJobs = new Set();
+for (const intent of manifest.publicationIntents || []) {
+  assert.ok(Number.isSafeInteger(intent.product_id) && intent.product_id > 0 && Number.isSafeInteger(intent.job_id) && intent.job_id > 0);
+  assert.ok(Number.isSafeInteger(intent.revision) && intent.revision >= 0);
+  assert.ok(!intentProducts.has(intent.product_id) && !intentJobs.has(intent.job_id), 'duplicate publication intent');
+  intentProducts.add(intent.product_id); intentJobs.add(intent.job_id);
+  assert.ok(['publish','unpublish'].includes(intent.operation));
+  assert.ok(['queued','running'].includes(intent.job_status));
+  assert.match(intent.path, /^\/catalog\/(?:oled|qled|led|8k)\/[a-z0-9]+(?:-[a-z0-9]+)*$/);
+  assert.equal(intent.path.split('/').pop(),intent.slug);
+  assert.equal(manifest.productRoutes.includes(intent.path),intent.operation === 'publish', 'intent differs from packaged routes');
+  if (intent.operation === 'publish') {
+    const html = await readFile(resolve(payload,manifest.prerenderFiles[intent.path].slice(1)),'utf8');
+    const match = html.match(/<script[^>]*id="telvora-prerender"[^>]*>(.*?)<\/script>/s);
+    assert.ok(match, 'missing prerender product');
+    const data=JSON.parse(match[1]);
+    assert.equal(String(data.products[0].id),String(intent.product_id));
+    assert.equal(data.products[0].slug,intent.slug);
+  }
+}
 assert.equal((sitemap.match(/<loc>https:\/\/telvora\.ru[^<]*<\/loc>/g) || []).length, manifest.sitemapUrlCount);
 for (const route of manifest.managedFiles.filter(path => path.startsWith('_prerender/'))) await access(resolve(payload, route));
 console.log(`seo-validate-package: PASS (${checksums.size} checksummed files, ${manifest.routeCount} routes)`);

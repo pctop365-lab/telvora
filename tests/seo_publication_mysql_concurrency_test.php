@@ -162,11 +162,19 @@ function phase1aChild(array $config, string $mode, string $dir, string $resultNa
             $locked = $pdo->query('SELECT id FROM products WHERE id = 1 FOR UPDATE')->fetchColumn();
             if ((int)$locked !== 1) throw new RuntimeException('Holder could not lock product 1');
             phase1aWriteMarker("$dir/holder-ready", (string)getmypid());
-            while (!is_file("$dir/release")) usleep(50000);
+            $childDeadline = microtime(true) + 30;
+            while (!is_file("$dir/release")) {
+                if (microtime(true) >= $childDeadline) throw new RuntimeException('Holder release deadline exceeded');
+                clearstatcache(); usleep(50000);
+            }
             $pdo->commit();
             return 0;
         }
-        while (!is_file("$dir/holder-ready")) usleep(50000);
+        $childDeadline = microtime(true) + 30;
+        while (!is_file("$dir/holder-ready")) {
+            if (microtime(true) >= $childDeadline) throw new RuntimeException('Contender ready deadline exceeded');
+            clearstatcache(); usleep(50000);
+        }
         $pdo->exec('SET SESSION innodb_lock_wait_timeout = 1');
         $result = seoPublicationRequestPublish($pdo, 1, 0);
         file_put_contents("$dir/$resultName", json_encode(['ok' => true, 'result' => $result], JSON_THROW_ON_ERROR));
@@ -211,17 +219,19 @@ function phase1aRunLockTest(array $config): void
     $dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'telvora-phase1a-' . bin2hex(random_bytes(5));
     mkdir($dir, 0700, true);
     $descriptor = [1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
-    $command = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__FILE__);
-    $env = array_merge($_ENV, ['TELVORA_TEST_DB_HOST' => $config[0], 'TELVORA_TEST_DB_PORT' => (string)$config[1], 'TELVORA_TEST_DB_NAME' => $config[2], 'TELVORA_TEST_DB_USER' => $config[3], 'TELVORA_TEST_DB_PASSWORD' => $config[4]]);
+    // Direct argv avoids cmd.exe wrappers that leave an orphaned holder on Windows.
+    $command = [PHP_BINARY, __FILE__];
+    $env = array_merge(getenv(), ['TELVORA_TEST_DB_HOST' => $config[0], 'TELVORA_TEST_DB_PORT' => (string)$config[1], 'TELVORA_TEST_DB_NAME' => $config[2], 'TELVORA_TEST_DB_USER' => $config[3], 'TELVORA_TEST_DB_PASSWORD' => $config[4]]);
     $holder = $contender = $contender2 = null;
     $pipes = $pipes2 = $pipes3 = [];
     // Reserve bounded cleanup time so the whole section cannot exceed 30s.
     $deadline = microtime(true) + 24;
     try {
-        $holder = proc_open("$command --holder " . escapeshellarg($dir), $descriptor, $pipes, dirname(__DIR__), $env);
+        $holder = proc_open(array_merge($command, ['--holder', $dir]), $descriptor, $pipes, dirname(__DIR__), $env);
         if (!is_resource($holder)) throw new RuntimeException('Could not start lock holder');
         $readyDeadline = microtime(true) + 5;
         while (!is_file("$dir/holder-ready") && !is_file("$dir/holder-error") && microtime(true) < $readyDeadline) {
+            clearstatcache();
             $status = proc_get_status($holder);
             if (!$status['running']) break;
             usleep(50000);
@@ -231,13 +241,13 @@ function phase1aRunLockTest(array $config): void
             $detail = is_file("$dir/holder-error") ? (string)file_get_contents("$dir/holder-error") : 'no holder marker';
             throw new RuntimeException("Connection A did not acquire product lock: $detail; exit=" . (string)($status['exitcode'] ?? 'unknown') . '; output=' . phase1aProcessOutput($pipes));
         }
-        $contender = proc_open("$command --contender " . escapeshellarg($dir) . ' contender-1', $descriptor, $pipes2, dirname(__DIR__), $env);
-        $contender2 = proc_open("$command --contender " . escapeshellarg($dir) . ' contender-2', $descriptor, $pipes3, dirname(__DIR__), $env);
+        $contender = proc_open(array_merge($command, ['--contender', $dir, 'contender-1']), $descriptor, $pipes2, dirname(__DIR__), $env);
+        $contender2 = proc_open(array_merge($command, ['--contender', $dir, 'contender-2']), $descriptor, $pipes3, dirname(__DIR__), $env);
         if (!is_resource($contender) || !is_resource($contender2)) throw new RuntimeException('Could not start lock contender');
         usleep(1500000);
         phase1aAssert(!is_file("$dir/contender-1") && !is_file("$dir/contender-2"), 'connections B and C are blocked while product lock is held');
         phase1aWriteMarker("$dir/release", 'release');
-        while ((!is_file("$dir/contender-1") || !is_file("$dir/contender-2") || proc_get_status($holder)['running'] || proc_get_status($contender)['running'] || proc_get_status($contender2)['running']) && microtime(true) < $deadline) usleep(50000);
+        while ((!is_file("$dir/contender-1") || !is_file("$dir/contender-2") || proc_get_status($holder)['running'] || proc_get_status($contender)['running'] || proc_get_status($contender2)['running']) && microtime(true) < $deadline) { clearstatcache(); usleep(50000); }
         if (microtime(true) >= $deadline) {
             throw new RuntimeException('Concurrency processes exceeded 30-second deadline; output=' . phase1aProcessOutput($pipes) . phase1aProcessOutput($pipes2) . phase1aProcessOutput($pipes3));
         }
@@ -387,7 +397,7 @@ function phase1aMain(): void
 }
 
 $mode = $argv[1] ?? null;
-if ($mode === '--holder' || $mode === '--contender') { phase1aChild(phase1aConfig(), $mode, $argv[2] ?? '', $argv[3] ?? 'contender-result'); exit(0); }
+if ($mode === '--holder' || $mode === '--contender') { exit(phase1aChild(phase1aConfig(), substr($mode, 2), $argv[2] ?? '', $argv[3] ?? 'contender-result')); }
 try { phase1aMain(); } catch (RuntimeException $error) {
     if (str_starts_with($error->getMessage(), 'SKIP:')) { echo $error->getMessage() . "\n"; exit(0); }
     throw $error;

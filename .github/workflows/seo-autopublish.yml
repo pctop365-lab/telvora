@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: telvora-seo-autopublish-production
+  group: telvora-seo-production-deploy
   cancel-in-progress: false
 
 jobs:
@@ -196,8 +196,27 @@ jobs:
           test -n "$BACKUP_REFERENCE"
           echo "BACKUP_REFERENCE=$BACKUP_REFERENCE" >> "$GITHUB_ENV"
 
+      - name: Smoke verify activated autopublish release
+        if: success() && env.BATCH_STATUS == 'PREPARED' && env.DEPLOY_SUCCEEDED == 'true'
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          smoke_status=0
+          for path in / /catalog; do
+            test "$(curl --silent --show-error --max-time 30 --output /dev/null --write-out '%{http_code}' "https://telvora.ru$path")" = 200 || smoke_status=1
+          done
+          if [ "$smoke_status" -ne 0 ]; then
+            ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" "bash '$REMOTE_STAGE/deploy-release.sh' --rollback '$BACKUP_REFERENCE' --document-root '$REMOTE_DOCUMENT_ROOT' --staging-root '$REMOTE_STAGE/rollback' --backup-root '$REMOTE_BACKUP_ROOT' && rm -f '$REMOTE_STAGE/live/active-release.json'"
+            echo 'DEPLOY_SUCCEEDED=false' >> "$GITHUB_ENV"
+            echo 'SMOKE_TEST_RESULT=FAIL_ROLLED_BACK' >> "$GITHUB_ENV"
+            exit 1
+          fi
+          echo 'SMOKE_TEST_RESULT=PASS' >> "$GITHUB_ENV"
+
       - name: Complete exact batch after verified deployment
-        if: env.BATCH_STATUS == 'PREPARED' && env.DEPLOY_SUCCEEDED == 'true'
+        if: success() && env.BATCH_STATUS == 'PREPARED' && env.DEPLOY_SUCCEEDED == 'true' && env.SMOKE_TEST_RESULT == 'PASS'
         shell: bash
         env:
           TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
@@ -205,7 +224,10 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$RELEASE_SHA"; test -n "$PACKAGE_SHA256"; test -n "$BACKUP_REFERENCE"
-          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" "php '$REMOTE_APP_ROOT/seo_publication_worker.php' complete --batch-id='$BATCH_ID' --snapshot-hash='$SNAPSHOT_HASH' --release-sha='$RELEASE_SHA' --package-sha256='$PACKAGE_SHA256' --backup-reference='$BACKUP_REFERENCE'"
+          archive="$(ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" "find '$REMOTE_STAGE' -maxdepth 1 -name 'telvora-seo-release-*.tar.gz' -print -quit")"
+          [[ "$archive" =~ ^/var/www/u3609206/data/staging/[A-Za-z0-9._-]+/telvora-seo-release-[a-f0-9-]+\.tar\.gz$ ]]
+          package_root="$REMOTE_STAGE/live/${RELEASE_SHA:0:12}-${SNAPSHOT_HASH:0:12}"
+          ssh -q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" "php '$REMOTE_APP_ROOT/seo_publication_worker.php' complete --batch-id='$BATCH_ID' --snapshot-hash='$SNAPSHOT_HASH' --release-sha='$RELEASE_SHA' --package-sha256='$PACKAGE_SHA256' --backup-reference='$BACKUP_REFERENCE' --active-record='$REMOTE_STAGE/live/active-release.json' --archive='$archive' --package-root='$package_root' --smoke-result=PASS --apply=yes"
           echo 'FINALIZATION_RESULT=PASS' >> "$GITHUB_ENV"
 
       - name: Fail exact batch after pre-deploy or rolled-back failure

@@ -24,7 +24,7 @@ function phase2bE2eSql(PDO $pdo, string $path): void
 
 $pdo = phase2bE2ePdo();
 $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
-foreach (['seo_publication_jobs', 'product_variant_price_overrides', 'product_variants', 'service_catalog', 'products'] as $table) $pdo->exec("DROP TABLE IF EXISTS `$table`");
+foreach (['seo_publication_finalization_audit', 'seo_publication_jobs', 'supplier_offers', 'product_images', 'product_variant_price_overrides', 'product_variants', 'service_catalog', 'products'] as $table) $pdo->exec("DROP TABLE IF EXISTS `$table`");
 $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
 $pdo->exec("CREATE TABLE products (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT, slug VARCHAR(255) NOT NULL, name VARCHAR(255) NOT NULL,
@@ -48,6 +48,8 @@ $insert = $pdo->prepare("INSERT INTO products (id, slug, name, series, category,
 $legacy = json_encode([['country' => 'Russia', 'price' => 100000, 'old_price' => null, 'is_active' => true]], JSON_THROW_ON_ERROR);
 foreach ([[1, 'phase2b-pending-unpublish-a', 'Pending unpublish A', 1], [2, 'phase2b-pending-unpublish-b', 'Pending unpublish B', 1], [3, 'phase2b-draft', 'Draft product', 0], [4, 'phase2b-published', 'Published product', 1], [5, 'phase2b-pending-publish', 'Pending publish product', 0]] as [$id, $slug, $name, $active]) $insert->execute([':id' => $id, ':slug' => $slug, ':name' => $name, ':variants' => $legacy, ':active' => $active]);
 phase2bE2eSql($pdo, dirname(__DIR__) . '/database/migrations/20260922_013_seo_publication_state.sql');
+phase2bE2eSql($pdo, dirname(__DIR__) . '/database/migrations/20260908_009_product_images.sql');
+phase2bE2eSql($pdo, dirname(__DIR__) . '/database/migrations/20261009_015_seo_publication_finalization_audit.sql');
 $pdo->exec("UPDATE products SET publication_status = CASE WHEN id IN (1,2) THEN 'pending_unpublish' WHEN id = 4 THEN 'published' WHEN id = 5 THEN 'pending_publish' ELSE 'draft' END, publication_revision = 1");
 $variant = $pdo->prepare("INSERT INTO product_variants (id, product_id, variant_key, assembly_country, display_name, is_active) VALUES (:id, 5, :key, 'Russia', 'Russia', 1)");
 $variant->execute([':id' => 5, ':key' => 'legacy-country-sha256-' . hash('sha256', 'Russia')]);

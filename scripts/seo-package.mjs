@@ -71,6 +71,7 @@ const manifest = {
   sitemapUrlCount: manifestSource.routes.length,
   routes: manifestSource.routes,
   productRoutes: manifestSource.productRoutes,
+  publicationIntents: manifestSource.publicationIntents || [],
   prerenderFiles: manifestSource.prerenderFiles,
   managedRootFiles,
   managedDirectories,

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
-const products = read('products.php');
+const products = read('products.php') + read('storefront_product_service.php');
 const mutation = read('product_variant_mutation_service.php');
 const storefront = read('storefront_cart_service.php');
 const admin = read('src/pages/AdminPage.tsx');

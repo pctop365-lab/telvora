@@ -1,0 +1,53 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import YAML from 'yaml';
+import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+const read = path => readFile(new URL('../'+path,import.meta.url),'utf8');
+const manual=YAML.parse(await read('.github/workflows/seo-production-deploy.yml'));
+const auto=YAML.parse(await read('.github/workflows/seo-autopublish.yml'));
+assert.equal(manual.concurrency.group,auto.concurrency.group,'both workflows must serialize');
+assert.equal(manual.concurrency['cancel-in-progress'],false);
+const pre=manual.jobs.preflight.steps;
+assert.ok(pre.findIndex(s=>/Capture exact publication intents/.test(s.name||''))<pre.findIndex(s=>s.name==='Build and validate exact release'));
+assert.match(pre.find(s=>/Capture exact/.test(s.name||'')).run,/seo_publication_worker.php' capture/);
+assert.match(pre.find(s=>/Capture exact/.test(s.name||'')).run,/TELVORA_SEO_SNAPSHOT_FILE=/);
+const steps=manual.jobs.activation.steps;
+const final=steps.find(s=>/Finalize only publication/.test(s.name||''));
+assert.equal(final.if,"success() && env.SMOKE_TEST_RESULT == 'PASS' && env.PRODUCTION_ACTIVATION_RESULT == 'PERFORMED'");
+assert.ok(steps.indexOf(final)>steps.findIndex(s=>s.name==='Smoke test and rollback on failure'));
+assert.match(final.run,/--archive=.*--package-root=.*--release-sha=.*--package-sha256=.*--snapshot-hash=.*--smoke-result=PASS --apply=yes/);
+assert.ok(steps.some(s=>s.if?.startsWith('failure()')&&s.run?.includes('DEPLOY_SUCCEEDED_FINALIZATION_FAILED')));
+const complete=auto.jobs.autopublish.steps.find(s=>/Complete exact batch/.test(s.name||''));
+assert.ok(complete.if.startsWith('success()')&&complete.if.includes("env.SMOKE_TEST_RESULT == 'PASS'"));
+assert.match(complete.run,/complete --batch-id=[^\n]*--active-record=[^\n]*--archive=[^\n]*--package-root=[^\n]*--apply=yes/);
+const worker=await read('seo_publication_worker.php'),service=await read('seo_publication_release_service.php');
+assert.match(worker,/PHP_SAPI !== 'cli'/);
+assert.match(worker,/\$apply = \(\$options\['apply'\] \?\? 'no'\) === 'yes'/);
+assert.match(worker,/flock\(\$lock, LOCK_EX \| LOCK_NB\)/);
+assert.match(worker,/SET TRANSACTION READ ONLY/);
+assert.match(service,/if \(!\$apply\) \$pdo->exec\('SET TRANSACTION READ ONLY'\)/);
+assert.match(service,/INSERT INTO seo_publication_finalization_audit/);
+assert.match(service,/Product revision\/identity changed/);
+assert.match(service,/Newer or competing task exists/);
+assert.match(service,/Package SHA-256 mismatch/);
+assert.match(service,/Partial active package/);
+const build=await read('scripts/build-seo.mjs'),pack=await read('scripts/seo-package.mjs');
+assert.match(build,/publication_intents/);assert.match(pack,/publicationIntents:/);
+assert.match(await read('seo_publication_snapshot_service.php'),/attachStorefrontVariants\(\$pdo, \$products\)/);
+assert.match(await read('products.php'),/require_once __DIR__ \. '\/storefront_product_service.php'/);
+assert.match(await read('storefront_product_service.php'),/productVariantPriceEffective/);
+const directory=await mkdtemp(join(tmpdir(),'telvora-workflow-syntax-'));
+try {
+  const bash=process.env.TELVORA_BASH||(process.platform==='win32'?'C:/Program Files/Git/bin/bash.exe':'bash');
+  let index=0;
+  for(const workflow of [manual,auto])for(const job of Object.values(workflow.jobs))for(const step of job.steps){
+    if(!step.run)continue;
+    const file=join(directory,`${index++}.sh`);await writeFile(file,step.run);
+    const result=spawnSync(bash,['-n',file.replaceAll('\\','/')],{encoding:'utf8',timeout:10000});
+    assert.equal(result.status,0,`${step.name}: ${result.stderr||result.error}`);
+  }
+} finally {await rm(directory,{recursive:true,force:true});}
+console.log('PASS exact-release capture, package binding, CLI authorization, shared concurrency, success-only finalization and dry-run contracts');

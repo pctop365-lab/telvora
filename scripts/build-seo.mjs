@@ -23,7 +23,7 @@ async function getBuildInput() {
     if (typeof snapshot.snapshot_hash !== 'string' || !/^[a-f0-9]{64}$/i.test(snapshot.snapshot_hash)) {
       throw new Error('Invalid SEO snapshot hash');
     }
-    return [{ success: true, count: snapshot.products.length, products: snapshot.products }, { success: true, services: snapshot.services }, snapshot.snapshot_hash];
+    return [{ success: true, count: snapshot.products.length, products: snapshot.products }, { success: true, services: snapshot.services }, snapshot.snapshot_hash, snapshot.publication_intents || []];
   }
   return Promise.all([
     getPublic('https://telvora.ru/products.php?action=list'),
@@ -31,7 +31,7 @@ async function getBuildInput() {
     null,
   ]);
 }
-const [catalog, services, suppliedSnapshotHash] = await getBuildInput();
+const [catalog, services, suppliedSnapshotHash, capturedIntents = []] = await getBuildInput();
 if (!Array.isArray(catalog.products) || catalog.count !== catalog.products.length) throw new Error('Incomplete product response');
 if (!Array.isArray(services.services)) throw new Error('Invalid service response');
 await build();
@@ -47,6 +47,16 @@ const productRoutes = products.map(p => {
   return `/catalog/${category}/${p.slug}`;
 });
 if (new Set(productRoutes).size !== products.length) throw new Error('Duplicate product routes');
+// Private package metadata only: never embed task identities in public HTML.
+const publicationIntents = capturedIntents.map(intent => {
+  const category = getCategorySlugForProduct(normalizeProduct({ ...intent, id: intent.product_id, name: intent.slug }));
+  const path = `/catalog/${category}/${intent.slug}`;
+  if (!['publish', 'unpublish'].includes(intent.operation) || !['oled', 'qled', 'led', '8k'].includes(category) || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(intent.slug)) throw Error('Invalid captured publication intent');
+  if ((intent.operation === 'publish') !== productRoutes.includes(path)) throw Error('Publication intent not represented by build');
+  const product = products.find(p => String(p.id) === String(intent.product_id));
+  if (intent.operation === 'publish' && product?.slug !== intent.slug) throw Error('Publication product identity mismatch');
+  return { ...intent, path };
+});
 const serviceFields = ['id', 'service_key', 'category', 'name', 'description', 'min_screen_size', 'max_screen_size', 'price', 'is_active', 'sort_order', 'requires_tv'];
 const serviceSnapshot = services.services.filter(s => s.is_active === true || s.is_active === 1).map(s => Object.fromEntries(serviceFields.map(k => [k, s[k]])));
 const routes = [...publicRoutes, ...productRoutes];
@@ -86,7 +96,7 @@ await writeFile('dist/sitemap.xml', `<?xml version="1.0" encoding="UTF-8"?>\n<ur
 await mkdir('seo-artifacts', { recursive: true });
 const snapshotHash = suppliedSnapshotHash || createHash('sha256').update(json({ products, services: serviceSnapshot })).digest('hex');
 const prerenderFiles = Object.fromEntries(routes.filter(p => p !== '/').map(p => [p, `/_prerender/${prerenderFileFor(p)}`]));
-await writeFile('seo-artifacts/routes.json', JSON.stringify({ routes, productRoutes, prerenderFiles, sizes, snapshotHash }, null, 2));
+await writeFile('seo-artifacts/routes.json', JSON.stringify({ routes, productRoutes, prerenderFiles, sizes, snapshotHash, publicationIntents }, null, 2));
 await downloadProductImages(products, { baseUrl: process.env.TELVORA_SEO_IMAGE_BASE_URL || 'https://telvora.ru' });
 const nginx = routes.map(p => `location = ${p} { try_files ${p === '/' ? '/index.html' : prerenderFiles[p]} =404; }${p === '/' ? '' : `\nlocation = ${p}/ { return 301 https://telvora.ru${p}$is_args$args; }`}`).join('\n');
 await writeFile('seo-artifacts/routes.nginx.conf', `${nginx}\n${clientRoutes.map(p => `location = ${p} { try_files /client.html =404; }`).join('\n')}\nlocation ~ ^/order-success/[^/]+$ { try_files /client.html =404; }\nlocation = /televisions { return 301 https://telvora.ru/catalog$is_args$args; }\nlocation ^~ /_prerender/ { return 404; }\nlocation / { return 404; }\nerror_page 404 /404.html;\nlocation = /404.html { internal; }\nlocation = /client.html { internal; }\n`);

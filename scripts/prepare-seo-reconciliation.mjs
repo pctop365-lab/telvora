@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import { readFile, writeFile } from 'node:fs/promises';
+const args = Object.fromEntries(process.argv.slice(2).map(value => {
+  const match = value.match(/^--([a-z0-9-]+)=(.+)$/s);
+  assert.ok(match, 'Use --name=value'); return [match[1], match[2]];
+}));
+for (const name of ['candidates','evidence','package-sha256','output']) assert.ok(args[name], `Missing --${name}`);
+assert.match(args['package-sha256'], /^[a-f0-9]{64}$/);
+const read = async path => JSON.parse((await readFile(path,'utf8')).replace(/^\uFEFF/,''));
+const candidates = await read(args.candidates), evidence = await read(args.evidence);
+assert.equal(candidates.products.length, 54);
+assert.equal(evidence.pending_products.length, 54);
+assert.deepEqual(evidence.active_checksum_verification.mismatches, []);
+assert.equal(candidates.commit,evidence.latest_activation.commit);
+assert.equal(candidates.snapshot_hash,evidence.latest_activation.snapshotHash);
+const productIds = new Set(), jobIds = new Set();
+const intents = candidates.products.map(candidate => {
+  const product = evidence.pending_products.find(p => p.id === candidate.product_id);
+  const job = evidence.pending_product_jobs.find(j => j.id === candidate.job_id);
+  assert.ok(product && job);
+  assert.equal(job.product_id,product.id);
+  assert.equal(job.requested_revision,candidate.revision);
+  assert.equal(product.publication_revision,candidate.revision);
+  assert.equal(product.publication_status,'pending_publish');
+  assert.equal(product.is_active,1);
+  assert.equal(job.status,'queued'); assert.equal(job.operation,'publish'); assert.equal(job.attempt_count,0);
+  assert.equal(candidate.path,product.release_evidence.path);
+  assert.equal(candidate.html_sha256,evidence.latest_activation.productionChecksums[product.release_evidence.file]);
+  assert.equal(candidate.public_matches_active_release,true); assert.equal(candidate.http_status,200);
+  assert.ok(!productIds.has(product.id) && !jobIds.has(job.id)); productIds.add(product.id); jobIds.add(job.id);
+  const job_fields = Object.fromEntries(['attempt_count','started_at','completed_at','snapshot_hash','release_sha','package_sha256','backup_reference','last_error'].map(key => [key,job[key]]));
+  return {product_id:product.id,job_id:job.id,operation:'publish',revision:candidate.revision,slug:product.slug,path:candidate.path,batch_id:job.batch_id,job_status:'queued',is_active:1,product_updated_at:product.updated_at,job_updated_at:job.updated_at,html_sha256:candidate.html_sha256,job_fields};
+});
+const plan = {version:2,mode:'RECONCILIATION_ALLOWLIST',release_sha:candidates.commit,package_sha256:args['package-sha256'],snapshot_hash:candidates.snapshot_hash,active_record:candidates.active_record_path,intents};
+await writeFile(args.output,JSON.stringify(plan,null,2)+'\n',{flag:'wx'});
+console.log(`Prepared ${intents.length} exact intents; no database connection or writes. Output: ${args.output}`);

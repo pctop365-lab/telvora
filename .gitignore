@@ -130,3 +130,6 @@ read_invoice.py
 
 # Local SSH diagnostics; never release content
 /ssh-reg-debug.txt
+
+# Private read-only publication evidence and reviewed one-time allowlist
+/.tmp-publication-diagnostic-20261009/

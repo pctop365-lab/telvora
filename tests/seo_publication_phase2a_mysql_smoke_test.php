@@ -33,7 +33,7 @@ function phase2aSmokeSqlFile(PDO $pdo, string $path): void
 
 $pdo = phase2aSmokePdo();
 $pdo->exec('SET FOREIGN_KEY_CHECKS = 0');
-foreach (['seo_publication_jobs', 'service_catalog', 'products'] as $table) $pdo->exec("DROP TABLE IF EXISTS `$table`");
+foreach (['seo_publication_jobs', 'product_images', 'product_variants', 'service_catalog', 'products'] as $table) $pdo->exec("DROP TABLE IF EXISTS `$table`");
 $pdo->exec('SET FOREIGN_KEY_CHECKS = 1');
 $pdo->exec("CREATE TABLE products (
     id INT UNSIGNED NOT NULL AUTO_INCREMENT, slug VARCHAR(255) NOT NULL, name VARCHAR(255) NOT NULL,
@@ -54,6 +54,8 @@ $pdo->exec("CREATE TABLE service_catalog (
 $insert = $pdo->prepare("INSERT INTO products (id, slug, name, series, category, screen_size, resolution, price, image, description, specs, highlights, variants, is_active) VALUES (:id, :slug, :name, 'Test', 'oled', '55', '4K', 100000, '/test.png', 'Smoke product', '{}', '[]', '[]', :active)");
 foreach ([[1, 'pending-unpublish-a', 'Pending unpublish A', 1], [2, 'pending-unpublish-b', 'Pending unpublish B', 1], [3, 'draft-product', 'Draft product', 0], [4, 'published-product', 'Published product', 1]] as [$id, $slug, $name, $active]) $insert->execute([':id' => $id, ':slug' => $slug, ':name' => $name, ':active' => $active]);
 phase2aSmokeSqlFile($pdo, dirname(__DIR__) . '/database/migrations/20260922_013_seo_publication_state.sql');
+phase2aSmokeSqlFile($pdo, dirname(__DIR__) . '/database/migrations/20260908_009_product_images.sql');
+$pdo->exec('CREATE TABLE product_variants (id BIGINT UNSIGNED PRIMARY KEY, product_id INT UNSIGNED NOT NULL, variant_key VARCHAR(191), assembly_country VARCHAR(100), manufacturer_part_number VARCHAR(191), display_name VARCHAR(100), is_active TINYINT NOT NULL) ENGINE=InnoDB');
 $pdo->exec("UPDATE products SET publication_status = CASE WHEN id IN (1,2) THEN 'pending_unpublish' WHEN id = 4 THEN 'published' ELSE 'draft' END, publication_revision = 1");
 $job = $pdo->prepare("INSERT INTO seo_publication_jobs (product_id, operation, requested_revision, status, batch_id) VALUES (:product, 'unpublish', 1, 'queued', :batch)");
 $job->execute([':product' => 1, ':batch' => seoPublicationNewBatchId()]);

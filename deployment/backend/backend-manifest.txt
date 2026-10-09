@@ -1,3 +1,5 @@
+storefront_product_service.php
+seo_publication_release_service.php
 products.php
 runtime_config.php
 product_variant_identity_service.php

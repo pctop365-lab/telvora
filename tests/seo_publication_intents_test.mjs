@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import ts from 'typescript';
+// Execute the production mapping and production normalization, not a copy.
+const source=await readFile(new URL('../scripts/build-seo.mjs',import.meta.url),'utf8');
+const ast=ts.createSourceFile('build-seo.mjs',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.JS);
+const statement=ast.statements.find(node=>ts.isVariableStatement(node)&&node.declarationList.declarations.some(d=>d.name.getText(ast)==='publicationIntents'));
+assert.ok(statement);
+const {normalizeProduct,getCategorySlugForProduct}=await import('../.seo-build/entry-prerender.js');
+const map=new Function('capturedIntents','products','productRoutes','normalizeProduct','getCategorySlugForProduct',statement.getText(ast)+'\nreturn publicationIntents;');
+const item={id:5,slug:'fixture-product',name:'Fixture product',category:'OLED',series:'Fixture',image:'/uploads/products/fixture.png',description:'Fixture'};
+const product=normalizeProduct(item);
+const publish={product_id:5,job_id:3,operation:'publish',revision:1,slug:item.slug,category:'OLED',resolution:'4K',batch_id:'11111111-1111-4111-8111-111111111111',job_status:'queued',product_fingerprint:'a'.repeat(64)};
+const path='/catalog/oled/fixture-product';
+const run=(intents,products=[product],routes=[path])=>map(intents,products,routes,normalizeProduct,getCategorySlugForProduct);
+assert.deepEqual(run([publish]),[{...publish,path}]);
+assert.deepEqual(run([{...publish,operation:'unpublish'}],[],[]),[{...publish,operation:'unpublish',path}]);
+assert.throws(()=>run([publish],[],[]),/not represented/);
+assert.throws(()=>run([{...publish,product_id:6}]),/identity mismatch/);
+assert.throws(()=>run([{...publish,operation:'unpublish'}]),/not represented/);
+assert.throws(()=>run([{...publish,slug:'unsafe/slug'}]),/Invalid captured/);
+assert.throws(()=>run([{...publish,operation:'delete'}]),/Invalid captured/);
+console.log('PASS production build intent mapping: exact product/task/revision, publish/unpublish membership and route validation');
