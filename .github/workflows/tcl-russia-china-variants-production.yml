@@ -1,0 +1,111 @@
+name: Enable TCL Russia-China variants (production)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telvora-tcl-russia-china-variants-production
+  cancel-in-progress: false
+
+jobs:
+  enable_variants:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment: seo-production
+    timeout-minutes: 10
+    env:
+      REMOTE_BASE: /var/www/u3609206/data
+      REMOTE_DOCUMENT_ROOT: /var/www/u3609206/data/www/telvora.ru
+    steps:
+      - name: Checkout selected main revision
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Prepare pinned SSH credentials
+        shell: bash
+        env:
+          TELVORA_SSH_PRIVATE_KEY: ${{ secrets.TELVORA_SSH_PRIVATE_KEY }}
+          TELVORA_SSH_KNOWN_HOSTS: ${{ secrets.TELVORA_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$TELVORA_SSH_PRIVATE_KEY"
+          test -n "$TELVORA_SSH_KNOWN_HOSTS"
+          umask 077
+          ssh_dir="$RUNNER_TEMP/telvora-tcl-ssh-${GITHUB_RUN_ID}"
+          mkdir -p "$ssh_dir"
+          printf '%s\n' "$TELVORA_SSH_PRIVATE_KEY" > "$ssh_dir/id_ed25519"
+          printf '%s\n' "$TELVORA_SSH_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          chmod 600 "$ssh_dir/id_ed25519" "$ssh_dir/known_hosts"
+          echo "SSH_DIR=$ssh_dir" >> "$GITHUB_ENV"
+
+      - name: Create isolated staging directory
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          test -n "$TELVORA_SSH_HOST"
+          test -n "$TELVORA_SSH_USER"
+          stage="$REMOTE_BASE/backend-staging/tcl-russia-china-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "REMOTE_STAGE=$stage" >> "$GITHUB_ENV"
+          ssh_opts=(-q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519")
+          ssh "${ssh_opts[@]}" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$stage" "$REMOTE_BASE" "$REMOTE_DOCUMENT_ROOT" <<'REMOTE'
+          set -euo pipefail
+          stage="$(realpath -m -- "$1")"
+          base="$(realpath -m -- "$2")"
+          document="$(realpath -m -- "$3")"
+          test "$base" = '/var/www/u3609206/data'
+          test "$document" = '/var/www/u3609206/data/www/telvora.ru'
+          case "$stage" in "$base"/backend-staging/tcl-russia-china-*) ;; *) exit 1;; esac
+          case "$stage" in "$document"|"$document"/*) exit 1;; esac
+          test ! -e "$stage"
+          mkdir -m 700 -p "$(dirname -- "$stage")"
+          mkdir -m 700 -- "$stage"
+          REMOTE
+
+      - name: Upload and execute one atomic reconciliation
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh_opts=(-q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519")
+          scp "${ssh_opts[@]}" \
+            scripts/enable_tcl_russia_china_variants_production.php \
+            runtime_config.php \
+            product_variant_identity_service.php \
+            "$TELVORA_SSH_USER@$TELVORA_SSH_HOST:$REMOTE_STAGE/"
+          ssh "${ssh_opts[@]}" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$REMOTE_STAGE" <<'REMOTE' | tee -a "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          stage="$(realpath -e -- "$1")"
+          case "$stage" in /var/www/u3609206/data/backend-staging/tcl-russia-china-*) ;; *) exit 1;; esac
+          test -f "$stage/enable_tcl_russia_china_variants_production.php"
+          test -f "$stage/runtime_config.php"
+          test -f "$stage/product_variant_identity_service.php"
+          php "$stage/enable_tcl_russia_china_variants_production.php" --apply
+          REMOTE
+
+      - name: Remove temporary production staging and SSH credentials
+        if: always()
+        shell: bash
+        env:
+          TELVORA_SSH_HOST: ${{ secrets.TELVORA_SSH_HOST }}
+          TELVORA_SSH_USER: ${{ secrets.TELVORA_SSH_USER }}
+        run: |
+          set +e
+          if [ -n "${REMOTE_STAGE:-}" ] && [ -n "${SSH_DIR:-}" ] && [ -n "${TELVORA_SSH_HOST:-}" ] && [ -n "${TELVORA_SSH_USER:-}" ]; then
+            ssh_opts=(-q -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$SSH_DIR/known_hosts" -o IdentitiesOnly=yes -i "$SSH_DIR/id_ed25519")
+            ssh "${ssh_opts[@]}" "$TELVORA_SSH_USER@$TELVORA_SSH_HOST" bash -s -- "$REMOTE_STAGE" <<'REMOTE'
+          set -euo pipefail
+          stage="$(realpath -m -- "$1")"
+          case "$stage" in /var/www/u3609206/data/backend-staging/tcl-russia-china-*) rm -rf -- "$stage";; *) exit 1;; esac
+          REMOTE
+          fi
+          rm -rf -- "${SSH_DIR:-$RUNNER_TEMP/telvora-tcl-ssh-${GITHUB_RUN_ID}}"
