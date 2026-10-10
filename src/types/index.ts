@@ -47,6 +47,7 @@ export type Product = {
   highlights: string[];
   variants?: ProductVariant[];
   homepage_position?: number | null;
+  publicationStatus?: string;
 };
 
 export type ProductImageVariants = {

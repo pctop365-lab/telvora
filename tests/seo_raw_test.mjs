@@ -46,10 +46,18 @@ try {
       assert.ok(product.image.length > 0);
       assert.equal(await page.locator('meta[property="og:image"]').getAttribute('content'), product.image[0]);
       for (const key of ['aggregateRating', 'review', 'gtin', 'gtin13', 'mpn']) assert.equal(product[key], undefined);
-      if (product.offers) {
-        assert.ok(Number.isFinite(product.offers.price) && product.offers.price > 0);
-        assert.equal(product.offers.priceCurrency, 'RUB');
-        assert.ok(['InStock', 'OutOfStock', 'PreOrder'].some(s => product.offers.availability === 'https://schema.org/' + s));
+      const offers = product.offers ? (Array.isArray(product.offers) ? product.offers : [product.offers]) : [];
+      const draft = ['draft', 'publish_failed', 'unpublished'].includes(data.publicationStatus);
+      const eligibleVariants = draft ? [] : (data.variants || []).filter(v => v.isActive !== false && v.country?.trim() && Number.isFinite(Number(v.price)) && Number(v.price) > 0);
+      assert.equal(offers.length, eligibleVariants.length, `${path}: every active, positively priced storefront variant has one Offer`);
+      for (const [index, offer] of offers.entries()) {
+        const variant = eligibleVariants[index];
+        assert.equal(offer['@type'], 'Offer', path);
+        assert.equal(offer.price, Number(variant.price), `${path}: variant buyer price`);
+        assert.equal(offer.priceCurrency, 'RUB', path);
+        if (variant.availability?.status === 'in_stock' && variant.availability.orderable) assert.equal(offer.availability, 'https://schema.org/InStock', path);
+        else if (variant.availability?.status === 'out_of_stock') assert.equal(offer.availability, 'https://schema.org/OutOfStock', path);
+        else assert.equal(offer.availability, undefined, `${path}: unknown or non-orderable stock is not invented`);
       }
       assert.equal(schemas.find(s => s['@type'] === 'BreadcrumbList').itemListElement.length, 4);
     }

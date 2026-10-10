@@ -14,6 +14,7 @@
     "test:seo:encoding": "node tests/seo_encoding_test.mjs",
     "seo:report": "node scripts/seo-release-report.mjs",
     "test:seo:raw": "node tests/seo_raw_test.mjs",
+    "test:seo:offers": "node tests/seo_product_offers_test.mjs",
     "test:seo:images": "node tests/seo_images_test.mjs",
     "test:seo:physical": "node tests/seo_physical_routes_test.mjs",
     "test:seo:htaccess": "node tests/seo_htaccess_test.mjs",

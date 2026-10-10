@@ -11,6 +11,7 @@ import ProductGallery from './ProductGallery';
 import AmazonRating from './AmazonRating';
 import SeoMetadata from './SeoMetadata';
 import { absoluteTelvoraUrl } from '@/lib/seo';
+import { buildProductOffers } from '@/lib/productOffers';
 
 export function formatVariantProductName(productName: string, modelCode?: string | null): string {
   const code = modelCode?.trim();
@@ -97,13 +98,7 @@ const seoDescription = `${product.name}${detailTokens ? ` — ${detailTokens}` :
 
 const productUrl =
   `https://telvora.ru/catalog/${categorySlug}/${product.slug}`;
-  const schemaAvailability = currentAvailability?.status === 'in_stock' && currentAvailability.orderable
-    ? 'https://schema.org/InStock'
-    : currentAvailability?.status === 'expected' && currentAvailability.orderable
-      ? 'https://schema.org/PreOrder'
-      : currentAvailability?.status === 'out_of_stock'
-        ? 'https://schema.org/OutOfStock'
-        : undefined;
+  const productOffers = buildProductOffers(activeVariants, productUrl, product.publicationStatus);
   const productJsonLd: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': 'Product',
@@ -113,15 +108,7 @@ const productUrl =
     sku: product.id,
     url: productUrl,
     ...(product.brand ? { brand: { '@type': 'Brand', name: product.brand } } : {}),
-    ...(currentPrice > 0 && schemaAvailability ? {
-      offers: {
-        '@type': 'Offer',
-        url: productUrl,
-        priceCurrency: 'RUB',
-        price: currentPrice,
-        availability: schemaAvailability,
-      },
-    } : {}),
+    ...(productOffers ? { offers: productOffers } : {}),
   };
   const breadcrumbJsonLd = {
     '@context': 'https://schema.org',
