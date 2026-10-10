@@ -70,6 +70,13 @@ export default function ProductDetail({ product }: ProductDetailProps) {
 
   // Keep only the choice, so API revalidation cannot leave a stale price/availability object.
   const [selectedVariantId, setSelectedVariantId] = useState<number | undefined>(activeVariants[0]?.productVariantId);
+  const activeVariantIds = activeVariants.map((variant) => variant.productVariantId).join(',');
+  const fallbackVariantId = activeVariants[0]?.productVariantId;
+  useEffect(() => {
+    const requestedId = Number(new URLSearchParams(window.location.search).get('variant'));
+    const isAvailable = activeVariantIds.split(',').includes(String(requestedId));
+    setSelectedVariantId(isAvailable ? requestedId : fallbackVariantId);
+  }, [product.id, activeVariantIds, fallbackVariantId]);
   const selectedVariant = activeVariants.find(variant => variant.productVariantId === selectedVariantId) ?? activeVariants[0];
   const displayedProductName = formatVariantProductName(product.name, selectedVariant?.modelCode);
 
@@ -255,6 +262,10 @@ const productUrl =
                     );
 
                     setSelectedVariantId(variant?.productVariantId);
+                    const url = new URL(window.location.href);
+                    if (variant) url.searchParams.set('variant', String(variant.productVariantId));
+                    else url.searchParams.delete('variant');
+                    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
                   }}
                   className="w-full px-4 py-3 rounded-xl border border-graphite-200 bg-white text-graphite-900 outline-none transition focus:border-accent-500 focus:ring-2 focus:ring-accent-500/20 dark:border-white/10 dark:bg-graphite-900 dark:text-white dark:focus:border-accent-500/50"
                 >

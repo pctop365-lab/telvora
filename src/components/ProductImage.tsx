@@ -7,7 +7,7 @@ type Props = Omit<ImgHTMLAttributes<HTMLImageElement>, 'srcSet'> & {
   roleSize: 'thumbnail' | 'catalog' | 'large' | 'zoom';
 };
 
-export default function ProductImage({ src, variants, roleSize, sizes, className, ...props }: Props) {
+export default function ProductImage({ src, variants, roleSize, sizes, className, fetchPriority, ...props }: Props) {
   const [failedSource, setFailedSource] = useState<string | null>(null);
   const maximum = { thumbnail: 320, catalog: 800, large: 1920, zoom: 2560 }[roleSize];
   const sources = variants?.sources || [];
@@ -18,12 +18,15 @@ export default function ProductImage({ src, variants, roleSize, sizes, className
   const set = (items: typeof sources) => items.map(item => `${item.src} ${item.width}w`).join(', ');
   const optimized = failedSource !== src && fallback.length > 0;
   const defaultImage = fallback[fallback.length - 1];
+  const fetchPriorityAttribute = fetchPriority
+    ? ({ fetchpriority: fetchPriority } as unknown as ImgHTMLAttributes<HTMLImageElement>)
+    : {};
   return <picture className="contents">
     {optimized && modern.length > 0 && <source type="image/webp" srcSet={set(modern)} sizes={sizes} />}
     <img {...props} src={optimized ? defaultImage.src : src}
       srcSet={optimized ? set(fallback) : undefined} sizes={optimized ? sizes : undefined}
       width={variants?.width || 1600} height={variants?.height || 900}
-      decoding="async" className={className}
+      decoding="async" className={className} {...fetchPriorityAttribute}
       onError={() => { if (optimized) setFailedSource(src); }} />
   </picture>;
 }

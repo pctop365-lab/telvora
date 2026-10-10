@@ -1,4 +1,6 @@
 storefront_product_service.php
+price_ru_feed_service.php
+price-ru-feed.php
 seo_publication_release_service.php
 product_variant_mutation_service.php
 products.php

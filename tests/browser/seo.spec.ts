@@ -64,6 +64,26 @@ test('product has factual Product, Offer and breadcrumb structured data', async 
   expect(breadcrumbs.itemListElement).toHaveLength(4);
 });
 
+test('Price.ru variant URL selects the matching storefront price and tracks selector changes', async ({ page }) => {
+  await page.unroute('**/products.php**');
+  const multiVariantProduct = {
+    ...product,
+    storefront_variants: [
+      ...product.storefront_variants,
+      { product_variant_id: 16, country: 'Польша', price: 420000, is_active: true,
+        availability: { product_variant_id: 16, status: 'in_stock', orderable: true, expected_arrival_at: null } },
+    ],
+  };
+  await page.route('**/products.php**', route => route.fulfill({ json: { success: true, count: 1, products: [multiVariantProduct] } }));
+  await page.goto('/catalog/oled/lg-oled77c5rla?variant=16');
+  const selector = page.locator('select').first();
+  await expect(selector).toHaveValue('Польша');
+  await expect(page.locator('div.text-4xl')).toContainText(/420[\s\u00a0\u202f]000/);
+  await selector.selectOption('Россия');
+  await expect(page).toHaveURL(/variant=15/);
+  await expect(selector).toHaveValue('Россия');
+});
+
 test('home exposes factual Organization structured data', async ({ page }) => {
   await page.goto('/');
   const blocks = await page.locator('script[type="application/ld+json"]').evaluateAll(nodes => nodes.flatMap(node => JSON.parse(node.textContent || '[]')));

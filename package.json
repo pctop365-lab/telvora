@@ -30,6 +30,7 @@
     "test:backend:deployment": "node tests/backend_deployment_contract_test.mjs",
     "test:seo:ops": "node tests/seo_ops_test.mjs",
     "test:supplier:normalization": "php tests/supplier_import_normalization_test.php",
+    "test:price-ru": "php tests/price_ru_feed_service_test.php",
     "test:seo:workflow-maintenance": "node tests/seo_workflow_maintenance_test.mjs",
     "seo:package": "node scripts/seo-package.mjs",
     "seo:validate-package": "node scripts/seo-validate-package.mjs"
