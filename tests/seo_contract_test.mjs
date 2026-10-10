@@ -8,6 +8,7 @@ const index = read('index.html');
 const seo = read('src/components/SeoMetadata.tsx');
 const seoUtils = read('src/lib/seo.ts');
 const product = read('src/components/ProductDetail.tsx');
+const productOffers = read('src/lib/productOffers.js');
 const app = read('src/App.tsx');
 
 assert.match(robots, /^User-agent: \*$/m);
@@ -39,7 +40,9 @@ assert.ok(seoUtils.includes("const SITE_URL = 'https://telvora.ru'"));
 assert.ok(seo.includes('og:title') && seo.includes('og:description') && seo.includes('og:url'));
 assert.ok(seo.includes('twitter:title') && seo.includes('twitter:description'));
 assert.ok(product.includes("'@type': 'Product'"));
-assert.ok(product.includes("'@type': 'Offer'"));
+assert.ok(product.includes("import { buildProductOffers } from '@/lib/productOffers'"));
+assert.ok(product.includes('offers: productOffers'));
+assert.ok(productOffers.includes("'@type': 'Offer'"));
 assert.ok(product.includes("'@type': 'BreadcrumbList'"));
 assert.ok(!product.includes('AggregateRating'));
 assert.ok(!product.includes("'review'"));
