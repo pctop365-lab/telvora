@@ -63,3 +63,13 @@ for (const theme of ['light', 'dark'] as const) for (const width of [1280, 390])
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: `test-results/catalog-brand-tiles-${width}-${theme}.png`, fullPage: true });
 });
+
+test('brand tile shows a text fallback when its local logo cannot load', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.addInitScript(() => { localStorage.clear(); localStorage.setItem('telvora-theme', 'light'); });
+  await page.route('**/brand-lg.svg', route => route.fulfill({ status: 404, contentType: 'text/html', body: 'missing' }));
+  await page.goto('/catalog');
+  const lgTile = page.getByRole('region', { name: 'Выбор бренда' }).getByRole('button', { name: 'LG, 1 товар' });
+  await expect(lgTile.getByRole('img', { name: 'LG logo' })).toHaveCount(0);
+  await expect(lgTile.getByText('LG', { exact: true })).toHaveCount(2);
+});

@@ -5,6 +5,7 @@ export const managedRootFiles = [
   'favicon.ico', 'favicon.svg', 'favicon-32x32.png', 'favicon-48x48.png',
   'apple-touch-icon.png', 'telvora-logo.svg', 'telvora-logo-dark.svg',
   'telvora-logo-white.svg', 'telvora-mark.svg',
+  'brand-lg.svg', 'brand-samsung.svg', 'brand-sony.svg', 'brand-hisense.svg',
 ];
 export const managedDirectories = ['assets', 'images', '_prerender'];
 export const clientRoutePatterns = ['checkout', 'account', 'admin', 'soundbars', 'accessories'];

@@ -100,6 +100,9 @@ const active = await fixture();
 const beforeActive = await treeSnapshot(active.doc);
 result = run(await argsFor(active)); assert.equal(result.status, 0, result.stderr);
 assert.ok(await stat(join(active.doc, '_prerender', 'product-lg-oled77c5rla.html')));
+for (const logo of ['brand-lg.svg', 'brand-samsung.svg', 'brand-sony.svg', 'brand-hisense.svg']) {
+  assert.deepEqual(await readFile(join(active.doc, logo)), await readFile(join(root, 'public', logo)), `deploy engine did not activate required brand logo: ${logo}`);
+}
 assert.ok(await stat(join(active.staging, 'active-release.json')));
 await assert.rejects(stat(join(active.doc, '_prerender', 'product-product-a.html')));
 for (const file of ['assets/unmanaged.js', 'images/unmanaged.png', 'products.php', 'services.php', 'generate_invoice_pdf.php', 'public_contacts.json', 'telegram_polling.php', 'runtime-state', 'uploads/customer-file']) {

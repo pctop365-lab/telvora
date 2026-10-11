@@ -139,7 +139,7 @@ PY
 for p in "${paths[@]}"; do p="${p%$'\r'}"; case "$p" in assets/*|images/*) activate "$p";; esac; done; failpoint assets
 for p in "${paths[@]}"; do p="${p%$'\r'}"; case "$p" in _prerender/*) activate "$p";; esac; done; for p in "${paths[@]}"; do p="${p%$'\r'}"; case "$p" in client.html|404.html) activate "$p";; esac; done; failpoint prerender
 for p in "${paths[@]}"; do p="${p%$'\r'}"; [ "$p" = index.html ] && activate "$p"; done; failpoint root
-for p in "${paths[@]}"; do p="${p%$'\r'}"; case "$p" in robots.txt|sitemap.xml|favicon*|apple-touch-icon.png|telvora-logo*|telvora-logo-dark.svg|telvora-logo-white.svg|telvora-mark.svg) activate "$p";; esac; done
+for p in "${paths[@]}"; do p="${p%$'\r'}"; case "$p" in robots.txt|sitemap.xml|favicon*|apple-touch-icon.png|telvora-logo*|telvora-logo-dark.svg|telvora-logo-white.svg|telvora-mark.svg|brand-lg.svg|brand-samsung.svg|brand-sony.svg|brand-hisense.svg) activate "$p";; esac; done
 mapfile -t removes < <("$PYTHON_BIN" - "$plan" <<'PY'
 import json,sys
 print('\n'.join(json.load(open(sys.argv[1]))['remove']))

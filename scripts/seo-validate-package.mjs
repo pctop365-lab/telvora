@@ -5,12 +5,18 @@ import { resolve, relative, posix } from 'node:path';
 
 const root = resolve(process.argv[2] || 'seo-release');
 const payload = resolve(root, 'payload');
+const requiredBrandLogos = ['brand-lg.svg', 'brand-samsung.svg', 'brand-sony.svg', 'brand-hisense.svg'];
 const required = ['deployment-manifest.json', 'snapshot.json', 'checksums.sha256', 'production.htaccess', 'payload', 'tools/pre-activation-layout-check.sh'];
 const forbiddenName = /(^|\/)(?:.*\.php|uploads|pdf|vendor|runtime|logs?|locks?|telegram[^/]*|public_contacts\.json|telvora_secrets\.php|\.env|\.git)(?:\/|$)/i;
 const safeRelative = value => value && !value.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(value) && !value.split('/').includes('..') && !value.includes('\0') && value === value.replaceAll('\\', '/');
 for (const path of required) await access(resolve(root, path));
 const manifest = JSON.parse(await readFile(resolve(root, 'deployment-manifest.json'), 'utf8'));
 const snapshot = JSON.parse(await readFile(resolve(root, 'snapshot.json'), 'utf8'));
+for (const logo of requiredBrandLogos) {
+  assert.ok(manifest.managedRootFiles.includes(logo), `deployment manifest omits used brand logo: ${logo}`);
+  const svg = await readFile(resolve(payload, logo), 'utf8');
+  assert.match(svg, /<svg(?:\s|>)/i, `invalid or missing used brand logo: ${logo}`);
+}
 assert.deepEqual((await readdir(root)).sort(), ['checksums.sha256', 'deployment-manifest.json', 'payload', 'production.htaccess', 'snapshot.json', 'tools'].sort(), 'unexpected package top-level path');
 assert.equal(manifest.schemaVersion, 1, 'unsupported deployment manifest schema');
 assert.equal(manifest.snapshotHash, snapshot.snapshotHash, 'snapshot hash mismatch');
@@ -51,6 +57,7 @@ for (const line of checksumLines) {
   checksums.set(match[2], match[1]);
 }
 assert.deepEqual([...checksums.keys()].sort(), actualPackage, 'checksum inventory differs from package files');
+for (const logo of requiredBrandLogos) assert.ok(checksums.has(`payload/${logo}`), `package checksum inventory omits used brand logo: ${logo}`);
 for (const [path, expected] of checksums) {
   const actual = createHash('sha256').update(await readFile(resolve(root, path))).digest('hex');
   assert.equal(actual, expected, `checksum mismatch: ${path}`);

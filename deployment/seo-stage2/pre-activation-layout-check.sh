@@ -28,9 +28,14 @@ if manifest.get('schemaVersion') != 1: raise SystemExit('FAIL unsupported manife
 if manifest.get('snapshotHash') != snapshot.get('snapshotHash'): raise SystemExit('FAIL snapshot hash mismatch')
 if manifest.get('routeCount') != snapshot.get('routeCount'): raise SystemExit('FAIL route count mismatch')
 if manifest.get('sitemapUrlCount') != snapshot.get('sitemapUrlCount'): raise SystemExit('FAIL sitemap count mismatch')
-allowed = {'index.html','client.html','404.html','robots.txt','sitemap.xml','favicon.ico','favicon.svg','favicon-32x32.png','favicon-48x48.png','apple-touch-icon.png','telvora-logo.svg','telvora-logo-dark.svg','telvora-logo-white.svg','telvora-mark.svg','assets','images','_prerender'}
+brand_logos = {'brand-lg.svg','brand-samsung.svg','brand-sony.svg','brand-hisense.svg'}
+allowed = {'index.html','client.html','404.html','robots.txt','sitemap.xml','favicon.ico','favicon.svg','favicon-32x32.png','favicon-48x48.png','apple-touch-icon.png','telvora-logo.svg','telvora-logo-dark.svg','telvora-logo-white.svg','telvora-mark.svg',*brand_logos,'assets','images','_prerender'}
 actual = {p.name for p in payload.iterdir()}
 if actual - allowed: raise SystemExit(f'FAIL unexpected payload paths: {sorted(actual - allowed)}')
+if not brand_logos.issubset(set(manifest.get('managedRootFiles', []))): raise SystemExit('FAIL deployment manifest omits required brand logos')
+if not brand_logos.issubset(actual): raise SystemExit('FAIL payload omits required brand logos')
+for logo in brand_logos:
+    if not re.search(r'<svg(?:\s|>)', (payload / logo).read_text(encoding='utf-8'), re.I): raise SystemExit(f'FAIL invalid SVG logo: {logo}')
 for path in payload.rglob('*'):
     rel = path.relative_to(payload).as_posix()
     if path.is_symlink(): raise SystemExit(f'FAIL symlink: {rel}')
