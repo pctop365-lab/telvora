@@ -17,34 +17,49 @@ test.beforeEach(async ({ page }) => {
   } }));
 });
 
-for (const width of [1280, 390]) test(`brand tiles filter and reset consistently at ${width}px`, async ({ page }) => {
+for (const theme of ['light', 'dark'] as const) for (const width of [1280, 390]) test(`brand tiles filter and reset in ${theme} theme at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
-  await page.addInitScript(() => { localStorage.clear(); localStorage.setItem('telvora-theme', 'light'); });
+  await page.addInitScript((initialTheme) => { localStorage.clear(); localStorage.setItem('telvora-theme', initialTheme); }, theme);
   await page.goto('/catalog');
 
   await expect(page.getByText('Найдено товаров: 5')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Каталог телевизоров', exact: true })).toBeVisible();
+  await expect(page.getByText('Выберите бренд и настройте фильтры', { exact: true })).toBeVisible();
+  if (theme === 'dark') await expect(page.locator('html')).toHaveClass(/dark/);
+  else await expect(page.locator('html')).toHaveClass(/light/);
+  const consent = page.getByRole('button', { name: 'Только необходимые', exact: true });
+  if (await consent.count()) await consent.click();
   const brands = page.getByRole('region', { name: 'Выбор бренда' });
+  const grid = brands.getByTestId('brand-tiles-grid');
+  await expect.poll(() => grid.evaluate(element => getComputedStyle(element).gridTemplateColumns.split(' ').length)).toBe(width >= 1024 ? 4 : 2);
   for (const name of ['LG', 'Samsung', 'Sony', 'TCL', 'Hisense']) {
     await expect(brands.getByRole('button', { name: `${name}, 1 товар` })).toBeVisible();
+  }
+  for (const [name, path] of [['LG', '/brand-lg.svg'], ['Samsung', '/brand-samsung.svg'], ['Sony', '/brand-sony.svg'], ['Hisense', '/brand-hisense.svg']]) {
+    const logo = brands.getByRole('img', { name: `${name} logo` });
+    await expect(logo).toHaveAttribute('src', path);
+    await expect.poll(() => logo.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   }
   await expect(brands.getByRole('button', { name: /HiddenBrand/ })).toHaveCount(0);
   await expect(page.getByText('Найдено товаров: 5')).toBeVisible();
 
-  await brands.getByRole('button', { name: 'Sony, 1 товар' }).click();
+  await brands.getByRole('button', { name: 'LG, 1 товар' }).click();
   await expect(page).toHaveURL(/\/catalog$/);
-  await expect(brands.getByRole('button', { name: 'Sony, 1 товар' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(brands.getByRole('button', { name: 'LG, 1 товар' })).toHaveAttribute('aria-pressed', 'true');
+  await expect(brands.getByRole('button', { name: 'LG, 1 товар' })).toHaveClass(/border-accent-500/);
   await expect(page.getByText('Найдено товаров: 1')).toBeVisible();
+  await page.screenshot({ path: `test-results/catalog-brand-tiles-${width}-${theme}-selected.png`, fullPage: true });
 
   await page.getByRole('button', { name: /Фильтры/ }).click();
   const dialog = page.getByRole('dialog', { name: 'Фильтры каталога' });
-  await expect(dialog.getByRole('button', { name: 'Sony', exact: true })).toHaveClass(/bg-accent-500/);
+  await expect(dialog.getByRole('button', { name: 'LG', exact: true })).toHaveClass(/bg-accent-500/);
   await dialog.getByRole('button', { name: 'Закрыть', exact: true }).click();
   await page.locator('main select').selectOption('price-asc');
   await expect(page.getByText('Найдено товаров: 1')).toBeVisible();
   await page.getByRole('button', { name: 'Сбросить все фильтры' }).click();
-  await expect(brands.getByRole('button', { name: 'Sony, 1 товар' })).toHaveAttribute('aria-pressed', 'false');
+  await expect(brands.getByRole('button', { name: 'LG, 1 товар' })).toHaveAttribute('aria-pressed', 'false');
   await expect(page.locator('main select')).toHaveValue('default');
   await expect(page.getByText('Найдено товаров: 5')).toBeVisible();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  await page.screenshot({ path: `test-results/catalog-brand-tiles-${width}.png`, fullPage: true });
+  await page.screenshot({ path: `test-results/catalog-brand-tiles-${width}-${theme}.png`, fullPage: true });
 });
