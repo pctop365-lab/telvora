@@ -40,6 +40,17 @@ for (const theme of ['light', 'dark'] as const) for (const width of [1280, 390])
     await expect(logo).toHaveAttribute('src', path);
     await expect.poll(() => logo.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
   }
+  for (const name of ['LG', 'Samsung', 'Sony', 'TCL', 'Hisense']) {
+    const tile = brands.getByRole('button', { name: `${name}, 1 товар` });
+    const logoArea = tile.locator(':scope > span').first();
+    await expect.poll(() => logoArea.evaluate(element => getComputedStyle(element).backgroundColor)).toBe(theme === 'dark' ? 'rgba(0, 0, 0, 0)' : 'rgb(255, 255, 255)');
+  }
+  for (const name of ['Samsung', 'Sony']) {
+    const logo = brands.getByRole('img', { name: `${name} logo` });
+    if (theme === 'dark') await expect(logo).toHaveClass(/dark:invert/);
+  }
+  const tclLogo = brands.getByRole('button', { name: 'TCL, 1 товар' }).locator('span.font-display');
+  await expect(tclLogo).toHaveCSS('color', theme === 'dark' ? 'rgb(255, 255, 255)' : 'rgb(21, 24, 28)');
   await expect(brands.getByRole('button', { name: /HiddenBrand/ })).toHaveCount(0);
   await expect(page.getByText('Найдено товаров: 5')).toBeVisible();
 
